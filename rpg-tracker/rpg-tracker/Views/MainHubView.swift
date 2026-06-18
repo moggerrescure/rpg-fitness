@@ -22,7 +22,7 @@ struct MainHubView: View {
                         showClassSelection = false
                     }
                 } else {
-                    VStack(spacing: 0) {
+                    ZStack(alignment: .bottom) {
                         // Main Tab Views
                         ZStack {
                             switch currentTab {
@@ -131,22 +131,23 @@ struct HomeDashboardView: View {
                                 Image(systemName: "person.crop.circle.fill")
                                     .font(.system(size: 40))
                                     .foregroundColor(char.selectedClass.themeColor)
+                                    .glow(color: char.selectedClass.themeColor.opacity(0.35), radius: 6)
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("LEVEL \(char.level)")
                                         .font(.system(.caption, design: .monospaced))
                                         .fontWeight(.bold)
                                         .foregroundColor(char.selectedClass.themeColor)
-                                        .tracking(1)
+                                        .tracking(1.5)
                                     
                                     Text(char.username)
-                                        .font(.title3)
-                                        .fontWeight(.bold)
+                                        .font(.system(.title3, design: .default))
+                                        .fontWeight(.black)
                                         .foregroundColor(Theme.textPrimary)
                                 }
                             }
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(TactileButtonStyle())
                         
                         Spacer()
                         
@@ -156,31 +157,39 @@ struct HomeDashboardView: View {
                                 .foregroundColor(Theme.healerColor)
                             Text("\(char.gold)")
                                 .font(.system(.body, design: .monospaced))
-                                .fontWeight(.bold)
+                                .fontWeight(.black)
                                 .foregroundColor(Theme.textPrimary)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 8)
                         .background(Theme.cardBackground.opacity(0.85))
-                        .cornerRadius(12)
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Theme.border, lineWidth: 1)
+                        )
                         
                         // Shop Cart Button
                         Button(action: { showArmoryShop = true }) {
                             Image(systemName: "cart.fill")
                                 .foregroundColor(Theme.warning)
-                                .padding(8)
+                                .padding(10)
                                 .background(Theme.cardBackground.opacity(0.85))
                                 .clipShape(Circle())
+                                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
                         }
+                        .buttonStyle(TactileButtonStyle())
                         
                         // Switch class gear icon
                         Button(action: { showClassSelection = true }) {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .foregroundColor(Theme.textSecondary)
-                                .padding(8)
+                                .padding(10)
                                 .background(Theme.cardBackground.opacity(0.85))
                                 .clipShape(Circle())
+                                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
                         }
+                        .buttonStyle(TactileButtonStyle())
                     }
                     .padding(.horizontal)
                     .padding(.top, 16)
@@ -192,26 +201,27 @@ struct HomeDashboardView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text("XP PROGRESSION")
-                                .font(.system(size: 10, design: .monospaced))
-                                .fontWeight(.bold)
-                                .foregroundColor(Theme.textMuted)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundColor(Theme.textSecondary)
+                                .tracking(1)
                             Spacer()
                             Text("\(char.xp)/\(char.xpForNextLevel) XP")
-                                .font(.system(size: 10, design: .monospaced))
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundColor(Theme.textSecondary)
                         }
                         
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: 6)
                                     .fill(Theme.cardBackground)
                                 
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: 6)
                                     .fill(char.selectedClass.themeColor)
                                     .frame(width: CGFloat(char.xp) / CGFloat(char.xpForNextLevel) * geo.size.width)
+                                    .glow(color: char.selectedClass.themeColor.opacity(0.4), radius: 4)
                             }
                         }
-                        .frame(height: 8)
+                        .frame(height: 10)
                     }
                     .padding(.horizontal)
                     
@@ -219,35 +229,46 @@ struct HomeDashboardView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("COMBAT FORCE POWER")
-                                .font(.caption2)
-                                .foregroundColor(Theme.textMuted)
-                                .fontWeight(.bold)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundColor(Theme.textSecondary)
+                                .tracking(1)
                             Text("\(char.combatPower)")
-                                .font(.system(.title, design: .monospaced))
-                                .fontWeight(.black)
+                                .font(.system(size: 32, weight: .black, design: .monospaced))
                                 .foregroundColor(Theme.textPrimary)
+                                .glow(color: char.selectedClass.themeColor.opacity(0.35), radius: 6)
                         }
                         Spacer()
-                        Image(systemName: "bolt.fill")
-                            .font(.largeTitle)
-                            .foregroundColor(char.selectedClass.themeColor)
-                            .glow(color: char.selectedClass.themeColor.opacity(0.4), radius: 8)
+                        ZStack {
+                            Circle()
+                                .fill(char.selectedClass.themeColor.opacity(0.15))
+                                .frame(width: 50, height: 50)
+                            Image(systemName: "bolt.fill")
+                                .font(.title)
+                                .foregroundColor(char.selectedClass.themeColor)
+                                .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 8)
+                        }
                     }
                     .padding()
-                    .background(Theme.cardBackground.opacity(0.85))
-                    .cornerRadius(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Theme.cardBackground.opacity(0.8))
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Theme.border, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(LinearGradient(
+                                colors: [char.selectedClass.themeColor.opacity(0.4), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ), lineWidth: 1.5)
                     )
                     .padding(.horizontal)
                     
                     // Gear Slots Grid
                     VStack(alignment: .leading, spacing: 12) {
                         Text("EQUIPPED SLOTS (TAP TO EDIT)")
-                            .font(.system(size: 10, design: .monospaced))
-                            .fontWeight(.bold)
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundColor(Theme.textSecondary)
+                            .tracking(1)
                             .padding(.horizontal)
                         
                         HStack(spacing: 16) {
@@ -303,9 +324,9 @@ struct HomeDashboardView: View {
                     // Quests card panel
                     VStack(alignment: .leading, spacing: 12) {
                         Text("DAILY MISSION OBJECTIVES")
-                            .font(.caption)
-                            .fontWeight(.bold)
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundColor(Theme.textSecondary)
+                            .tracking(1)
                             .padding(.horizontal)
                         
                         VStack(spacing: 8) {
@@ -319,14 +340,17 @@ struct HomeDashboardView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack {
                             Text("SEASON PASS: CHAPTER 1")
-                                .font(.caption)
-                                .fontWeight(.bold)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .foregroundColor(Theme.textPrimary)
                             Spacer()
                             Text("LEVEL 4")
-                                .font(.system(.caption, design: .monospaced))
-                                .fontWeight(.bold)
+                                .font(.system(size: 10, weight: .black, design: .monospaced))
                                 .foregroundColor(Theme.healerColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Theme.healerColor.opacity(0.15))
+                                .cornerRadius(6)
+                                .glow(color: Theme.healerColor.opacity(0.35), radius: 4)
                         }
                         
                         GeometryReader { geo in
@@ -335,26 +359,45 @@ struct HomeDashboardView: View {
                                     .fill(Theme.secondaryCard)
                                 
                                 RoundedRectangle(cornerRadius: 5)
-                                    .fill(Theme.healerColor)
+                                    .fill(LinearGradient(
+                                        colors: [Theme.healerColor, Theme.warning],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ))
                                     .frame(width: 0.65 * geo.size.width)
+                                    .glow(color: Theme.healerColor.opacity(0.4), radius: 5)
                             }
                         }
                         .frame(height: 10)
                         
                         HStack {
                             Text("Next Tier reward:")
-                                .font(.caption2)
+                                .font(.system(size: 9, design: .monospaced))
                                 .foregroundColor(Theme.textMuted)
                             Spacer()
                             Text("Dragon Pet (Legendary)")
-                                .font(.caption2)
-                                .fontWeight(.semibold)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundColor(Theme.healerColor)
                         }
                     }
-                    .glassmorphicCard()
+                    .padding(18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Theme.cardBackground.opacity(0.8))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(LinearGradient(
+                                colors: [Theme.healerColor.opacity(0.25), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ), lineWidth: 1.5)
+                    )
                     .padding(.horizontal)
-                    .padding(.bottom, 20)
+                    
+                    // Space for floating tab bar
+                    Spacer()
+                        .frame(height: 100)
                 }
             }
             .sheet(isPresented: $showArmoryShop) {
@@ -375,41 +418,53 @@ struct SlotCard: View {
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 Text(title.uppercased())
-                    .font(.system(size: 9, design: .monospaced))
-                    .fontWeight(.bold)
-                    .foregroundColor(Theme.textMuted)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
+                    .tracking(1)
                 
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundColor(color)
-                    .padding(12)
-                    .background(color.opacity(0.1))
-                    .clipShape(Circle())
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(color.opacity(0.12))
+                        .frame(width: 52, height: 52)
+                    
+                    Image(systemName: icon)
+                        .font(.title3)
+                        .foregroundColor(color)
+                }
+                .glow(color: color.opacity(0.35), radius: 6)
                 
                 VStack(spacing: 2) {
                     Text(itemName)
-                        .font(.caption)
-                        .fontWeight(.bold)
+                        .font(.system(.caption, design: .default))
+                        .fontWeight(.black)
                         .foregroundColor(Theme.textPrimary)
                         .lineLimit(1)
                     
                     Text(combatBonus)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundColor(Theme.success)
                 }
             }
             .padding(.vertical, 16)
+            .padding(.horizontal, 10)
             .frame(maxWidth: .infinity)
-            .background(Theme.cardBackground.opacity(0.85))
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Theme.border, lineWidth: 1)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Theme.cardBackground.opacity(0.8))
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(LinearGradient(
+                        colors: [color.opacity(0.35), Color.clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ), lineWidth: 1.5)
+            )
+            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(TactileButtonStyle())
     }
 }
 
@@ -420,19 +475,26 @@ struct QuestRow: View {
     let xpReward: String
     
     var body: some View {
-        HStack {
-            Image(systemName: completed ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(completed ? Theme.success : Theme.textMuted)
-                .font(.title3)
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(completed ? Theme.success.opacity(0.15) : Theme.secondaryCard)
+                    .frame(width: 28, height: 28)
+                
+                Image(systemName: completed ? "checkmark" : "circle")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(completed ? Theme.success : Theme.textSecondary)
+            }
+            .glow(color: completed ? Theme.success.opacity(0.3) : .clear, radius: 4)
             
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(completed ? Theme.textSecondary : Theme.textPrimary)
+                    .lineLimit(2)
                 
                 Text(xpReward)
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundColor(Theme.success)
             }
             
@@ -442,13 +504,19 @@ struct QuestRow: View {
                 .font(.system(.caption, design: .monospaced))
                 .foregroundColor(completed ? Theme.success : Theme.textSecondary)
                 .fontWeight(.bold)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(completed ? Theme.success.opacity(0.1) : Theme.secondaryCard.opacity(0.5))
+                .cornerRadius(6)
         }
         .padding()
-        .background(Theme.cardBackground.opacity(0.85))
-        .cornerRadius(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Theme.cardBackground.opacity(0.8))
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(completed ? Theme.success.opacity(0.2) : Theme.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(completed ? Theme.success.opacity(0.3) : Theme.border, lineWidth: 1)
         )
     }
 }
@@ -469,14 +537,22 @@ struct CustomBottomNavBar: View {
             NavBarItem(icon: "person.3.fill", label: "CLAN", tab: 3, currentTab: $currentTab, color: activeColor)
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 12)
-        .background(Theme.cardBackground)
-        .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(Theme.border),
-            alignment: .top
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Theme.cardBackground.opacity(0.85))
+                .shadow(color: activeColor.opacity(0.2), radius: 10, x: 0, y: 5)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(LinearGradient(
+                    colors: [activeColor.opacity(0.35), Color.clear],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ), lineWidth: 1.5)
+        )
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 }
 
@@ -488,16 +564,24 @@ struct NavBarItem: View {
     let color: Color
     
     var body: some View {
-        Button(action: { currentTab = tab }) {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                currentTab = tab
+            }
+        }) {
             VStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.title3)
+                    .font(.system(size: 18, weight: .bold))
+                    .scaleEffect(currentTab == tab ? 1.15 : 1.0)
+                    .glow(color: currentTab == tab ? color.opacity(0.4) : .clear, radius: 4)
+                
                 Text(label)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
             }
             .foregroundColor(currentTab == tab ? color : Theme.textSecondary)
             .frame(width: 60, height: 44)
         }
+        .buttonStyle(TactileButtonStyle())
     }
 }
 

@@ -187,11 +187,11 @@ struct BattleArenaView: View {
             // Header Segment Control (Hidden during active combat/searching/story mode/setup step)
             if viewModel.activeBattle == nil && !viewModel.isSearching && !isStoryModeActive && storySetupStep == nil {
                 VStack {
-                    Picker("Tabs", selection: $selectedTab) {
-                        Text("ARENA").tag(0)
-                        Text("1V1 LEADERBOARD").tag(1)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
+                    PillSegmentPicker(
+                        selection: $selectedTab,
+                        items: ["ARENA", "1V1 LEADERBOARD"],
+                        accentColor: FirebaseService.shared.currentCharacter?.selectedClass.themeColor ?? Theme.primary
+                    )
                     .padding(.horizontal)
                     .padding(.top, 16)
                     
@@ -293,10 +293,10 @@ struct PvPModeSelectorView: View {
                     .fontWeight(.black)
                     .foregroundColor(Theme.textPrimary)
                     .tracking(2)
-                    .glow(color: Theme.accent.opacity(0.3), radius: 8)
+                    .glow(color: Theme.accent.opacity(0.35), radius: 8)
                 
                 Text("Select battle arena or journey fit campaign")
-                    .font(.caption)
+                    .font(.system(.caption, design: .monospaced))
                     .foregroundColor(Theme.textSecondary)
             }
             .padding(.top, 20)
@@ -306,7 +306,7 @@ struct PvPModeSelectorView: View {
             VStack(spacing: 16) {
                 // Story Campaign Card
                 Button(action: selectStory) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 18) {
                         ZStack {
                             Circle()
                                 .fill(Theme.healerColor.opacity(0.15))
@@ -316,11 +316,12 @@ struct PvPModeSelectorView: View {
                                 .font(.title3)
                                 .foregroundColor(Theme.healerColor)
                         }
+                        .glow(color: Theme.healerColor.opacity(0.35), radius: 6)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text("STORY CAMPAIGN (CO-OP / SOLO)")
-                                .font(.subheadline)
-                                .fontWeight(.bold)
+                                .font(.system(.subheadline, design: .default))
+                                .fontWeight(.black)
                                 .foregroundColor(Theme.textPrimary)
                             
                             Text("Journey through 20 islands. Face epic bosses at stages 10 & 20. Team up or go solo.")
@@ -328,39 +329,50 @@ struct PvPModeSelectorView: View {
                                 .foregroundColor(Theme.textSecondary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
+                                .lineSpacing(2)
                         }
                         
                         Spacer()
                         
                         Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(Theme.textMuted)
                     }
                     .padding()
-                    .background(Theme.cardBackground.opacity(0.85))
-                    .cornerRadius(16)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Theme.border, lineWidth: 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Theme.cardBackground.opacity(0.85))
                     )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(LinearGradient(
+                                colors: [Theme.healerColor.opacity(0.35), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ), lineWidth: 1.5)
+                    )
+                    .shadow(color: Theme.healerColor.opacity(0.1), radius: 8, x: 0, y: 4)
                 }
+                .buttonStyle(TactileButtonStyle())
                 
                 // 1v1 Duel Card
                 Button(action: select1v1) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 18) {
                         ZStack {
                             Circle()
-                                .fill(Theme.accent.opacity(0.15))
+                                .fill(Theme.danger.opacity(0.15))
                                 .frame(width: 54, height: 54)
                             
                             Image(systemName: "sword.and.shield.flightpath")
                                 .font(.title3)
-                                .foregroundColor(Theme.accent)
+                                .foregroundColor(Theme.danger)
                         }
+                        .glow(color: Theme.danger.opacity(0.35), radius: 6)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text("1V1 SPEED DUEL")
-                                .font(.subheadline)
-                                .fontWeight(.bold)
+                                .font(.system(.subheadline, design: .default))
+                                .fontWeight(.black)
                                 .foregroundColor(Theme.textPrimary)
                             
                             Text("Fast automated match. Push your limits in a 60-second exercise race.")
@@ -368,25 +380,35 @@ struct PvPModeSelectorView: View {
                                 .foregroundColor(Theme.textSecondary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
+                                .lineSpacing(2)
                         }
                         
                         Spacer()
                         
                         Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(Theme.textMuted)
                     }
                     .padding()
-                    .background(Theme.cardBackground.opacity(0.85))
-                    .cornerRadius(16)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Theme.border, lineWidth: 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Theme.cardBackground.opacity(0.85))
                     )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(LinearGradient(
+                                colors: [Theme.danger.opacity(0.35), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ), lineWidth: 1.5)
+                    )
+                    .shadow(color: Theme.danger.opacity(0.1), radius: 8, x: 0, y: 4)
                 }
+                .buttonStyle(TactileButtonStyle())
                 
                 // 3v3 Co-op Card
                 Button(action: select3v3) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 18) {
                         ZStack {
                             Circle()
                                 .fill(Theme.primary.opacity(0.15))
@@ -396,11 +418,12 @@ struct PvPModeSelectorView: View {
                                 .font(.title3)
                                 .foregroundColor(Theme.primary)
                         }
+                        .glow(color: Theme.primary.opacity(0.35), radius: 6)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text("3V3 CO-OP BATTLE")
-                                .font(.subheadline)
-                                .fontWeight(.bold)
+                                .font(.system(.subheadline, design: .default))
+                                .fontWeight(.black)
                                 .foregroundColor(Theme.textPrimary)
                             
                             Text("Invite up to 2 friends. Coordinate exercises to execute team attacks and heals.")
@@ -408,25 +431,36 @@ struct PvPModeSelectorView: View {
                                 .foregroundColor(Theme.textSecondary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
+                                .lineSpacing(2)
                         }
                         
                         Spacer()
                         
                         Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(Theme.textMuted)
                     }
                     .padding()
-                    .background(Theme.cardBackground.opacity(0.85))
-                    .cornerRadius(16)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Theme.border, lineWidth: 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Theme.cardBackground.opacity(0.85))
                     )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(LinearGradient(
+                                colors: [Theme.primary.opacity(0.35), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ), lineWidth: 1.5)
+                    )
+                    .shadow(color: Theme.primary.opacity(0.1), radius: 8, x: 0, y: 4)
                 }
+                .buttonStyle(TactileButtonStyle())
             }
             .padding(.horizontal)
             
             Spacer()
+                .frame(height: 100) // Bottom tab space
         }
     }
 }
@@ -448,17 +482,20 @@ struct TeamLobbyView: View {
                     Image(systemName: "chevron.left")
                         .font(.title3)
                         .foregroundColor(.white)
-                        .padding(10)
+                        .padding(12)
                         .background(Theme.cardBackground)
                         .clipShape(Circle())
+                        .overlay(Circle().stroke(Theme.border, lineWidth: 1))
                 }
+                .buttonStyle(TactileButtonStyle())
                 
                 Spacer()
                 
                 Text("CO-OP LOBBY (3V3)")
                     .font(.system(.headline, design: .monospaced))
-                    .fontWeight(.bold)
+                    .fontWeight(.black)
                     .foregroundColor(Theme.textPrimary)
+                    .tracking(1)
                 
                 Spacer()
                 Image(systemName: "chevron.left").opacity(0).padding(10) // balance
@@ -466,7 +503,7 @@ struct TeamLobbyView: View {
             .padding(.horizontal)
             
             Text("Invite friends to form a 3-player team")
-                .font(.caption)
+                .font(.system(.caption, design: .monospaced))
                 .foregroundColor(Theme.textSecondary)
                 .padding(.top, -10)
             
@@ -481,23 +518,24 @@ struct TeamLobbyView: View {
                             Image(systemName: "person.fill")
                                 .foregroundColor(viewModel.currentClass.themeColor)
                         )
+                        .glow(color: viewModel.currentClass.themeColor.opacity(0.35), radius: 5)
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text("You (Leader)")
                             .font(.subheadline)
                             .fontWeight(.bold)
                             .foregroundColor(Theme.textPrimary)
-                        Text(viewModel.currentClass.rawValue)
-                            .font(.caption2)
+                        Text(viewModel.currentClass.rawValue.uppercased())
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
                             .foregroundColor(viewModel.currentClass.themeColor)
                     }
                     Spacer()
                 }
                 .padding()
-                .background(Theme.cardBackground)
-                .cornerRadius(12)
+                .background(Theme.cardBackground.opacity(0.85))
+                .cornerRadius(16)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: 16)
                         .stroke(viewModel.currentClass.themeColor.opacity(0.5), lineWidth: 1.5)
                 )
                 
@@ -521,20 +559,23 @@ struct TeamLobbyView: View {
             
             // Search Match button
             Button(action: viewModel.startQueue) {
-                HStack {
+                HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
+                        .font(.headline)
                     Text("START TEAM BATTLE")
-                        .fontWeight(.bold)
+                        .font(.system(.subheadline, design: .monospaced))
+                        .fontWeight(.black)
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
                 .background(Theme.primary)
                 .foregroundColor(.white)
-                .cornerRadius(12)
+                .cornerRadius(14)
                 .shadow(color: Theme.primary.opacity(0.35), radius: 10, y: 5)
             }
+            .buttonStyle(TactileButtonStyle())
             .padding(.horizontal)
-            .padding(.bottom, 32)
+            .padding(.bottom, 100)
         }
     }
 }
@@ -555,14 +596,15 @@ struct LobbySlotRow: View {
                         Image(systemName: "person.fill")
                             .foregroundColor(mockClass.themeColor)
                     )
+                    .glow(color: mockClass.themeColor.opacity(0.3), radius: 4)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
                         .font(.subheadline)
                         .fontWeight(.bold)
                         .foregroundColor(Theme.textPrimary)
-                    Text(mockClass.rawValue)
-                        .font(.caption2)
+                    Text(mockClass.rawValue.uppercased())
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .foregroundColor(mockClass.themeColor)
                 }
                 
@@ -573,33 +615,34 @@ struct LobbySlotRow: View {
                         .font(.title3)
                         .foregroundColor(Theme.danger.opacity(0.8))
                 }
+                .buttonStyle(TactileButtonStyle())
             } else {
                 Button(action: inviteAction) {
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: "plus.circle.fill")
                             .font(.title3)
-                            .foregroundColor(Theme.textMuted)
+                            .foregroundColor(Theme.textSecondary)
                         Text("INVITE FRIEND")
                             .font(.system(.subheadline, design: .monospaced))
-                            .fontWeight(.bold)
-                            .foregroundColor(Theme.textSecondary)
+                            .fontWeight(.black)
+                            .foregroundColor(Theme.textPrimary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(TactileButtonStyle())
             }
         }
         .padding()
-        .background(Theme.cardBackground.opacity(0.6))
-        .cornerRadius(12)
+        .background(Theme.cardBackground.opacity(0.65))
+        .cornerRadius(16)
         .overlay(
             Group {
                 if friendName == nil {
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .miter, miterLimit: 10, dash: [5, 5], dashPhase: 0))
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .miter, miterLimit: 10, dash: [6, 6], dashPhase: 0))
                         .foregroundColor(Theme.border)
                 } else {
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: 16)
                         .stroke(Theme.border, lineWidth: 1)
                 }
             }

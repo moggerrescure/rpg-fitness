@@ -114,3 +114,55 @@ extension View {
         #endif
     }
 }
+
+// Satisfying tactile click bounce button style
+struct TactileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+// Custom Pill-style Segmented Picker with animatable class-colored highlights
+struct PillSegmentPicker: View {
+    @Binding var selection: Int
+    let items: [String]
+    let accentColor: Color
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<items.count, id: \.self) { idx in
+                Button(action: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        selection = idx
+                    }
+                }) {
+                    Text(items[idx])
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(selection == idx ? Color.black : Theme.textSecondary)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            ZStack {
+                                if selection == idx {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(accentColor)
+                                        .glow(color: accentColor.opacity(0.4), radius: 6)
+                                }
+                            }
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(4)
+        .background(Theme.cardBackground)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+    }
+}
+
