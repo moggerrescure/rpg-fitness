@@ -1,0 +1,20 @@
+# Xcode build artifacts
+build/
+DerivedData/
+
+# Personal settings
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserdatad/
+UserInterfaceState.xcuserstate
+
+# Crashlytics/Fabric
+*.dSYM
+*.ipa
+
+# Swift Package Manager
+.build/
+
+# CocoaPods
+Pods/
