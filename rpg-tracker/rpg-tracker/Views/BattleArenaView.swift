@@ -158,7 +158,8 @@ struct BattleArenaView: View {
                                 },
                                 select3v3: {
                                     viewModel.selectedPvPType = .team3v3
-                                    isInLobby = true
+                                    viewModel.invitedFriends.removeAll()
+                                    showInviteSheet = true
                                 },
                                 selectStory: {
                                     withAnimation {
@@ -244,6 +245,17 @@ struct BattleArenaView: View {
                 activeSheet = .pvpInviteFriends
             } else if activeSheet == .pvpInviteFriends {
                 activeSheet = nil
+            }
+        }
+        .onChange(of: activeSheet) { newValue in
+            if newValue == nil {
+                if showInviteSheet {
+                    showInviteSheet = false
+                    if viewModel.selectedPvPType == .team3v3 {
+                        // Immediately search for opponent once the invite sheet is dismissed
+                        viewModel.startQueue()
+                    }
+                }
             }
         }
     }
