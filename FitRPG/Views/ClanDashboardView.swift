@@ -6,7 +6,7 @@ struct ClanDashboardView: View {
     
     var body: some View {
         ZStack {
-            Theme.background
+            Color.clear
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {

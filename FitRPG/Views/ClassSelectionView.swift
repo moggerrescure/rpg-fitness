@@ -7,8 +7,10 @@ struct ClassSelectionView: View {
     
     var body: some View {
         ZStack {
-            // Deep background
-            Theme.background
+            // Animated background representing wilderness
+            AnimatedBackgroundView()
+            
+            Color.black.opacity(0.4)
                 .ignoresSafeArea()
             
             VStack(spacing: 24) {

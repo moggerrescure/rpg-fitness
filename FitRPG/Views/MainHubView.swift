@@ -4,12 +4,17 @@ struct MainHubView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
     @State private var currentTab: Int = 0
     @State private var showClassSelection: Bool = false
+    @State private var showProfile: Bool = false
     
     var body: some View {
         NavigationView {
             ZStack {
-                Theme.background
-                    .ignoresSafeArea()
+                if currentTab != 1 {
+                    AnimatedBackgroundView()
+                } else {
+                    Theme.background
+                        .ignoresSafeArea()
+                }
                 
                 if firebaseService.currentCharacter == nil {
                     ClassSelectionView {
@@ -21,7 +26,7 @@ struct MainHubView: View {
                         ZStack {
                             switch currentTab {
                             case 0:
-                                HomeDashboardView(showClassSelection: $showClassSelection)
+                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile)
                             case 1:
                                 BattleArenaView()
                             case 2:
@@ -29,7 +34,7 @@ struct MainHubView: View {
                             case 3:
                                 ClanDashboardView()
                             default:
-                                HomeDashboardView(showClassSelection: $showClassSelection)
+                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile)
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -45,6 +50,11 @@ struct MainHubView: View {
                     showClassSelection = false
                 }
             }
+            .sheet(isPresented: $showProfile) {
+                if let char = firebaseService.currentCharacter {
+                    PlayerProfileView(character: char)
+                }
+            }
         }
     }
 }
@@ -53,6 +63,7 @@ struct MainHubView: View {
 struct HomeDashboardView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
     @Binding var showClassSelection: Bool
+    @Binding var showProfile: Bool
     
     var body: some View {
         ScrollView {
@@ -60,18 +71,27 @@ struct HomeDashboardView: View {
                 // Top header profile
                 if let char = firebaseService.currentCharacter {
                     HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("LEVEL \(char.level)")
-                                .font(.system(.caption, design: .monospaced))
-                                .fontWeight(.bold)
-                                .foregroundColor(char.selectedClass.themeColor)
-                                .tracking(1)
-                            
-                            Text(char.username)
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundColor(Theme.textPrimary)
+                        Button(action: { showProfile = true }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.crop.circle.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(char.selectedClass.themeColor)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("LEVEL \(char.level)")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .fontWeight(.bold)
+                                        .foregroundColor(char.selectedClass.themeColor)
+                                        .tracking(1)
+                                    
+                                    Text(char.username)
+                                        .font(.title3)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Theme.textPrimary)
+                                }
+                            }
                         }
+                        .buttonStyle(PlainButtonStyle())
                         
                         Spacer()
                         
@@ -86,7 +106,7 @@ struct HomeDashboardView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Theme.cardBackground)
+                        .background(Theme.cardBackground.opacity(0.85))
                         .cornerRadius(12)
                         
                         // Switch class gear icon
@@ -94,7 +114,7 @@ struct HomeDashboardView: View {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .foregroundColor(Theme.textSecondary)
                                 .padding(8)
-                                .background(Theme.cardBackground)
+                                .background(Theme.cardBackground.opacity(0.85))
                                 .clipShape(Circle())
                         }
                     }
@@ -147,7 +167,7 @@ struct HomeDashboardView: View {
                             .glow(color: char.selectedClass.themeColor.opacity(0.4), radius: 8)
                     }
                     .padding()
-                    .background(Theme.cardBackground)
+                    .background(Theme.cardBackground.opacity(0.85))
                     .cornerRadius(16)
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
@@ -269,7 +289,7 @@ struct SlotCard: View {
         }
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
-        .background(Theme.cardBackground)
+        .background(Theme.cardBackground.opacity(0.85))
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
@@ -309,7 +329,7 @@ struct QuestRow: View {
                 .fontWeight(.bold)
         }
         .padding()
-        .background(Theme.cardBackground)
+        .background(Theme.cardBackground.opacity(0.85))
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
