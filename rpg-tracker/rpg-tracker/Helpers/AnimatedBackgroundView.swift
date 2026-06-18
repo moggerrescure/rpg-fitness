@@ -154,6 +154,13 @@ struct AnimatedBackgroundView: View {
     }
     
     private func startAnimations() {
+        #if targetEnvironment(simulator)
+        // Disable resource-heavy animations on the simulator to prevent rendering lag
+        cloudOffset1 = 150
+        cloudOffset2 = 180
+        windOpacity = 0.2
+        treeSway = 0.0
+        #else
         // Slow float for clouds
         withAnimation(Animation.linear(duration: 45).repeatForever(autoreverses: false)) {
             cloudOffset1 = 450
@@ -171,6 +178,7 @@ struct AnimatedBackgroundView: View {
         withAnimation(Animation.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
             treeSway = 1.8 // Sway angle in degrees
         }
+        #endif
     }
 }
 
@@ -267,59 +275,70 @@ struct CanvasParticleOverlay: View {
     }
     
     var body: some View {
+        #if targetEnvironment(simulator)
+        // Completely stateless static drawing for Xcode Simulator to bypass redraw lag
+        Canvas { context, size in
+            drawParticles(in: &context, size: size, time: 0)
+        }
+        .ignoresSafeArea()
+        #else
         TimelineView(.animation) { timeline in
             Canvas { context, size in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                
-                for seed in seeds {
-                    // Linear movement over time with wrap-around boundaries
-                    let elapsed = CGFloat(time.truncatingRemainder(dividingBy: 10000))
-                    let moveX = seed.speedXPercent * 120 * elapsed
-                    let moveY = seed.speedYPercent * 120 * elapsed
-                    
-                    let startX = seed.initialXPercent * size.width
-                    let startY = seed.initialYPercent * size.height
-                    
-                    var x = (startX + moveX).truncatingRemainder(dividingBy: size.width + 60) - 30
-                    var y = (startY + moveY).truncatingRemainder(dividingBy: size.height + 60) - 30
-                    
-                    // Specific direction wrap-around overrides
-                    if y < -30 {
-                        y = size.height + 30 - (abs(y + 30).truncatingRemainder(dividingBy: size.height + 60))
-                    }
-                    if x < -30 {
-                        x = size.width + 30 - (abs(x + 30).truncatingRemainder(dividingBy: size.width + 60))
-                    }
-                    
-                    let rect = CGRect(x: x, y: y, width: seed.size.width, height: seed.size.height)
-                    
-                    context.drawLayer { ctx in
-                        // Oscillate opacity slightly to create dynamic twinkling
-                        let wave = sin(time * 2.0 + Double(seed.index)) * 0.15
-                        ctx.opacity = max(0.2, min(0.95, seed.opacitySeed + wave))
-                        
-                        if seed.glowRadius > 0 {
-                            ctx.addFilter(.shadow(color: seed.color, radius: seed.glowRadius, x: 0, y: 0))
-                        }
-                        
-                        if seed.isLeaf {
-                            var path = Path()
-                            path.addEllipse(in: rect)
-                            ctx.fill(path, with: .color(seed.color))
-                        } else {
-                            var path = Path()
-                            if seed.isRounded {
-                                path.addRoundedRect(in: rect, cornerSize: CGSize(width: 2, height: 2))
-                            } else {
-                                path.addEllipse(in: rect)
-                            }
-                            ctx.fill(path, with: .color(seed.color))
-                        }
-                    }
-                }
+                drawParticles(in: &context, size: size, time: time)
             }
         }
         .ignoresSafeArea()
+        #endif
+    }
+    
+    private func drawParticles(in context: inout GraphicsContext, size: CGSize, time: TimeInterval) {
+        for seed in seeds {
+            // Linear movement over time with wrap-around boundaries
+            let elapsed = CGFloat(time.truncatingRemainder(dividingBy: 10000))
+            let moveX = seed.speedXPercent * 120 * elapsed
+            let moveY = seed.speedYPercent * 120 * elapsed
+            
+            let startX = seed.initialXPercent * size.width
+            let startY = seed.initialYPercent * size.height
+            
+            var x = (startX + moveX).truncatingRemainder(dividingBy: size.width + 60) - 30
+            var y = (startY + moveY).truncatingRemainder(dividingBy: size.height + 60) - 30
+            
+            // Specific direction wrap-around overrides
+            if y < -30 {
+                y = size.height + 30 - (abs(y + 30).truncatingRemainder(dividingBy: size.height + 60))
+            }
+            if x < -30 {
+                x = size.width + 30 - (abs(x + 30).truncatingRemainder(dividingBy: size.width + 60))
+            }
+            
+            let rect = CGRect(x: x, y: y, width: seed.size.width, height: seed.size.height)
+            
+            context.drawLayer { ctx in
+                // Oscillate opacity slightly to create dynamic twinkling
+                let wave = sin(time * 2.0 + Double(seed.index)) * 0.15
+                ctx.opacity = max(0.2, min(0.95, seed.opacitySeed + wave))
+                
+                if seed.glowRadius > 0 {
+                    ctx.addFilter(.shadow(color: seed.color, radius: seed.glowRadius, x: 0, y: 0))
+                }
+                
+                if seed.isLeaf {
+                    var path = Path()
+                    path.addEllipse(in: rect)
+                    ctx.fill(path, with: .color(seed.color))
+                } else {
+                    var path = Path()
+                    if seed.isRounded {
+                        path.addRoundedRect(in: rect, cornerSize: CGSize(width: 2, height: 2))
+                    } else {
+                        path.addEllipse(in: rect)
+                    }
+                    ctx.fill(path, with: .color(seed.color))
+                }
+            }
+        }
     }
 }
 
