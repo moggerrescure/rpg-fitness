@@ -70,14 +70,30 @@ struct PlayerProfileView: View {
                     VStack(spacing: 16) {
                         // Avatar frame
                         ZStack {
+                            // Radial glow halo
+                            RadialGradient(
+                                colors: [character.selectedClass.themeColor.opacity(0.25), Color.clear],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 70
+                            )
+                            .frame(width: 140, height: 140)
+                            
                             Circle()
-                                .fill(character.selectedClass.themeColor.opacity(0.2))
+                                .fill(character.selectedClass.themeColor.opacity(0.15))
                                 .frame(width: 90, height: 90)
                                 .overlay(
                                     Circle()
-                                        .stroke(character.selectedClass.themeColor, lineWidth: 2)
+                                        .stroke(
+                                            LinearGradient(
+                                                colors: [character.selectedClass.themeColor, character.selectedClass.themeColor.opacity(0.4)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ),
+                                            lineWidth: 2.5
+                                        )
                                 )
-                                .glow(color: character.selectedClass.themeColor.opacity(0.5), radius: 10)
+                                .glow(color: character.selectedClass.themeColor.opacity(0.4), radius: 8)
                             
                             Image(systemName: "person.crop.circle.fill")
                                 .font(.system(size: 70))
@@ -265,7 +281,7 @@ struct PlayerProfileView: View {
                                     )
                                     .scaleEffect(isSelected ? 1.02 : 0.98)
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                                .buttonStyle(TactileButtonStyle())
                             }
                         }
                     }
@@ -364,15 +380,16 @@ struct AttributeCard: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.title2)
+                .font(.system(size: 18, weight: .bold))
                 .foregroundColor(color)
-                .frame(width: 44, height: 44)
-                .background(color.opacity(0.1))
+                .frame(width: 42, height: 42)
+                .background(color.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .glow(color: color.opacity(0.2), radius: 4)
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(.system(size: 10))
+                Text(name.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundColor(Theme.textSecondary)
                 
                 Text("\(value)")
@@ -381,17 +398,25 @@ struct AttributeCard: View {
                     .foregroundColor(Theme.textPrimary)
             }
         }
-        .padding()
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.cardBackground)
-        .cornerRadius(12)
+        .background(Theme.cardBackground.opacity(0.7))
+        .cornerRadius(14)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Theme.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.12), Color.clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
         )
+        .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 3)
     }
 }
-
+ 
 struct RepHistoryRow: View {
     let name: String
     let count: Int
@@ -419,7 +444,7 @@ struct RepHistoryRow: View {
         .cornerRadius(10)
     }
 }
-
+ 
 struct AchievementBadge: View {
     let title: String
     let desc: String
@@ -430,29 +455,43 @@ struct AchievementBadge: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(unlocked ? Theme.healerColor.opacity(0.15) : Color.gray.opacity(0.1))
+                    .fill(unlocked ? Theme.warning.opacity(0.12) : Color.black.opacity(0.2))
                     .frame(width: 54, height: 54)
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                unlocked
+                                ? LinearGradient(colors: [Theme.warning, Theme.warning.opacity(0.4)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                : LinearGradient(colors: [Color.gray.opacity(0.2), Color.clear], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                lineWidth: unlocked ? 2 : 1
+                            )
+                    )
                 
                 Image(systemName: icon)
-                    .font(.title3)
-                    .foregroundColor(unlocked ? Theme.healerColor : Theme.textMuted)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(unlocked ? Theme.warning : Theme.textMuted)
+                    .glow(color: unlocked ? Theme.warning.opacity(0.4) : .clear, radius: 5)
             }
             
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 Text(title)
-                    .font(.caption2)
-                    .fontWeight(.bold)
+                    .font(.system(size: 10, weight: .black, design: .default))
                     .foregroundColor(unlocked ? Theme.textPrimary : Theme.textMuted)
+                    .lineLimit(1)
                 
                 Text(desc)
-                    .font(.system(size: 8))
+                    .font(.system(size: 8, design: .monospaced))
                     .foregroundColor(Theme.textMuted)
+                    .lineLimit(1)
             }
         }
-        .frame(width: 80)
-        .padding(.vertical, 12)
-        .background(Theme.cardBackground)
-        .cornerRadius(12)
-        .opacity(unlocked ? 1.0 : 0.6)
+        .frame(width: 90, height: 110)
+        .background(unlocked ? Theme.cardBackground.opacity(0.8) : Theme.cardBackground.opacity(0.4))
+        .cornerRadius(14)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(unlocked ? Theme.warning.opacity(0.2) : Color.clear, lineWidth: 1)
+        )
+        .shadow(color: unlocked ? Theme.warning.opacity(0.08) : Color.clear, radius: 6, x: 0, y: 3)
     }
 }

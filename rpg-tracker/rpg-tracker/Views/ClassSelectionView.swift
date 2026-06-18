@@ -49,13 +49,21 @@ struct ClassSelectionView: View {
                         
                         TextField("Enter name...", text: $viewModel.username)
                             .padding()
-                            .background(Theme.cardBackground.opacity(0.85))
-                            .cornerRadius(12)
+                            .background(Theme.cardBackground.opacity(0.65))
+                            .cornerRadius(14)
                             .foregroundColor(Theme.textPrimary)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Theme.border, lineWidth: 1.5)
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [viewModel.selectedClass.themeColor.opacity(0.6), Color.clear],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        ),
+                                        lineWidth: 1.5
+                                    )
                             )
+                            .glow(color: viewModel.selectedClass.themeColor.opacity(0.15), radius: 6)
                     }
                     .padding(.horizontal)
                     
@@ -135,12 +143,17 @@ struct ClassSelectionView: View {
                                     
                                     GeometryReader { barGeo in
                                         ZStack(alignment: .leading) {
-                                            RoundedRectangle(cornerRadius: 3)
+                                            Capsule()
                                                 .fill(Theme.secondaryCard)
                                             
-                                            RoundedRectangle(cornerRadius: 3)
-                                                .fill(stat.color)
+                                            Capsule()
+                                                .fill(LinearGradient(
+                                                    colors: [stat.color, stat.color.opacity(0.75)],
+                                                    startPoint: .leading,
+                                                    endPoint: .trailing
+                                                ))
                                                 .frame(width: CGFloat(stat.value) / 10.0 * barGeo.size.width)
+                                                .glow(color: stat.color.opacity(0.3), radius: 3)
                                         }
                                     }
                                     .frame(height: 6)
@@ -191,8 +204,8 @@ struct ClassSelectionView: View {
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             } else {
                                 Text("CREATE CHARACTER")
-                                    .font(.subheadline)
-                                    .fontWeight(.bold)
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .fontWeight(.black)
                                     .tracking(1.5)
                             }
                         }
@@ -200,14 +213,19 @@ struct ClassSelectionView: View {
                         .padding()
                         .background(
                             viewModel.username.isEmpty
-                            ? Color.gray.opacity(0.3)
+                            ? Color.gray.opacity(0.2)
                             : viewModel.selectedClass.themeColor
                         )
                         .foregroundColor(viewModel.username.isEmpty ? Theme.textMuted : .white)
-                        .cornerRadius(12)
-                        .shadow(color: viewModel.username.isEmpty ? .clear : viewModel.selectedClass.themeColor.opacity(0.4), radius: 10, x: 0, y: 5)
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(viewModel.username.isEmpty ? Color.clear : Color.white.opacity(0.15), lineWidth: 1)
+                        )
+                        .glow(color: viewModel.username.isEmpty ? .clear : viewModel.selectedClass.themeColor.opacity(0.4), radius: 8)
                     }
                     .disabled(viewModel.username.isEmpty || viewModel.isSubmitting)
+                    .buttonStyle(TactileButtonStyle())
                     .padding(.horizontal)
                     .padding(.top, 10)
                     .padding(.bottom, 32)
@@ -287,7 +305,7 @@ struct ClassCard: View {
             .scaleEffect(isSelected ? 1.05 : 0.95)
             .glow(color: isSelected ? charClass.themeColor.opacity(0.4) : .clear, radius: 10)
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(TactileButtonStyle())
     }
     
     private func classIconName(for cls: CharacterClass) -> String {

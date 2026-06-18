@@ -124,7 +124,7 @@ struct CameraTrackingView: View {
                             HStack(spacing: 10) {
                                 Image(systemName: "play.fill")
                                 Text("START TRAINING")
-                                    .fontWeight(.bold)
+                                    .fontWeight(.black)
                                     .tracking(1.5)
                             }
                             .font(.system(.subheadline, design: .monospaced))
@@ -132,9 +132,14 @@ struct CameraTrackingView: View {
                             .padding()
                             .background(viewModel.selectedClass.themeColor)
                             .foregroundColor(.white)
-                            .cornerRadius(16)
-                            .shadow(color: viewModel.selectedClass.themeColor.opacity(0.4), radius: 10, y: 5)
+                            .cornerRadius(14)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                            )
+                            .glow(color: viewModel.selectedClass.themeColor.opacity(0.4), radius: 8)
                         }
+                        .buttonStyle(TactileButtonStyle())
                         .padding(.horizontal)
                         .padding(.top, 10)
                     }
@@ -359,16 +364,22 @@ struct CameraTrackingView: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: "checkmark.circle.fill")
                                     Text("FINISH WORKOUT")
-                                        .fontWeight(.bold)
+                                        .fontWeight(.black)
+                                        .tracking(1)
                                 }
                                 .font(.system(.subheadline, design: .monospaced))
                                 .padding(.vertical, 14)
                                 .padding(.horizontal, 32)
                                 .background(Theme.success)
                                 .foregroundColor(.white)
-                                .cornerRadius(24)
-                                .shadow(color: Theme.success.opacity(0.4), radius: 8, y: 4)
+                                .cornerRadius(20)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                )
+                                .glow(color: Theme.success.opacity(0.4), radius: 8)
                             }
+                            .buttonStyle(TactileButtonStyle())
                             .padding(.bottom, 20)
                         }
                         
@@ -415,71 +426,154 @@ struct CameraTrackingView: View {
                     Color.black.opacity(0.85)
                         .ignoresSafeArea()
                     
-                    VStack(spacing: 24) {
-                        Text("TRAINING COMPLETED!")
-                            .font(.system(size: 24, weight: .black, design: .monospaced))
-                            .foregroundColor(Theme.success)
-                            .glow(color: Theme.success.opacity(0.5), radius: 10)
-                        
-                        Text("You performed \(viewModel.repCount) repetitions of \(viewModel.selectedClass.primaryExercise.uppercased()) in the training camp.")
-                            .font(.caption)
-                            .foregroundColor(Theme.textSecondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        
-                        VStack(spacing: 12) {
-                            Text("REWARDS EARNED")
-                                .font(.system(size: 10, design: .monospaced))
-                                .fontWeight(.bold)
-                                .foregroundColor(Theme.textMuted)
-                            
-                            HStack(spacing: 20) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "star.fill")
-                                        .foregroundColor(Theme.success)
-                                    Text(" Star XP (+\(rewards.xp))")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Theme.textPrimary)
+                    // Golden sun rays background overlay
+                    GeometryReader { sunGeo in
+                        ZStack {
+                            ForEach(0..<4) { idx in
+                                Path { path in
+                                    path.move(to: CGPoint(x: sunGeo.size.width * 0.5, y: sunGeo.size.height * 0.5))
+                                    path.addLine(to: CGPoint(x: sunGeo.size.width * (0.2 + CGFloat(idx) * 0.2), y: 0))
+                                    path.addLine(to: CGPoint(x: sunGeo.size.width * (0.35 + CGFloat(idx) * 0.2), y: 0))
+                                    path.closeSubpath()
                                 }
-                                
-                                HStack(spacing: 6) {
-                                    Image(systemName: "centsign.circle.fill")
-                                        .foregroundColor(Theme.healerColor)
-                                    Text(" Gold Coins (+\(rewards.gold))")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Theme.textPrimary)
+                                .fill(Theme.warning.opacity(0.04))
+                            }
+                            ForEach(0..<4) { idx in
+                                Path { path in
+                                    path.move(to: CGPoint(x: sunGeo.size.width * 0.5, y: sunGeo.size.height * 0.5))
+                                    path.addLine(to: CGPoint(x: sunGeo.size.width * (0.2 + CGFloat(idx) * 0.2), y: sunGeo.size.height))
+                                    path.addLine(to: CGPoint(x: sunGeo.size.width * (0.35 + CGFloat(idx) * 0.2), y: sunGeo.size.height))
+                                    path.closeSubpath()
                                 }
+                                .fill(Theme.warning.opacity(0.04))
                             }
                         }
-                        .padding()
-                        .background(Theme.secondaryCard)
-                        .cornerRadius(12)
+                    }
+                    .ignoresSafeArea()
+                    
+                    VStack(spacing: 24) {
+                        VStack(spacing: 8) {
+                            Text("TRAINING COMPLETED!")
+                                .font(.system(size: 24, weight: .black, design: .monospaced))
+                                .foregroundColor(Theme.success)
+                                .glow(color: Theme.success.opacity(0.5), radius: 10)
+                            
+                            Text("You performed \(viewModel.repCount) repetitions of \(viewModel.selectedClass.primaryExercise.uppercased()) in the training camp.")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                        
+                        VStack(spacing: 16) {
+                            Text("REWARDS EARNED")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(Theme.textMuted)
+                                .tracking(1)
+                            
+                            HStack(spacing: 16) {
+                                // XP Reward Card
+                                VStack(spacing: 8) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Theme.success.opacity(0.12))
+                                            .frame(width: 44, height: 44)
+                                        
+                                        Image(systemName: "star.fill")
+                                            .font(.title3)
+                                            .foregroundColor(Theme.success)
+                                    }
+                                    .glow(color: Theme.success.opacity(0.35), radius: 5)
+                                    
+                                    Text("+\(rewards.xp) XP")
+                                        .font(.system(.subheadline, design: .monospaced))
+                                        .fontWeight(.black)
+                                        .foregroundColor(Theme.textPrimary)
+                                    
+                                    Text("Class XP")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(Theme.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Theme.secondaryCard.opacity(0.6))
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Theme.success.opacity(0.2), lineWidth: 1)
+                                )
+                                
+                                // Gold Reward Card
+                                VStack(spacing: 8) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Theme.warning.opacity(0.12))
+                                            .frame(width: 44, height: 44)
+                                        
+                                        Image(systemName: "centsign.circle.fill")
+                                            .font(.title3)
+                                            .foregroundColor(Theme.warning)
+                                    }
+                                    .glow(color: Theme.warning.opacity(0.35), radius: 5)
+                                    
+                                    Text("+\(rewards.gold) GOLD")
+                                        .font(.system(.subheadline, design: .monospaced))
+                                        .fontWeight(.black)
+                                        .foregroundColor(Theme.textPrimary)
+                                    
+                                    Text("Currency")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(Theme.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Theme.secondaryCard.opacity(0.6))
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Theme.warning.opacity(0.2), lineWidth: 1)
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
                         
                         Button(action: {
                             workoutCompletionRewards = nil
                             dismiss()
                         }) {
                             Text("RETURN TO HUB")
-                                .font(.subheadline)
-                                .fontWeight(.bold)
+                                .font(.system(.subheadline, design: .monospaced))
+                                .fontWeight(.black)
                                 .foregroundColor(.white)
                                 .padding()
                                 .frame(maxWidth: .infinity)
                                 .background(Theme.primary)
-                                .cornerRadius(10)
+                                .cornerRadius(14)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                )
+                                .glow(color: Theme.primary.opacity(0.4), radius: 8)
                         }
+                        .buttonStyle(TactileButtonStyle())
                         .padding(.horizontal)
                     }
                     .padding(24)
-                    .background(Theme.cardBackground)
+                    .background(Theme.cardBackground.opacity(0.92))
                     .cornerRadius(20)
                     .overlay(
                         RoundedRectangle(cornerRadius: 20)
-                            .stroke(Theme.border, lineWidth: 1)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Theme.warning.opacity(0.5), Color.clear],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 2
+                            )
                     )
-                    .padding(.horizontal, 32)
+                    .glow(color: Theme.warning.opacity(0.15), radius: 15)
+                    .padding(.horizontal, 28)
                 }
                 .transition(.opacity)
                 .zIndex(1000)
