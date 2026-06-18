@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ClanDashboardView: View {
+    @Binding var currentTab: Int
     @StateObject private var viewModel = ClanVM()
     @State private var selectedTab = 0 // 0: My Clan, 1: Leaderboards, 2: Friends
     
@@ -31,7 +32,7 @@ struct ClanDashboardView: View {
                 } else if selectedTab == 1 {
                     LeaderboardListView(viewModel: viewModel)
                 } else {
-                    FriendsSocialView()
+                    FriendsSocialView(currentTab: $currentTab)
                 }
             }
         }
@@ -818,10 +819,16 @@ struct RankIndicator: View {
     }
 }
 struct FriendsSocialView: View {
+    @Binding var currentTab: Int
     @ObservedObject var firebaseService = FirebaseService.shared
     @State private var searchName: String = ""
     @State private var toastMsg: String? = nil
     @State private var isErrorToast: Bool = false
+    
+    // Duel sheet state
+    @State private var selectedFriendForBattle: String? = nil
+    @State private var playerClassForBattle: CharacterClass = .swordsman
+    @State private var friendClassForBattle: CharacterClass = .swordsman
     
     var body: some View {
         ZStack {
@@ -963,7 +970,10 @@ struct FriendsSocialView: View {
                                     HStack(spacing: 8) {
                                         // Battle invite trigger
                                         Button(action: {
-                                            triggerBattleInvite(friendName: name)
+                                            // Initialize battle preparation class selections
+                                            playerClassForBattle = firebaseService.currentCharacter?.selectedClass ?? .swordsman
+                                            friendClassForBattle = cls
+                                            selectedFriendForBattle = name
                                         }) {
                                             Text("BATTLE")
                                                 .font(.system(size: 9, weight: .black, design: .monospaced))
@@ -1041,6 +1051,21 @@ struct FriendsSocialView: View {
                 }
             }
         }
+        .sheet(isPresented: Binding(
+            get: { selectedFriendForBattle != nil },
+            set: { if !$0 { selectedFriendForBattle = nil } }
+        )) {
+            if let friendName = selectedFriendForBattle {
+                FriendBattlePrepSheet(
+                    friendName: friendName,
+                    playerClass: $playerClassForBattle,
+                    friendClass: $friendClassForBattle,
+                    onStart: {
+                        triggerBattleInvite(friendName: friendName)
+                    }
+                )
+            }
+        }
     }
     
     private func performAddFriend() {
@@ -1057,7 +1082,18 @@ struct FriendsSocialView: View {
     }
     
     private func triggerBattleInvite(friendName: String) {
-        showToast("Match invitation sent to \(friendName)!", isError: false)
+        showToast("Challenging \(friendName) to a 1v1 Duel...", isError: false)
+        firebaseService.startFriendDuel(
+            playerClass: playerClassForBattle,
+            friendName: friendName,
+            friendClass: friendClassForBattle
+        ) { success in
+            if success {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    currentTab = 1 // Switch automatically to PvP Arena tab
+                }
+            }
+        }
     }
     
     private func showToast(_ message: String, isError: Bool) {
@@ -1089,6 +1125,6 @@ struct FriendsSocialView: View {
 
 struct ClanDashboardView_Previews: PreviewProvider {
     static var previews: some View {
-        ClanDashboardView()
+        ClanDashboardView(currentTab: .constant(3))
     }
 }

@@ -143,24 +143,26 @@ class FirebaseService: ObservableObject {
             var localTeam: [BattlePlayer] = []
             var opponentTeam: [BattlePlayer] = []
             
-            // Add local player
+            // Add local player using selected class and active avatar
             let localPlayer = BattlePlayer(
                 id: char.id,
                 name: char.username,
-                characterClass: char.selectedClass,
+                characterClass: characterClass,
                 health: 100 + char.level * 10,
-                maxHealth: 100 + char.level * 10
+                maxHealth: 100 + char.level * 10,
+                avatarName: char.avatarName
             )
             localTeam.append(localPlayer)
             
             if type == .duel1v1 {
-                let opponentClass = CharacterClass.allCases.randomElement() ?? .mage
+                let opponentClass = characterClass
                 let opponent = BattlePlayer(
                     id: "opponent_id_999",
                     name: "ShadowFiend",
                     characterClass: opponentClass,
                     health: 120,
-                    maxHealth: 120
+                    maxHealth: 120,
+                    avatarName: "avatar_\(opponentClass.rawValue.lowercased())"
                 )
                 opponentTeam.append(opponent)
             } else {
@@ -174,21 +176,23 @@ class FirebaseService: ObservableObject {
                         name: friendName,
                         characterClass: friendClass,
                         health: 110,
-                        maxHealth: 110
+                        maxHealth: 110,
+                        avatarName: "avatar_\(friendClass.rawValue.lowercased())"
                     )
                     localTeam.append(friend)
                 }
                 
-                // Add 3 opponents
-                let opponentNames = ["DarkKnight", "ChaosMage", "VenomArcher"]
-                let opponentClasses: [CharacterClass] = [.swordsman, .mage, .archer]
-                for idx in 0..<3 {
+                // Add 3 opponents mirroring localTeam's classes to ensure identical exercises
+                let opponentNames = ["DarkLord", "ChaosWeaver", "DoomArcher"]
+                for idx in 0..<localTeam.count {
+                    let opposingClass = localTeam[idx].characterClass
                     let opponent = BattlePlayer(
                         id: "opponent_id_\(idx)",
-                        name: opponentNames[idx],
-                        characterClass: opponentClasses[idx],
-                        health: 130,
-                        maxHealth: 130
+                        name: opponentNames[idx % opponentNames.count],
+                        characterClass: opposingClass,
+                        health: 120,
+                        maxHealth: 120,
+                        avatarName: "avatar_\(opposingClass.rawValue.lowercased())"
                     )
                     opponentTeam.append(opponent)
                 }
@@ -203,6 +207,49 @@ class FirebaseService: ObservableObject {
             )
             
             self.activeBattle = mockBattle
+            self.startBattleSimulation()
+            completion(true)
+        }
+    }
+    
+    // MARK: - Friend PvP Challenge
+    func startFriendDuel(
+        playerClass: CharacterClass,
+        friendName: String,
+        friendClass: CharacterClass,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard let char = currentCharacter else { return }
+        
+        // Mock connection delay to feel authentic
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            let localPlayer = BattlePlayer(
+                id: char.id,
+                name: char.username,
+                characterClass: playerClass,
+                health: 100 + char.level * 10,
+                maxHealth: 100 + char.level * 10,
+                avatarName: char.avatarName
+            )
+            
+            let opponentPlayer = BattlePlayer(
+                id: "friend_\(friendName)",
+                name: friendName,
+                characterClass: friendClass,
+                health: 120,
+                maxHealth: 120,
+                avatarName: "avatar_\(friendClass.rawValue.lowercased())"
+            )
+            
+            let duelBattle = Battle(
+                id: "duel_\(UUID().uuidString.prefix(6))",
+                type: .duel1v1,
+                status: .active,
+                localTeam: [localPlayer],
+                opponentTeam: [opponentPlayer]
+            )
+            
+            self.activeBattle = duelBattle
             self.startBattleSimulation()
             completion(true)
         }
@@ -245,23 +292,52 @@ class FirebaseService: ObservableObject {
                             }
                         }
                         
-                        // Handle shield first
-                        if targetPlayer.shield > 0 {
-                            let shieldDamage = min(targetPlayer.shield, damage)
-                            targetPlayer.shield -= shieldDamage
-                            let remainingDamage = damage - shieldDamage
-                            targetPlayer.health = max(0, targetPlayer.health - remainingDamage)
-                        } else {
-                            targetPlayer.health = max(0, targetPlayer.health - damage)
+                        var detailMsg = ""
+                        var actionType: CombatActionType = .attack
+                        
+                        // Class-specific custom moves for the opponent
+                        switch attacker.characterClass {
+                        case .archer:
+                            detailMsg = "fires Swift Shot at \(targetPlayer.name) dealing \(damage) DMG!\(armorText)"
+                        case .mage:
+                            detailMsg = "casts Fireball on \(targetPlayer.name) dealing \(damage) DMG!\(armorText)"
+                        case .swordsman:
+                            detailMsg = "performs Blade Slam on \(targetPlayer.name) dealing \(damage) DMG!\(armorText)"
+                        case .healer:
+                            // Healer can choose to self-heal or use Holy Shock on the target
+                            if Int.random(in: 0...1) == 0 {
+                                detailMsg = "casts Holy Shock on \(targetPlayer.name) dealing \(damage) DMG!\(armorText)"
+                            } else {
+                                actionType = .heal
+                                let healAmt = Int.random(in: 12...20)
+                                let attackerIdx = battle.opponentTeam.firstIndex(where: { $0.id == attacker.id }) ?? 0
+                                var oppPlayer = battle.opponentTeam[attackerIdx]
+                                oppPlayer.health = min(oppPlayer.maxHealth, oppPlayer.health + healAmt)
+                                battle.opponentTeam[attackerIdx] = oppPlayer
+                                damage = healAmt
+                                detailMsg = "casts Rejuvenate on themselves to restore \(healAmt) HP!"
+                            }
                         }
-                        battle.localTeam[targetIdx] = targetPlayer
+                        
+                        if actionType == .attack {
+                            // Handle shield first
+                            if targetPlayer.shield > 0 {
+                                let shieldDamage = min(targetPlayer.shield, damage)
+                                targetPlayer.shield -= shieldDamage
+                                let remainingDamage = damage - shieldDamage
+                                targetPlayer.health = max(0, targetPlayer.health - remainingDamage)
+                            } else {
+                                targetPlayer.health = max(0, targetPlayer.health - damage)
+                            }
+                            battle.localTeam[targetIdx] = targetPlayer
+                        }
                         
                         let event = CombatEvent(
                             actorName: attacker.name,
-                            targetName: targetPlayer.name,
-                            actionType: .attack,
+                            targetName: actionType == .heal ? attacker.name : targetPlayer.name,
+                            actionType: actionType,
                             value: damage,
-                            detailText: "unleashes a skill on \(targetPlayer.name) for \(damage) damage!\(armorText)"
+                            detailText: detailMsg
                         )
                         battle.combatLog.append(event)
                     }

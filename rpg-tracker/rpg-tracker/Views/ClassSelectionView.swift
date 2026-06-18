@@ -13,8 +13,8 @@ struct ClassSelectionView: View {
     
     var body: some View {
         ZStack {
-            // Animated background representing wilderness
-            AnimatedBackgroundView(backgroundType: .general)
+            // Animated background representing start of journey in Cozy Tavern
+            AnimatedBackgroundView(backgroundType: .tavern)
             
             Color.black.opacity(0.55)
                 .ignoresSafeArea()

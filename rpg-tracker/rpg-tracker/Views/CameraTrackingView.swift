@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CameraTrackingView: View {
+    @ObservedObject var firebaseService = FirebaseService.shared
     @StateObject private var viewModel: CameraTrackingVM
     @Environment(\.dismiss) private var dismiss
     @State private var isWorkoutStarted: Bool
@@ -16,8 +17,8 @@ struct CameraTrackingView: View {
     
     var body: some View {
         ZStack {
-            // Camera feed backdrop (village animated background)
-            AnimatedBackgroundView(backgroundType: .village)
+            // Camera feed backdrop (training ruins animated background)
+            AnimatedBackgroundView(backgroundType: .trainingRuins)
                 .ignoresSafeArea()
             
             if !isWorkoutStarted {
@@ -300,6 +301,191 @@ struct CameraTrackingView: View {
                             .offset(x: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0, y: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0)
                             .padding(.horizontal)
                             .padding(.top, 6)
+                        }
+                        
+                        // PVP Matchup and Combat Telemetry Log Overlay
+                        if let battle = firebaseService.activeBattle {
+                            VStack(spacing: 8) {
+                                // 1. Matchup header
+                                HStack(alignment: .top, spacing: 12) {
+                                    // Player side
+                                    if let player = battle.localTeam.first {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack(spacing: 6) {
+                                                if let avatar = player.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                                    Image(platformImage: uiImage)
+                                                        .resizable()
+                                                        .aspectRatio(contentMode: .fill)
+                                                        .frame(width: 32, height: 32)
+                                                        .clipShape(Circle())
+                                                }
+                                                VStack(alignment: .leading) {
+                                                    Text(player.name)
+                                                        .font(.system(size: 10, weight: .bold))
+                                                        .foregroundColor(.white)
+                                                    Text(player.characterClass.rawValue.uppercased())
+                                                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                                        .foregroundColor(player.characterClass.themeColor)
+                                                }
+                                            }
+                                            // Health bar
+                                            GeometryReader { geo in
+                                                ZStack(alignment: .leading) {
+                                                    RoundedRectangle(cornerRadius: 3)
+                                                        .fill(Color.black.opacity(0.6))
+                                                    RoundedRectangle(cornerRadius: 3)
+                                                        .fill(player.characterClass.themeColor)
+                                                        .frame(width: CGFloat(player.health) / CGFloat(player.maxHealth) * geo.size.width)
+                                                }
+                                            }
+                                            .frame(height: 5)
+                                            Text("HP: \(player.health)/\(player.maxHealth)")
+                                                .font(.system(size: 8, design: .monospaced))
+                                                .foregroundColor(.white.opacity(0.8))
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    
+                                    // VS & Timer
+                                    VStack(spacing: 2) {
+                                        Text("VS")
+                                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                                            .foregroundColor(Theme.warning)
+                                        
+                                        Text("\(battle.secondsRemaining)s")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 3)
+                                            .background(Color.black.opacity(0.5))
+                                            .cornerRadius(8)
+                                    }
+                                    
+                                    // Opponent side
+                                    if let opponent = battle.opponentTeam.first {
+                                        VStack(alignment: .trailing, spacing: 4) {
+                                            HStack(spacing: 6) {
+                                                VStack(alignment: .trailing) {
+                                                    Text(opponent.name)
+                                                        .font(.system(size: 10, weight: .bold))
+                                                        .foregroundColor(.white)
+                                                    Text(opponent.characterClass.rawValue.uppercased())
+                                                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                                        .foregroundColor(opponent.characterClass.themeColor)
+                                                }
+                                                if let avatar = opponent.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                                    Image(platformImage: uiImage)
+                                                        .resizable()
+                                                        .aspectRatio(contentMode: .fill)
+                                                        .frame(width: 32, height: 32)
+                                                        .clipShape(Circle())
+                                                }
+                                            }
+                                            // Health bar
+                                            GeometryReader { geo in
+                                                ZStack(alignment: .trailing) {
+                                                    RoundedRectangle(cornerRadius: 3)
+                                                        .fill(Color.black.opacity(0.6))
+                                                    RoundedRectangle(cornerRadius: 3)
+                                                        .fill(opponent.characterClass.themeColor)
+                                                        .frame(width: CGFloat(opponent.health) / CGFloat(opponent.maxHealth) * geo.size.width)
+                                                }
+                                            }
+                                            .frame(height: 5)
+                                            Text("HP: \(opponent.health)/\(opponent.maxHealth)")
+                                                .font(.system(size: 8, design: .monospaced))
+                                                .foregroundColor(.white.opacity(0.8))
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                    }
+                                }
+                                .padding(8)
+                                .background(Color.black.opacity(0.5))
+                                .cornerRadius(12)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.15), lineWidth: 1))
+                                
+                                // 3v3 party members list (compact status indicators)
+                                if battle.type == .team3v3 {
+                                    HStack(spacing: 8) {
+                                        // Team allies health summary
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            ForEach(battle.localTeam.dropFirst()) { ally in
+                                                HStack(spacing: 4) {
+                                                    Circle()
+                                                        .fill(ally.characterClass.themeColor)
+                                                        .frame(width: 5, height: 5)
+                                                    Text(ally.name)
+                                                        .font(.system(size: 8, weight: .semibold))
+                                                        .foregroundColor(.white)
+                                                    Spacer()
+                                                    Text("\(ally.health) HP")
+                                                        .font(.system(size: 8, design: .monospaced))
+                                                        .foregroundColor(ally.health == 0 ? .red : .white.opacity(0.8))
+                                                }
+                                            }
+                                        }
+                                        .padding(5)
+                                        .background(Color.black.opacity(0.4))
+                                        .cornerRadius(6)
+                                        .frame(maxWidth: .infinity)
+                                        
+                                        // Opponents health summary
+                                        VStack(alignment: .trailing, spacing: 3) {
+                                            ForEach(battle.opponentTeam.dropFirst()) { opp in
+                                                HStack(spacing: 4) {
+                                                    Text(opp.name)
+                                                        .font(.system(size: 8, weight: .semibold))
+                                                        .foregroundColor(.white)
+                                                    Spacer()
+                                                    Circle()
+                                                        .fill(opp.characterClass.themeColor)
+                                                        .frame(width: 5, height: 5)
+                                                    Text("\(opp.health) HP")
+                                                        .font(.system(size: 8, design: .monospaced))
+                                                        .foregroundColor(opp.health == 0 ? .red : .white.opacity(0.8))
+                                                }
+                                            }
+                                        }
+                                        .padding(5)
+                                        .background(Color.black.opacity(0.4))
+                                        .cornerRadius(6)
+                                        .frame(maxWidth: .infinity)
+                                    }
+                                }
+                                
+                                // 2. Real-time scrolling combat log
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("PVP COMBAT EVENTS")
+                                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                        .foregroundColor(Theme.textSecondary)
+                                        .padding(.horizontal, 4)
+                                    
+                                    ScrollView {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            ForEach(battle.combatLog) { log in
+                                                HStack(alignment: .top, spacing: 3) {
+                                                    Text(">")
+                                                        .font(.system(size: 7, design: .monospaced))
+                                                        .foregroundColor(.gray)
+                                                    Text(log.actorName)
+                                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                                        .foregroundColor(.white)
+                                                    Text(log.detailText)
+                                                        .font(.system(size: 8, design: .monospaced))
+                                                        .foregroundColor(.white.opacity(0.85))
+                                                }
+                                                .padding(.horizontal, 4)
+                                            }
+                                        }
+                                    }
+                                }
+                                .frame(height: 55)
+                                .padding(.vertical, 4)
+                                .background(Color.black.opacity(0.45))
+                                .cornerRadius(8)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            }
+                            .padding(.horizontal)
                         }
                         
                         // Live Feedback Prompt
@@ -604,8 +790,8 @@ struct SimulatedCameraFeed: View {
     
     var body: some View {
         ZStack {
-            // Village animated background
-            AnimatedBackgroundView(backgroundType: .village)
+            // Training ruins animated background
+            AnimatedBackgroundView(backgroundType: .trainingRuins)
                 .ignoresSafeArea()
             
             Color.black.opacity(0.4)

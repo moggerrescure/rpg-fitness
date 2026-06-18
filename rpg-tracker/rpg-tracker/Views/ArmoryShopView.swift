@@ -13,7 +13,9 @@ struct ArmoryShopView: View {
     
     var body: some View {
         ZStack {
-            Theme.background
+            AnimatedBackgroundView(backgroundType: .shop)
+            
+            Color.black.opacity(0.4)
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {

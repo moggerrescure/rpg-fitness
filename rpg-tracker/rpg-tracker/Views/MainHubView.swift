@@ -10,11 +10,17 @@ struct MainHubView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                if currentTab == 0 || currentTab == 3 {
-                    AnimatedBackgroundView(backgroundType: .general)
-                } else {
-                    Theme.background
-                        .ignoresSafeArea()
+                switch currentTab {
+                case 0:
+                    AnimatedBackgroundView(backgroundType: .tavern)
+                case 1:
+                    AnimatedBackgroundView(backgroundType: .arena)
+                case 2:
+                    AnimatedBackgroundView(backgroundType: .trainingRuins)
+                case 3:
+                    AnimatedBackgroundView(backgroundType: .clanHall)
+                default:
+                    AnimatedBackgroundView(backgroundType: .tavern)
                 }
                 
                 if firebaseService.currentCharacter == nil {
@@ -33,7 +39,7 @@ struct MainHubView: View {
                             case 2:
                                 CameraTrackingView(selectedClass: firebaseService.currentCharacter?.selectedClass ?? .archer)
                             case 3:
-                                ClanDashboardView()
+                                ClanDashboardView(currentTab: $currentTab)
                             default:
                                 HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage)
                             }
@@ -128,10 +134,36 @@ struct HomeDashboardView: View {
                     HStack {
                         Button(action: { showProfile = true }) {
                             HStack(spacing: 12) {
-                                Image(systemName: "person.crop.circle.fill")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(char.selectedClass.themeColor)
-                                    .glow(color: char.selectedClass.themeColor.opacity(0.35), radius: 6)
+                                ZStack {
+                                    if let avatar = char.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                        Image(platformImage: uiImage)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 40, height: 40)
+                                            .clipShape(Circle())
+                                    } else {
+                                        Circle()
+                                            .fill(char.selectedClass.themeColor.opacity(0.15))
+                                            .frame(width: 40, height: 40)
+                                            .overlay(
+                                                Image(systemName: "person.crop.circle.fill")
+                                                    .font(.system(size: 30))
+                                                    .foregroundColor(char.selectedClass.themeColor)
+                                            )
+                                    }
+                                }
+                                .overlay(
+                                    Circle()
+                                        .stroke(
+                                            LinearGradient(
+                                                colors: [char.selectedClass.themeColor, char.selectedClass.themeColor.opacity(0.4)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ),
+                                            lineWidth: 1.5
+                                        )
+                                )
+                                .glow(color: char.selectedClass.themeColor.opacity(0.35), radius: 6)
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("LEVEL \(char.level)")

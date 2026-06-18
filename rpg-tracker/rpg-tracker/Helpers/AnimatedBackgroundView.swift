@@ -14,6 +14,13 @@ enum BackgroundType: String, Codable {
     case castle = "bg_castle"
     case forest = "bg_green_forest"
     case mountain = "bg_valley_mountains"
+    
+    // New DND/RPG themed backgrounds for the main navigation tabs
+    case tavern = "bg_tavern"
+    case arena = "bg_arena"
+    case trainingRuins = "bg_training_ruins"
+    case clanHall = "bg_clan_hall"
+    case shop = "bg_shop"
 }
 
 struct AnimatedBackgroundView: View {
@@ -215,18 +222,18 @@ struct CanvasParticleOverlay: View {
             // Deterministic sizes based on index
             let pSize: CGSize
             switch type {
-            case .forest:
+            case .forest, .trainingRuins:
                 let s = CGFloat(4 + (i % 5))
                 pSize = CGSize(width: s, height: s)
-            case .castle:
+            case .castle, .clanHall:
                 pSize = CGSize(width: CGFloat(3 + (i % 3)), height: CGFloat(5 + (i % 5)))
             case .village:
                 let s = CGFloat(7 + (i % 6))
                 pSize = CGSize(width: s, height: s)
-            case .mountain:
+            case .mountain, .arena:
                 let s = CGFloat(3 + (i % 4))
                 pSize = CGSize(width: s, height: s)
-            case .general:
+            case .general, .tavern, .shop:
                 let s = CGFloat(8 + (i % 6))
                 pSize = CGSize(width: s, height: s)
             }
@@ -255,14 +262,52 @@ struct CanvasParticleOverlay: View {
                 color = (i % 2 == 0) ? Theme.archerColor : Theme.healerColor
                 glowRadius = 0
                 isLeaf = true
+            case .tavern:
+                color = (i % 2 == 0) ? Color(hex: "F59E0B") : Color(hex: "EF4444")
+                glowRadius = 5
+                isRounded = true
+            case .arena:
+                color = (i % 2 == 0) ? Color(hex: "F59E0B") : Color(hex: "D97706")
+                glowRadius = 4
+            case .trainingRuins:
+                color = (i % 2 == 0) ? Color(hex: "10B981") : Color(hex: "34D399")
+                glowRadius = 6
+                isLeaf = true
+            case .clanHall:
+                color = (i % 2 == 0) ? Color(hex: "F59E0B") : Color(hex: "60A5FA")
+                glowRadius = 7
+            case .shop:
+                color = (i % 2 == 0) ? Color(hex: "F59E0B") : Color(hex: "60A5FA")
+                glowRadius = 6
+                isRounded = true
+            }
+            
+            let speedX: CGFloat
+            let speedY: CGFloat
+            switch type {
+            case .castle, .clanHall, .shop:
+                speedX = 0.02
+                speedY = -0.05
+            case .tavern:
+                speedX = 0.03
+                speedY = -0.08
+            case .arena:
+                speedX = 0.08
+                speedY = -0.18
+            case .forest, .trainingRuins:
+                speedX = 0.05
+                speedY = 0.05
+            default:
+                speedX = 0.12
+                speedY = 0.08
             }
             
             tempSeeds.append(ParticleSeed(
                 index: i,
                 initialXPercent: CGFloat(Double((i * 17 + 23) % 100) / 100.0),
                 initialYPercent: CGFloat(Double((i * 13 + 37) % 100) / 100.0),
-                speedXPercent: CGFloat(speedMult * (type == .castle ? 0.05 : 0.15)),
-                speedYPercent: CGFloat(speedMult * (type == .castle ? -0.15 : (type == .forest ? -0.05 : 0.08))),
+                speedXPercent: CGFloat(speedMult * speedX),
+                speedYPercent: CGFloat(speedMult * speedY),
                 size: pSize,
                 color: color,
                 glowRadius: glowRadius,
@@ -351,6 +396,18 @@ extension Image {
         #endif
     }
 }
+
+extension View {
+    func loadLocalAvatar(named name: String) -> PlatformImage? {
+        let resolvedName = name == "avatar_swordsman" ? "avatar_knight" : name
+        if let bundleImage = PlatformImage(named: resolvedName) {
+            return bundleImage
+        }
+        let path = "/Users/ilakazdan/Documents/fitness-rpg /rpg-tracker/rpg-tracker/Assets/\(resolvedName).png"
+        return PlatformImage(contentsOfFile: path)
+    }
+}
+
 
 // Custom Vector shapes for rendering HUD animation layers
 struct CloudShape: Shape {

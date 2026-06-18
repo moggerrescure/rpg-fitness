@@ -76,6 +76,7 @@ struct Character: Codable, Identifiable {
     var maxEnergy: Int = 100
     var basePower: Int = 100
     var gold: Int = 0
+    var avatarName: String? = "avatar_knight"
     
     var stats: CharacterStats = CharacterStats()
     var equippedWeaponId: String? = nil
@@ -111,7 +112,8 @@ struct Character: Codable, Identifiable {
         clanId: String? = nil,
         pvpWins: Int = 0,
         pvpTrophies: Int = 1000,
-        progressions: [String: ClassProgression]? = nil
+        progressions: [String: ClassProgression]? = nil,
+        avatarName: String? = "avatar_knight"
     ) {
         self.id = id
         self.username = username
@@ -120,6 +122,7 @@ struct Character: Codable, Identifiable {
         self.maxEnergy = maxEnergy
         self.basePower = basePower
         self.gold = gold
+        self.avatarName = avatarName ?? "avatar_knight"
         self.stats = stats
         self.equippedWeaponId = equippedWeaponId
         self.equippedArmorId = equippedArmorId

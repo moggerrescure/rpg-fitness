@@ -19,6 +19,7 @@ struct BattlePlayer: Codable, Identifiable {
     var maxHealth: Int
     var reps: Int = 0
     var shield: Int = 0
+    var avatarName: String? = "avatar_knight"
     
     var isDead: Bool {
         health <= 0

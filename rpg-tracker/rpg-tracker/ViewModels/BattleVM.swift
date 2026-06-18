@@ -30,7 +30,15 @@ class BattleVM: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] battle in
                 guard let self = self else { return }
+                
+                let oldBattle = self.activeBattle
                 self.activeBattle = battle
+                
+                // Auto-trigger camera tracking if we transition into a new active combat session
+                if oldBattle == nil && battle != nil && battle?.status == .active {
+                    self.showCameraTracker = true
+                }
+                
                 if let battle = battle, battle.status == .completed {
                     self.duelFinished = true
                     if let winnerId = battle.winnerId {

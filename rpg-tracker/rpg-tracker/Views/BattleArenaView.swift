@@ -36,6 +36,7 @@ struct BattleArenaView: View {
     @State private var selectedTab: Int = 0 // 0: Arena, 1: 1v1 Leaderboards
     @State private var isInLobby: Bool = false
     @State private var showInviteSheet: Bool = false
+    @State private var showMatchmakingClassPicker: Bool = false
     
     // Story mode state extensions
     @State private var isStoryModeActive: Bool = false
@@ -74,6 +75,8 @@ struct BattleArenaView: View {
                             viewModel.selectedPvPType = .duel1v1
                         }, inviteAction: {
                             showInviteSheet = true
+                        }, searchAction: {
+                            showMatchmakingClassPicker = true
                         })
                     } else if storySetupStep == .selectMode {
                         ZStack {
@@ -147,14 +150,14 @@ struct BattleArenaView: View {
                     } else {
                         // Selector view (uses .mountain background as requested)
                         ZStack {
-                            AnimatedBackgroundView(backgroundType: .mountain)
+                            AnimatedBackgroundView(backgroundType: .arena)
                             Color.black.opacity(0.4)
                                 .ignoresSafeArea()
                             
                             PvPModeSelectorView(
                                 select1v1: {
                                     viewModel.selectedPvPType = .duel1v1
-                                    viewModel.startQueue()
+                                    showMatchmakingClassPicker = true
                                 },
                                 select3v3: {
                                     viewModel.selectedPvPType = .team3v3
@@ -232,6 +235,16 @@ struct BattleArenaView: View {
             case .pvpInviteFriends:
                 InviteFriendsSheet(viewModel: viewModel)
             }
+        }
+        .sheet(isPresented: $showMatchmakingClassPicker) {
+            MatchmakingClassPickerSheet(onSelected: { chosenClass in
+                showMatchmakingClassPicker = false
+                if var char = FirebaseService.shared.currentCharacter {
+                    char.selectedClass = chosenClass
+                    FirebaseService.shared.syncCharacter(char)
+                }
+                viewModel.startQueue()
+            }, accentColor: viewModel.currentClass.themeColor)
         }
         .onChange(of: viewModel.showCameraTracker) { newValue in
             if newValue {
@@ -470,6 +483,7 @@ struct TeamLobbyView: View {
     @ObservedObject var viewModel: BattleVM
     let backAction: () -> Void
     let inviteAction: () -> Void
+    let searchAction: () -> Void
     
     var body: some View {
         VStack(spacing: 24) {
@@ -558,7 +572,7 @@ struct TeamLobbyView: View {
             Spacer()
             
             // Search Match button
-            Button(action: viewModel.startQueue) {
+            Button(action: searchAction) {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.headline)
@@ -750,8 +764,8 @@ struct MatchmakingQueueView: View {
     
     var body: some View {
         ZStack {
-            // Searching screen uses .forest green glowing background
-            AnimatedBackgroundView(backgroundType: .forest)
+            // Searching screen uses .arena combat background
+            AnimatedBackgroundView(backgroundType: .arena)
             
             Color.black.opacity(0.5)
                 .ignoresSafeArea()
@@ -983,15 +997,25 @@ struct FighterCard: View {
                 .foregroundColor(player.characterClass.themeColor)
                 .fontWeight(.semibold)
             
-            // Class symbol / icon
+            // Custom avatar or class fallback
             ZStack {
-                Circle()
-                    .fill(player.characterClass.themeColor.opacity(0.15))
-                    .frame(width: 50, height: 50)
-                
-                Image(systemName: "figure.walk")
-                    .font(.title3)
-                    .foregroundColor(player.characterClass.themeColor)
+                if let avatar = player.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                    Image(platformImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 50, height: 50)
+                        .clipShape(Circle())
+                        .glow(color: player.characterClass.themeColor.opacity(0.4), radius: 6)
+                } else {
+                    Circle()
+                        .fill(player.characterClass.themeColor.opacity(0.15))
+                        .frame(width: 50, height: 50)
+                        .overlay(
+                            Image(systemName: "figure.walk")
+                                .font(.title3)
+                                .foregroundColor(player.characterClass.themeColor)
+                        )
+                }
             }
             
             // Health statistics bar
@@ -1206,7 +1230,7 @@ struct PvPLeaderboardView: View {
     
     var body: some View {
         ZStack {
-            AnimatedBackgroundView(backgroundType: .forest)
+            AnimatedBackgroundView(backgroundType: .arena)
             Color.black.opacity(0.5)
                 .ignoresSafeArea()
             
@@ -2096,6 +2120,141 @@ struct MapDecoratorView: View {
             .font(.title3)
             .foregroundColor(Theme.textMuted.opacity(0.3))
             .position(x: x, y: y)
+    }
+}
+
+struct MatchmakingClassPickerSheet: View {
+    let onSelected: (CharacterClass) -> Void
+    let accentColor: Color
+    @Environment(\.dismiss) private var dismiss
+    @State private var tempClassSelection: CharacterClass = .swordsman
+    
+    var body: some View {
+        ZStack {
+            Theme.background
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                // Header
+                VStack(spacing: 6) {
+                    Text("PVP MATCHMAKING PREPARATION")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                        .tracking(1.5)
+                        .padding(.top, 24)
+                    
+                    Text("CHOOSE COMBAT CLASS")
+                        .font(.system(.title3, design: .monospaced))
+                        .fontWeight(.black)
+                        .foregroundColor(Theme.textPrimary)
+                }
+                
+                Text("Matchmaking will pair you with opponents performing the SAME exercise type to ensure absolute fairness.")
+                    .font(.caption2)
+                    .foregroundColor(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 6)
+                
+                // 2x2 Grid of classes
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+                    ForEach(CharacterClass.allCases) { charClass in
+                        let isSelected = tempClassSelection == charClass
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                tempClassSelection = charClass
+                            }
+                        }) {
+                            VStack(spacing: 8) {
+                                ZStack {
+                                    Circle()
+                                        .fill(charClass.themeColor.opacity(isSelected ? 0.25 : 0.08))
+                                        .frame(width: 44, height: 44)
+                                    
+                                    Image(systemName: classIcon(for: charClass))
+                                        .font(.title3)
+                                        .foregroundColor(charClass.themeColor)
+                                }
+                                .glow(color: isSelected ? charClass.themeColor.opacity(0.3) : .clear, radius: 5)
+                                
+                                VStack(spacing: 2) {
+                                    Text(charClass.rawValue.uppercased())
+                                        .font(.system(.caption, design: .monospaced))
+                                        .fontWeight(.black)
+                                        .foregroundColor(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                                    
+                                    Text(charClass.primaryExercise.uppercased())
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundColor(isSelected ? charClass.themeColor : Theme.textMuted)
+                                }
+                            }
+                            .padding(.vertical, 14)
+                            .frame(maxWidth: .infinity)
+                            .background(isSelected ? Theme.secondaryCard.opacity(0.85) : Theme.cardBackground.opacity(0.6))
+                            .cornerRadius(14)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(isSelected ? charClass.themeColor : Theme.border, lineWidth: isSelected ? 2 : 1)
+                            )
+                            .scaleEffect(isSelected ? 1.02 : 0.98)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 24)
+                
+                // Exercise detail preview
+                HStack(spacing: 8) {
+                    Image(systemName: "flame.fill")
+                        .foregroundColor(tempClassSelection.themeColor)
+                    Text("ACTIVE COMPETING EXERCISE: \(tempClassSelection.primaryExercise.uppercased())")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(tempClassSelection.themeColor.opacity(0.08))
+                .cornerRadius(10)
+                .padding(.horizontal, 24)
+                
+                Spacer()
+                
+                // Start button
+                Button(action: {
+                    dismiss()
+                    onSelected(tempClassSelection)
+                }) {
+                    Text("FIND EQUAL-EXERCISE MATCH")
+                        .font(.system(.subheadline, design: .monospaced))
+                        .fontWeight(.black)
+                        .tracking(1.5)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(tempClassSelection.themeColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(14)
+                        .glow(color: tempClassSelection.themeColor.opacity(0.4), radius: 8)
+                }
+                .buttonStyle(TactileButtonStyle())
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+        }
+        .onAppear {
+            if let userClass = FirebaseService.shared.currentCharacter?.selectedClass {
+                tempClassSelection = userClass
+            }
+        }
+    }
+    
+    private func classIcon(for cls: CharacterClass) -> String {
+        switch cls {
+        case .archer: return "arrow.up.forward.app.fill"
+        case .mage: return "bolt.heart.fill"
+        case .swordsman: return "hammer.fill"
+        case .healer: return "cross.case.fill"
+        }
     }
 }
 
