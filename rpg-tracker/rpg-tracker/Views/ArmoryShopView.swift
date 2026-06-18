@@ -51,12 +51,39 @@ struct ArmoryShopView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 16)
                 
-                // Tabs Picker
-                Picker("Tabs", selection: $selectedTab) {
-                    Text("MY ARMORY").tag(0)
-                    Text("ARMOR SHOP").tag(1)
+                // Premium Pill Segment Selector
+                HStack(spacing: 0) {
+                    ForEach(0..<2) { idx in
+                        Button(action: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                selectedTab = idx
+                            }
+                        }) {
+                            Text(idx == 0 ? "MY ARMORY" : "ARMOR SHOP")
+                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .foregroundColor(selectedTab == idx ? Color.black : Theme.textSecondary)
+                                .padding(.vertical, 10)
+                                .frame(maxWidth: .infinity)
+                                .background(
+                                    ZStack {
+                                        if selectedTab == idx {
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .fill(character.selectedClass.themeColor)
+                                                .glow(color: character.selectedClass.themeColor.opacity(0.4), radius: 6)
+                                        }
+                                    }
+                                )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
                 }
-                .pickerStyle(SegmentedPickerStyle())
+                .padding(4)
+                .background(Theme.cardBackground)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
                 .padding(.horizontal)
                 .padding(.bottom, 16)
                 
@@ -126,17 +153,17 @@ struct InventoryListView: View {
                         let isRestricted = armor.classRestriction != nil && armor.classRestriction != character.selectedClass
                         
                         HStack(spacing: 16) {
-                            // Emblem / Icon of the armor type
+                            // Emblem / Icon of the armor type with Rarity glow
                             ZStack {
                                 RoundedRectangle(cornerRadius: 12)
                                     .fill(armor.rarity.color.opacity(0.12))
-                                    .frame(width: 50, height: 50)
+                                    .frame(width: 52, height: 52)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 12)
-                                            .stroke(armor.rarity.color.opacity(0.3), lineWidth: 1)
+                                            .stroke(armor.rarity.color.opacity(0.3), lineWidth: 1.2)
                                     )
                                 
-                                Image(systemName: "shield.fill")
+                                Image(systemName: armor.getIconName())
                                     .font(.title3)
                                     .foregroundColor(armor.rarity.color)
                             }
@@ -146,15 +173,14 @@ struct InventoryListView: View {
                                 HStack(spacing: 6) {
                                     Text(armor.name)
                                         .font(.subheadline)
-                                        .fontWeight(.bold)
+                                        .fontWeight(.black)
                                         .foregroundColor(Theme.textPrimary)
                                     
                                     Text(armor.rarity.rawValue.uppercased())
-                                        .font(.system(size: 8, design: .monospaced))
-                                        .fontWeight(.bold)
+                                        .font(.system(size: 7, weight: .black, design: .monospaced))
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
-                                        .background(armor.rarity.color.opacity(0.25))
+                                        .background(armor.rarity.color.opacity(0.2))
                                         .foregroundColor(armor.rarity.color)
                                         .cornerRadius(4)
                                 }
@@ -166,8 +192,7 @@ struct InventoryListView: View {
                                 
                                 HStack(spacing: 12) {
                                     Text("+\(armor.defense) DEFENSE")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .fontWeight(.black)
+                                        .font(.system(size: 9, weight: .black, design: .monospaced))
                                         .foregroundColor(Theme.success)
                                     
                                     if let restrict = armor.classRestriction {
@@ -182,18 +207,21 @@ struct InventoryListView: View {
                             
                             // Equip / Active Button
                             if isEquipped {
-                                Text("EQUIPPED")
-                                    .font(.system(size: 9, design: .monospaced))
-                                    .fontWeight(.black)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Theme.success.opacity(0.15))
-                                    .foregroundColor(Theme.success)
-                                    .cornerRadius(6)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Theme.success, lineWidth: 1)
-                                    )
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.seal.fill")
+                                    Text("ACTIVE")
+                                }
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Theme.success.opacity(0.12))
+                                .foregroundColor(Theme.success)
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Theme.success.opacity(0.4), lineWidth: 1)
+                                )
+                                .glow(color: Theme.success.opacity(0.2), radius: 4)
                             } else {
                                 Button(action: {
                                     guard !isRestricted else { return }
@@ -201,25 +229,37 @@ struct InventoryListView: View {
                                     updatedChar.equipArmor(itemId: armor.id)
                                     firebaseService.syncCharacter(updatedChar)
                                 }) {
-                                    Text(isRestricted ? "LOCKED" : "EQUIP")
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .fontWeight(.black)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 6)
-                                        .background(isRestricted ? Color.gray.opacity(0.1) : Theme.primary.opacity(0.15))
-                                        .foregroundColor(isRestricted ? Theme.textMuted : Theme.primary)
-                                        .cornerRadius(6)
+                                    HStack(spacing: 4) {
+                                        if isRestricted {
+                                            Image(systemName: "lock.fill")
+                                            Text("LOCKED")
+                                        } else {
+                                            Text("EQUIP")
+                                        }
+                                    }
+                                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(isRestricted ? Color.gray.opacity(0.08) : Theme.primary.opacity(0.15))
+                                    .foregroundColor(isRestricted ? Theme.textMuted : Theme.primary)
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(isRestricted ? Color.clear : Theme.primary.opacity(0.4), lineWidth: 1)
+                                    )
                                 }
                                 .disabled(isRestricted)
+                                .buttonStyle(TactileButtonStyle())
                             }
                         }
                         .padding()
                         .background(Theme.cardBackground)
-                        .cornerRadius(12)
+                        .cornerRadius(14)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(isEquipped ? Theme.success.opacity(0.4) : Theme.border, lineWidth: isEquipped ? 1.5 : 0.8)
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(isEquipped ? Theme.success.opacity(0.3) : armor.rarity.color.opacity(0.15), lineWidth: isEquipped ? 1.5 : 1)
                         )
+                        .shadow(color: isEquipped ? Theme.success.opacity(0.08) : armor.rarity.color.opacity(0.05), radius: 8, x: 0, y: 3)
                         .padding(.horizontal)
                     }
                 }
@@ -274,19 +314,18 @@ struct ShopListView: View {
                     ForEach(filteredShopArmors) { armor in
                         let isOwned = character.ownedEquipmentIds.contains(armor.id)
                         let canAfford = character.gold >= armor.cost
-                        let isRestricted = armor.classRestriction != nil && armor.classRestriction != character.selectedClass
                         
                         HStack(spacing: 16) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 12)
                                     .fill(armor.rarity.color.opacity(0.12))
-                                    .frame(width: 50, height: 50)
+                                    .frame(width: 52, height: 52)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 12)
-                                            .stroke(armor.rarity.color.opacity(0.3), lineWidth: 1)
+                                            .stroke(armor.rarity.color.opacity(0.3), lineWidth: 1.2)
                                     )
                                 
-                                Image(systemName: "shield.fill")
+                                Image(systemName: armor.getIconName())
                                     .font(.title3)
                                     .foregroundColor(armor.rarity.color)
                             }
@@ -296,15 +335,14 @@ struct ShopListView: View {
                                 HStack(spacing: 6) {
                                     Text(armor.name)
                                         .font(.subheadline)
-                                        .fontWeight(.bold)
+                                        .fontWeight(.black)
                                         .foregroundColor(Theme.textPrimary)
                                     
                                     Text(armor.rarity.rawValue.uppercased())
-                                        .font(.system(size: 8, design: .monospaced))
-                                        .fontWeight(.bold)
+                                        .font(.system(size: 7, weight: .black, design: .monospaced))
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
-                                        .background(armor.rarity.color.opacity(0.25))
+                                        .background(armor.rarity.color.opacity(0.2))
                                         .foregroundColor(armor.rarity.color)
                                         .cornerRadius(4)
                                 }
@@ -316,8 +354,7 @@ struct ShopListView: View {
                                 
                                 HStack(spacing: 12) {
                                     Text("+\(armor.defense) DEFENSE")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .fontWeight(.black)
+                                        .font(.system(size: 9, weight: .black, design: .monospaced))
                                         .foregroundColor(Theme.success)
                                     
                                     if let restrict = armor.classRestriction {
@@ -332,12 +369,16 @@ struct ShopListView: View {
                             
                             // Buy action
                             if isOwned {
-                                Text("BOUGHT")
-                                    .font(.system(size: 9, design: .monospaced))
-                                    .fontWeight(.bold)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .foregroundColor(Theme.textMuted)
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                    Text("OWNED")
+                                }
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .foregroundColor(Theme.textMuted)
+                                .background(Color.gray.opacity(0.06))
+                                .cornerRadius(8)
                             } else {
                                 Button(action: {
                                     guard canAfford else { return }
@@ -348,28 +389,29 @@ struct ShopListView: View {
                                 }) {
                                     HStack(spacing: 4) {
                                         Image(systemName: "centsign.circle.fill")
-                                            .font(.caption2)
+                                            .foregroundColor(canAfford ? .black : Theme.textMuted)
                                         Text("\(armor.cost)")
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .fontWeight(.black)
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
                                     }
-                                    .padding(.horizontal, 12)
+                                    .padding(.horizontal, 14)
                                     .padding(.vertical, 8)
-                                    .background(canAfford ? Theme.warning : Color.gray.opacity(0.1))
+                                    .background(canAfford ? Theme.warning : Color.gray.opacity(0.08))
                                     .foregroundColor(canAfford ? .black : Theme.textMuted)
                                     .cornerRadius(8)
-                                    .shadow(color: canAfford ? Theme.warning.opacity(0.3) : .clear, radius: 4)
+                                    .shadow(color: canAfford ? Theme.warning.opacity(0.35) : .clear, radius: 5, y: 2)
                                 }
                                 .disabled(!canAfford)
+                                .buttonStyle(TactileButtonStyle())
                             }
                         }
                         .padding()
                         .background(Theme.cardBackground)
-                        .cornerRadius(12)
+                        .cornerRadius(14)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Theme.border, lineWidth: 0.8)
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(armor.rarity.color.opacity(0.15), lineWidth: 1)
                         )
+                        .shadow(color: armor.rarity.color.opacity(0.05), radius: 8, x: 0, y: 3)
                         .padding(.horizontal)
                     }
                 }
@@ -377,5 +419,14 @@ struct ShopListView: View {
                 .padding(.bottom, 24)
             }
         }
+    }
+}
+
+// Satisfying tactile click bounce button style
+struct TactileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }

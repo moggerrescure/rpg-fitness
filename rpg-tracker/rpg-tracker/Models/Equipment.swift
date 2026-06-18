@@ -39,6 +39,26 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
         hasher.combine(id)
     }
     
+    func getIconName() -> String {
+        if slot == .weapon {
+            return "shield.fill"
+        }
+        guard let classRestriction = self.classRestriction else {
+            switch self.rarity {
+            case .mythical: return "shield.lefthalf.filled.triangles"
+            case .legendary: return "shield.righthalf.filled.triangles"
+            case .epic: return "shield.checkerboard"
+            default: return "shield.fill"
+            }
+        }
+        switch classRestriction {
+        case .archer: return "figure.run"
+        case .mage: return "bolt.shield.fill"
+        case .swordsman: return "shield.fill"
+        case .healer: return "heart.text.square.fill"
+        }
+    }
+    
     static func == (lhs: EquipmentItem, rhs: EquipmentItem) -> Bool {
         lhs.id == rhs.id
     }
