@@ -11,13 +11,20 @@ class BattleVM: ObservableObject {
     // PvP selector additions
     @Published var selectedPvPType: BattleType = .duel1v1
     @Published var invitedFriends: [String] = []
-    
-    let friendsList: [String] = ["AquaHealer", "FireMage", "WindArcher", "KnightDave"]
+    @Published var friendsList: [String] = []
     
     private let firebaseService = FirebaseService.shared
     private var cancellables = Set<AnyCancellable>()
     
     init() {
+        // Bind to firebaseService friends list
+        firebaseService.$friends
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] list in
+                self?.friendsList = list
+            }
+            .store(in: &cancellables)
+            
         // Bind to firebaseService activeBattle state
         firebaseService.$activeBattle
             .receive(on: DispatchQueue.main)

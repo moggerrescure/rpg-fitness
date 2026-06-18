@@ -6,6 +6,7 @@ class FirebaseService: ObservableObject {
     @Published var activeBattle: Battle?
     @Published var userClan: Clan?
     @Published var leaderboards: [String: [Character]] = [:]
+    @Published var friends: [String] = ["AquaHealer", "FireMage", "WindArcher", "KnightDave"]
     
     private var cancellables = Set<AnyCancellable>()
     private var battleTimer: Timer?
@@ -28,6 +29,19 @@ class FirebaseService: ObservableObject {
         )
         
         loadMockLeaderboards()
+    }
+    
+    // MARK: - Friends Management
+    func addFriend(name: String) -> Bool {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty else { return false }
+        guard !friends.contains(cleanName) else { return false }
+        friends.append(cleanName)
+        return true
+    }
+    
+    func removeFriend(name: String) {
+        friends.removeAll { $0 == name }
     }
     
     // MARK: - Character Sync

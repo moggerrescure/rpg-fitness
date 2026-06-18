@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ClanDashboardView: View {
     @StateObject private var viewModel = ClanVM()
-    @State private var selectedTab = 0 // 0: My Clan, 1: Leaderboards
+    @State private var selectedTab = 0 // 0: My Clan, 1: Leaderboards, 2: Friends
     
     var body: some View {
         ZStack {
@@ -13,7 +13,7 @@ struct ClanDashboardView: View {
                 // Header Segment Bar
                 PillSegmentPicker(
                     selection: $selectedTab,
-                    items: ["CLAN SOCIAL", "LEADERBOARDS"],
+                    items: ["CLAN SOCIAL", "LEADERBOARDS", "FRIENDS"],
                     accentColor: FirebaseService.shared.currentCharacter?.selectedClass.themeColor ?? Theme.primary
                 )
                 .padding(.horizontal)
@@ -28,8 +28,10 @@ struct ClanDashboardView: View {
                             NoClanView(viewModel: viewModel)
                         }
                     }
-                } else {
+                } else if selectedTab == 1 {
                     LeaderboardListView(viewModel: viewModel)
+                } else {
+                    FriendsSocialView()
                 }
             }
         }
@@ -815,6 +817,276 @@ struct RankIndicator: View {
         }
     }
 }
+struct FriendsSocialView: View {
+    @ObservedObject var firebaseService = FirebaseService.shared
+    @State private var searchName: String = ""
+    @State private var toastMsg: String? = nil
+    @State private var isErrorToast: Bool = false
+    
+    var body: some View {
+        ZStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Search & Add Friend Box
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("ADD NEW FIT ALLY")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.textSecondary)
+                            .tracking(1.5)
+                        
+                        HStack(spacing: 12) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundColor(Theme.textMuted)
+                                
+                                TextField("Enter username...", text: $searchName)
+                                    .foregroundColor(Theme.textPrimary)
+                                    .font(.subheadline)
+                            }
+                            .padding()
+                            .background(Theme.secondaryCard.opacity(0.6))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Theme.border, lineWidth: 1)
+                            )
+                            
+                            Button(action: performAddFriend) {
+                                Text("ADD")
+                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .foregroundColor(.black)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 14)
+                                    .background(firebaseService.currentCharacter?.selectedClass.themeColor ?? Theme.primary)
+                                    .cornerRadius(12)
+                                    .glow(color: (firebaseService.currentCharacter?.selectedClass.themeColor ?? Theme.primary).opacity(0.35), radius: 6)
+                            }
+                            .disabled(searchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .buttonStyle(TactileButtonStyle())
+                        }
+                    }
+                    .padding(18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Theme.cardBackground.opacity(0.85))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(LinearGradient(
+                                colors: [Color.white.opacity(0.12), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ), lineWidth: 1)
+                    )
+                    .padding(.horizontal)
+                    .padding(.top, 16)
+                    
+                    // Friends List Header
+                    HStack {
+                        Text("MY FRIENDS (\(firebaseService.friends.count))")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.textSecondary)
+                            .tracking(1.5)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    
+                    // Friends List
+                    if firebaseService.friends.isEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 48))
+                                .foregroundColor(Theme.textMuted)
+                            
+                            Text("YOUR FRIENDS LIST IS EMPTY")
+                                .font(.system(.subheadline, design: .monospaced))
+                                .foregroundColor(Theme.textSecondary)
+                            
+                            Text("Invite companions to perform exercises together and double your damage output!")
+                                .font(.caption2)
+                                .foregroundColor(Theme.textMuted)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                        }
+                        .padding(.top, 60)
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(firebaseService.friends, id: \.self) { name in
+                                let cls = getFriendClass(for: name)
+                                let lvl = getFriendLevel(for: name)
+                                let isOnline = abs(name.hashValue) % 2 == 0
+                                
+                                HStack(spacing: 14) {
+                                    // Status & Avatar Circle
+                                    ZStack(alignment: .bottomTrailing) {
+                                        Circle()
+                                            .fill(cls.themeColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(
+                                                Image(systemName: "person.fill")
+                                                    .foregroundColor(cls.themeColor)
+                                            )
+                                            .glow(color: cls.themeColor.opacity(0.35), radius: 5)
+                                        
+                                        Circle()
+                                            .fill(isOnline ? Theme.success : Theme.textMuted)
+                                            .frame(width: 12, height: 12)
+                                            .overlay(Circle().stroke(Theme.cardBackground, lineWidth: 2))
+                                            .glow(color: isOnline ? Theme.success.opacity(0.4) : Color.clear, radius: 2)
+                                    }
+                                    
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(name)
+                                            .font(.system(.subheadline, design: .default))
+                                            .fontWeight(.black)
+                                            .foregroundColor(Theme.textPrimary)
+                                        
+                                        HStack(spacing: 8) {
+                                            Text("LVL \(lvl)")
+                                                .font(.system(size: 9, design: .monospaced))
+                                                .foregroundColor(cls.themeColor)
+                                                .fontWeight(.bold)
+                                            
+                                            Text("•")
+                                                .font(.caption2)
+                                                .foregroundColor(Theme.textMuted)
+                                            
+                                            Text(cls.rawValue.uppercased())
+                                                .font(.system(size: 9, design: .monospaced))
+                                                .foregroundColor(Theme.textSecondary)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    HStack(spacing: 8) {
+                                        // Battle invite trigger
+                                        Button(action: {
+                                            triggerBattleInvite(friendName: name)
+                                        }) {
+                                            Text("BATTLE")
+                                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 8)
+                                                .background(Theme.primary.opacity(0.15))
+                                                .foregroundColor(Theme.primary)
+                                                .cornerRadius(8)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(Theme.primary.opacity(0.35), lineWidth: 1)
+                                                )
+                                        }
+                                        .buttonStyle(TactileButtonStyle())
+                                        
+                                        // Remove action
+                                        Button(action: {
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                                firebaseService.removeFriend(name: name)
+                                                showToast("Removed \(name) from allies.", isError: false)
+                                            }
+                                        }) {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(Theme.danger.opacity(0.8))
+                                                .padding(8)
+                                                .background(Theme.danger.opacity(0.08))
+                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        }
+                                        .buttonStyle(TactileButtonStyle())
+                                    }
+                                }
+                                .padding()
+                                .background(Theme.cardBackground.opacity(0.85))
+                                .cornerRadius(16)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Theme.border, lineWidth: 1)
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                    
+                    Spacer()
+                        .frame(height: 100) // tab bar offset
+                }
+            }
+            
+            // Inline Floating Toast notifications
+            if let msg = toastMsg {
+                VStack {
+                    Spacer()
+                    
+                    HStack(spacing: 10) {
+                        Image(systemName: isErrorToast ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                            .foregroundColor(isErrorToast ? Theme.danger : Theme.success)
+                        Text(msg)
+                            .font(.system(.caption, design: .monospaced))
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.85))
+                    .cornerRadius(20)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(isErrorToast ? Theme.danger.opacity(0.4) : Theme.success.opacity(0.4), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.3), radius: 6, x: 0, y: 3)
+                    .padding(.bottom, 40)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(100)
+                }
+            }
+        }
+    }
+    
+    private func performAddFriend() {
+        let name = searchName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        
+        let success = firebaseService.addFriend(name: name)
+        if success {
+            showToast("Successfully added \(name) as ally!", isError: false)
+            searchName = ""
+        } else {
+            showToast("Ally \(name) is already in your friends list.", isError: true)
+        }
+    }
+    
+    private func triggerBattleInvite(friendName: String) {
+        showToast("Match invitation sent to \(friendName)!", isError: false)
+    }
+    
+    private func showToast(_ message: String, isError: Bool) {
+        toastMsg = message
+        isErrorToast = isError
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if toastMsg == message {
+                withAnimation {
+                    toastMsg = nil
+                }
+            }
+        }
+    }
+    
+    private func getFriendClass(for name: String) -> CharacterClass {
+        if name.lowercased().contains("healer") { return .healer }
+        if name.lowercased().contains("mage") { return .mage }
+        if name.lowercased().contains("archer") { return .archer }
+        if name.lowercased().contains("swordsman") || name.lowercased().contains("knight") { return .swordsman }
+        let choices: [CharacterClass] = [.archer, .mage, .swordsman, .healer]
+        let index = abs(name.hashValue) % choices.count
+        return choices[index]
+    }
+    
+    private func getFriendLevel(for name: String) -> Int {
+        return 5 + (abs(name.hashValue) % 15)
+    }
+}
+
 struct ClanDashboardView_Previews: PreviewProvider {
     static var previews: some View {
         ClanDashboardView()
