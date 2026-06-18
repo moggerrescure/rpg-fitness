@@ -14,21 +14,45 @@ class FirebaseService: ObservableObject {
     static let shared = FirebaseService()
     
     init() {
-        // Setup initial mock character for testing
-        self.currentCharacter = Character(
-            id: "local_mock_user",
-            username: "FitnessHero",
-            selectedClass: .archer,
-            level: 1,
-            xp: 0,
-            gold: 2400,
-            energy: 100,
-            maxEnergy: 100,
-            basePower: 100,
-            equippedArmorId: "a_arch_1"
-        )
+        // Load persisted character if it exists
+        if let data = UserDefaults.standard.data(forKey: "saved_character"),
+           let savedChar = try? JSONDecoder().decode(Character.self, from: data) {
+            self.currentCharacter = savedChar
+        } else {
+            // Setup initial mock character for testing
+            self.currentCharacter = Character(
+                id: "local_mock_user",
+                username: "FitnessHero",
+                selectedClass: .archer,
+                level: 1,
+                xp: 0,
+                gold: 2400,
+                energy: 100,
+                maxEnergy: 100,
+                basePower: 100,
+                equippedArmorId: "a_arch_1"
+            )
+            saveCharacterToDisk()
+        }
+        
+        // Load persisted friends list if it exists
+        if let savedFriends = UserDefaults.standard.stringArray(forKey: "saved_friends") {
+            self.friends = savedFriends
+        }
         
         loadMockLeaderboards()
+    }
+    
+    // MARK: - Disk Saving Helpers
+    func saveCharacterToDisk() {
+        guard let char = currentCharacter else { return }
+        if let data = try? JSONEncoder().encode(char) {
+            UserDefaults.standard.set(data, forKey: "saved_character")
+        }
+    }
+    
+    func saveFriendsToDisk() {
+        UserDefaults.standard.set(friends, forKey: "saved_friends")
     }
     
     // MARK: - Friends Management
@@ -37,16 +61,19 @@ class FirebaseService: ObservableObject {
         guard !cleanName.isEmpty else { return false }
         guard !friends.contains(cleanName) else { return false }
         friends.append(cleanName)
+        saveFriendsToDisk()
         return true
     }
     
     func removeFriend(name: String) {
         friends.removeAll { $0 == name }
+        saveFriendsToDisk()
     }
     
     // MARK: - Character Sync
     func syncCharacter(_ character: Character) {
         self.currentCharacter = character
+        saveCharacterToDisk()
         // In a real app: Firestore.firestore().collection("users").document(character.id).setData(from: character)
     }
     

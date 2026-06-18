@@ -5,6 +5,8 @@ struct PlayerProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var profileToastMessage: String? = nil
     @State private var showArmoryShop = false
+    @State private var isEditingUsername = false
+    @State private var usernameInput = ""
     
     init(character: Character) {
         // Direct observation of FirebaseService handles reactivity; signature kept for compatibility.
@@ -100,11 +102,64 @@ struct PlayerProfileView: View {
                                 .foregroundColor(character.selectedClass.themeColor)
                         }
                         
-                        VStack(spacing: 4) {
-                            Text(character.username)
-                                .font(.title)
-                                .fontWeight(.bold)
-                                .foregroundColor(Theme.textPrimary)
+                        VStack(spacing: 6) {
+                            if isEditingUsername {
+                                HStack(spacing: 8) {
+                                    TextField("Enter username...", text: $usernameInput)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(Theme.secondaryCard.opacity(0.6))
+                                        .cornerRadius(8)
+                                        .foregroundColor(Theme.textPrimary)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(character.selectedClass.themeColor.opacity(0.5), lineWidth: 1)
+                                        )
+                                        .frame(width: 180)
+                                    
+                                    Button(action: {
+                                        let cleanName = usernameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !cleanName.isEmpty {
+                                            var updated = character
+                                            updated.username = cleanName
+                                            firebaseService.syncCharacter(updated)
+                                            isEditingUsername = false
+                                        }
+                                    }) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.title3)
+                                            .foregroundColor(Theme.success)
+                                    }
+                                    .buttonStyle(TactileButtonStyle())
+                                    
+                                    Button(action: {
+                                        isEditingUsername = false
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.title3)
+                                            .foregroundColor(Theme.danger)
+                                    }
+                                    .buttonStyle(TactileButtonStyle())
+                                }
+                                .padding(.vertical, 4)
+                            } else {
+                                HStack(spacing: 6) {
+                                    Text(character.username)
+                                        .font(.title)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Theme.textPrimary)
+                                    
+                                    Button(action: {
+                                        usernameInput = character.username
+                                        isEditingUsername = true
+                                    }) {
+                                        Image(systemName: "pencil.circle.fill")
+                                            .font(.title3)
+                                            .foregroundColor(character.selectedClass.themeColor)
+                                    }
+                                    .buttonStyle(TactileButtonStyle())
+                                }
+                            }
                             
                             Text(character.selectedClass.rawValue.uppercased())
                                 .font(.system(.caption, design: .monospaced))
