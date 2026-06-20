@@ -8,11 +8,18 @@ struct CameraTrackingView: View {
     @State private var workoutCompletionRewards: (xp: Int, gold: Int)? = nil
     
     init(selectedClass: CharacterClass, targetReps: Int? = nil, bossMaxHP: Int? = nil, damagePerRep: Int? = nil, onComplete: ((Int) -> Void)? = nil) {
-        let hasActiveBattle = FirebaseService.shared.activeBattle != nil
-        let hasBoss = (bossMaxHP ?? 0) > 0
-        self._isWorkoutStarted = State(initialValue: hasActiveBattle || hasBoss)
+        let hasFirebaseBattle = FirebaseService.shared.activeBattle != nil
+        let hasEngineBattle = BattleEngine.shared.activeBattle != nil
+        let isEngineBoss = BattleEngine.shared.activeBoss != nil
+        let engineBossHP = BattleEngine.shared.activeBoss?.maxHealth
         
-        _viewModel = StateObject(wrappedValue: CameraTrackingVM(selectedClass: selectedClass, targetReps: targetReps, bossMaxHP: bossMaxHP, damagePerRep: damagePerRep, onComplete: onComplete))
+        let hasBoss = (bossMaxHP ?? 0) > 0 || isEngineBoss
+        self._isWorkoutStarted = State(initialValue: hasFirebaseBattle || hasEngineBattle || hasBoss)
+        
+        let finalBossHP = bossMaxHP ?? engineBossHP
+        let finalDamage = damagePerRep ?? (isEngineBoss ? Int(Double(FirebaseService.shared.currentCharacter?.combatPower ?? 10) * 0.15) : nil)
+        
+        _viewModel = StateObject(wrappedValue: CameraTrackingVM(selectedClass: selectedClass, targetReps: targetReps, bossMaxHP: finalBossHP, damagePerRep: finalDamage, onComplete: onComplete))
     }
     
     var body: some View {
@@ -157,45 +164,12 @@ struct CameraTrackingView: View {
                     
                     // Neon space grid background when simulating
                     if viewModel.isSimulatorMode {
-                        SimulatedCameraFeed(points: viewModel.skeletonPoints, lines: viewModel.skeletonLines)
+                        SimulatedCameraFeed()
                     } else {
-                        // Real camera placeholder
-                        VStack {
-                            Spacer()
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 64))
-                                .foregroundColor(Theme.textMuted)
-                            Text("Camera Feed Active")
-                                .font(.headline)
-                                .foregroundColor(Theme.textSecondary)
-                                .padding(.top, 8)
-                            Text("Align your entire body in frame")
-                                .font(.caption)
-                                .foregroundColor(Theme.textMuted)
-                            Spacer()
-                        }
+                        CameraPreview(session: viewModel.cameraManager.session)
+                            .ignoresSafeArea()
                         
-                        // Draw real skeleton keypoints overlay if detected
-                        GeometryReader { geo in
-                            ZStack {
-                                ForEach(viewModel.skeletonLines) { line in
-                                    Path { path in
-                                        path.move(to: CGPoint(x: line.start.x * geo.size.width, y: line.start.y * geo.size.height))
-                                        path.addLine(to: CGPoint(x: line.end.x * geo.size.width, y: line.end.y * geo.size.height))
-                                    }
-                                    .stroke(viewModel.selectedClass.themeColor, lineWidth: 4)
-                                    .glow(color: viewModel.selectedClass.themeColor.opacity(0.8), radius: 6)
-                                }
-                                
-                                ForEach(viewModel.skeletonPoints) { pt in
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 8, height: 8)
-                                        .position(x: pt.point.x * geo.size.width, y: pt.point.y * geo.size.height)
-                                        .shadow(color: viewModel.selectedClass.themeColor, radius: 4)
-                                }
-                            }
-                        }
+                        PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
                     }
                     
                     // HUD Overlay Controls
@@ -203,7 +177,7 @@ struct CameraTrackingView: View {
                         // Top controls bar
                         HStack {
                             Button(action: {
-                                if FirebaseService.shared.activeBattle != nil || viewModel.bossMaxHP > 0 {
+                                if FirebaseService.shared.activeBattle != nil || BattleEngine.shared.activeBattle != nil || viewModel.bossMaxHP > 0 {
                                     dismiss()
                                 } else {
                                     withAnimation {
@@ -304,7 +278,7 @@ struct CameraTrackingView: View {
                         }
                         
                         // PVP Matchup and Combat Telemetry Log Overlay
-                        if let battle = firebaseService.activeBattle {
+                        if let battle = MultiplayerService.shared.activeBattle ?? BattleEngine.shared.activeBattle {
                             VStack(spacing: 8) {
                                 // 1. Matchup header
                                 HStack(alignment: .top, spacing: 12) {
@@ -785,9 +759,6 @@ struct CameraTrackingView: View {
 
 // Simulated skeletal line drawer
 struct SimulatedCameraFeed: View {
-    let points: [JointPoint]
-    let lines: [BoneLine]
-    
     var body: some View {
         ZStack {
             // Training ruins animated background
@@ -820,28 +791,6 @@ struct SimulatedCameraFeed: View {
                     }
                 }
                 .stroke(Theme.border.opacity(0.3), lineWidth: 0.5)
-            }
-            
-            // Render simulated avatar bones
-            GeometryReader { geo in
-                ZStack {
-                    ForEach(lines) { line in
-                        Path { path in
-                            path.move(to: CGPoint(x: line.start.x * geo.size.width, y: line.start.y * geo.size.height))
-                            path.addLine(to: CGPoint(x: line.end.x * geo.size.width, y: line.end.y * geo.size.height))
-                        }
-                        .stroke(Theme.primary, lineWidth: 5)
-                        .glow(color: Theme.primary.opacity(0.6), radius: 8)
-                    }
-                    
-                    ForEach(points) { pt in
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 12, height: 12)
-                            .position(x: pt.point.x * geo.size.width, y: pt.point.y * geo.size.height)
-                            .shadow(color: Theme.primary, radius: 6)
-                    }
-                }
             }
         }
     }

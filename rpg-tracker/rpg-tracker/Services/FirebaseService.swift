@@ -1,12 +1,16 @@
 import Foundation
 import Combine
+import FirebaseFunctions
+import FirebaseFirestore
+import FirebaseAuth
 
 class FirebaseService: ObservableObject {
     @Published var currentCharacter: Character?
     @Published var activeBattle: Battle?
     @Published var userClan: Clan?
     @Published var leaderboards: [String: [Character]] = [:]
-    @Published var friends: [String] = ["AquaHealer", "FireMage", "WindArcher", "KnightDave"]
+    @Published var friends: [String] = []
+    @Published var activeWorldBoss: WorldBoss?
     
     private var cancellables = Set<AnyCancellable>()
     private var battleTimer: Timer?
@@ -40,7 +44,45 @@ class FirebaseService: ObservableObject {
             self.friends = savedFriends
         }
         
-        loadMockLeaderboards()
+        fetchLeaderboards()
+        
+        AuthManager.shared.$currentUser
+            .compactMap { $0 }
+            .sink { [weak self] user in
+                self?.startListeningToCharacter(uid: user.uid)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private var characterListener: ListenerRegistration?
+    
+    func startListeningToCharacter(uid: String) {
+        characterListener?.remove()
+        characterListener = Firestore.firestore().collection("users").document(uid)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self, let snapshot = snapshot else { return }
+                
+                if snapshot.exists {
+                    do {
+                        let char = try snapshot.data(as: Character.self)
+                        // Only update if not currently fighting to avoid UI jumps, or just update directly
+                        DispatchQueue.main.async {
+                            self.currentCharacter = char
+                            // Backup to disk
+                            if let data = try? JSONEncoder().encode(char) {
+                                UserDefaults.standard.set(data, forKey: "saved_character")
+                            }
+                        }
+                    } catch {
+                        print("Error decoding character: \(error)")
+                    }
+                } else if let char = self.currentCharacter {
+                    // Upload local character to Firestore
+                    var newChar = char
+                    newChar.id = uid
+                    try? Firestore.firestore().collection("users").document(uid).setData(from: newChar)
+                }
+            }
     }
     
     // MARK: - Disk Saving Helpers
@@ -74,7 +116,11 @@ class FirebaseService: ObservableObject {
     func syncCharacter(_ character: Character) {
         self.currentCharacter = character
         saveCharacterToDisk()
-        // In a real app: Firestore.firestore().collection("users").document(character.id).setData(from: character)
+        
+        // Write to Firestore!
+        if character.id != "local_mock_user" {
+            try? Firestore.firestore().collection("users").document(character.id).setData(from: character)
+        }
     }
     
     func awardBattleRewards(xp: Int, gold: Int, isPvP: Bool = false) {
@@ -88,11 +134,19 @@ class FirebaseService: ObservableObject {
         self.currentCharacter = char
         syncCharacter(char)
         
-        // If in clan, contribute reps
-        if var clan = userClan, let index = clan.members.firstIndex(where: { $0.id == char.id }) {
-            clan.members[index].repsContributed += 10 // Mock rep increment
-            clan.totalReps += 10
-            userClan = clan
+        // If in clan, contribute reps via increment to avoid overwriting
+        if let clan = userClan {
+            let ref = Firestore.firestore().collection("clans").document(clan.id)
+            ref.updateData([
+                "totalReps": FieldValue.increment(Int64(10))
+            ])
+            // We can't easily increment a specific array element in Firestore, so we update it locally for UI
+            var updatedClan = clan
+            if let index = updatedClan.members.firstIndex(where: { $0.id == char.id }) {
+                updatedClan.members[index].repsContributed += 10
+                updatedClan.totalReps += 10
+                self.userClan = updatedClan
+            }
         }
     }
     
@@ -120,363 +174,59 @@ class FirebaseService: ObservableObject {
         syncCharacter(char)
         
         // If in a clan, contribute these reps to the member contribution & total clan reps
-        if reps > 0, var clan = userClan, let index = clan.members.firstIndex(where: { $0.id == char.id }) {
-            clan.members[index].repsContributed += reps
-            clan.totalReps += reps
-            userClan = clan
+        if reps > 0, let clan = userClan {
+            let ref = Firestore.firestore().collection("clans").document(clan.id)
+            ref.updateData([
+                "totalReps": FieldValue.increment(Int64(reps))
+            ])
+            
+            var updatedClan = clan
+            if let index = updatedClan.members.firstIndex(where: { $0.id == char.id }) {
+                updatedClan.members[index].repsContributed += reps
+                updatedClan.totalReps += reps
+                self.userClan = updatedClan
+            }
         }
         
         return (xpReward, goldReward)
     }
     
     // MARK: - Matchmaking & Real-Time PvP
-    func startMatchmaking(
-        for characterClass: CharacterClass,
-        type: BattleType,
-        invitedFriends: [String],
-        completion: @escaping (Bool) -> Void
-    ) {
-        guard let char = currentCharacter else { return }
-        
-        // Mock matchmaking delay of 2 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            var localTeam: [BattlePlayer] = []
-            var opponentTeam: [BattlePlayer] = []
-            
-            // Add local player using selected class and active avatar
-            let localPlayer = BattlePlayer(
-                id: char.id,
-                name: char.username,
-                characterClass: characterClass,
-                health: 100 + char.level * 10,
-                maxHealth: 100 + char.level * 10,
-                avatarName: char.avatarName
-            )
-            localTeam.append(localPlayer)
-            
-            if type == .duel1v1 {
-                let opponentClass = characterClass
-                let opponent = BattlePlayer(
-                    id: "opponent_id_999",
-                    name: "ShadowFiend",
-                    characterClass: opponentClass,
-                    health: 120,
-                    maxHealth: 120,
-                    avatarName: "avatar_\(opponentClass.rawValue.lowercased())"
-                )
-                opponentTeam.append(opponent)
+    // MARK: - Game Loop
+    // Real combat execution is now handled by MultiplayerService and BattleEngine
+    
+
+    // MARK: - Server Integrations
+    func resolvePvEBattle(won: Bool, bossLootChance: Double, xp: Int, gold: Int, completion: @escaping (String?) -> Void) {
+        let functions = Functions.functions()
+        functions.httpsCallable("resolvePvEBattle").call([
+            "won": won,
+            "bossLootChance": bossLootChance,
+            "xp": xp,
+            "gold": gold
+        ]) { result, error in
+            if let error = error {
+                print("Error resolving PvE battle on server: \(error)")
+                completion(nil)
+                return
+            }
+            if let data = result?.data as? [String: Any],
+               let droppedItemId = data["droppedItemId"] as? String {
+                completion(droppedItemId)
             } else {
-                // 3v3 team battle
-                // Add invited friends (or mock friends if not fully selected)
-                let friendsToUse = invitedFriends.isEmpty ? ["AquaHealer", "FireMage"] : invitedFriends
-                for (idx, friendName) in friendsToUse.enumerated() {
-                    let friendClass: CharacterClass = idx == 0 ? .healer : .mage
-                    let friend = BattlePlayer(
-                        id: "friend_id_\(idx)",
-                        name: friendName,
-                        characterClass: friendClass,
-                        health: 110,
-                        maxHealth: 110,
-                        avatarName: "avatar_\(friendClass.rawValue.lowercased())"
-                    )
-                    localTeam.append(friend)
-                }
-                
-                // Add 3 opponents mirroring localTeam's classes to ensure identical exercises
-                let opponentNames = ["DarkLord", "ChaosWeaver", "DoomArcher"]
-                for idx in 0..<localTeam.count {
-                    let opposingClass = localTeam[idx].characterClass
-                    let opponent = BattlePlayer(
-                        id: "opponent_id_\(idx)",
-                        name: opponentNames[idx % opponentNames.count],
-                        characterClass: opposingClass,
-                        health: 120,
-                        maxHealth: 120,
-                        avatarName: "avatar_\(opposingClass.rawValue.lowercased())"
-                    )
-                    opponentTeam.append(opponent)
-                }
-            }
-            
-            let mockBattle = Battle(
-                id: "battle_room_\(UUID().uuidString.prefix(6))",
-                type: type,
-                status: .active,
-                localTeam: localTeam,
-                opponentTeam: opponentTeam
-            )
-            
-            self.activeBattle = mockBattle
-            self.startBattleSimulation()
-            completion(true)
-        }
-    }
-    
-    // MARK: - Friend PvP Challenge
-    func startFriendDuel(
-        playerClass: CharacterClass,
-        friendName: String,
-        friendClass: CharacterClass,
-        completion: @escaping (Bool) -> Void
-    ) {
-        guard let char = currentCharacter else { return }
-        
-        // Mock connection delay to feel authentic
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            let localPlayer = BattlePlayer(
-                id: char.id,
-                name: char.username,
-                characterClass: playerClass,
-                health: 100 + char.level * 10,
-                maxHealth: 100 + char.level * 10,
-                avatarName: char.avatarName
-            )
-            
-            let opponentPlayer = BattlePlayer(
-                id: "friend_\(friendName)",
-                name: friendName,
-                characterClass: friendClass,
-                health: 120,
-                maxHealth: 120,
-                avatarName: "avatar_\(friendClass.rawValue.lowercased())"
-            )
-            
-            let duelBattle = Battle(
-                id: "duel_\(UUID().uuidString.prefix(6))",
-                type: .duel1v1,
-                status: .active,
-                localTeam: [localPlayer],
-                opponentTeam: [opponentPlayer]
-            )
-            
-            self.activeBattle = duelBattle
-            self.startBattleSimulation()
-            completion(true)
-        }
-    }
-    
-    // Simulates dynamic combat actions from the opponents and teammate actions, plus countdown timer
-    private func startBattleSimulation() {
-        battleTimer?.invalidate()
-        battleTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self, var battle = self.activeBattle else { return }
-            
-            if battle.secondsRemaining > 0 && battle.status == .active {
-                battle.secondsRemaining -= 1
-                
-                let isTeamBattle = battle.type == .team3v3
-                
-                // 1. Random opponent action every 4 seconds
-                if battle.secondsRemaining % 4 == 0 {
-                    let aliveOpponents = battle.opponentTeam.filter { !$0.isDead }
-                    let aliveAllies = battle.localTeam.filter { !$0.isDead }
-                    
-                    if let attacker = aliveOpponents.randomElement(),
-                       let target = aliveAllies.randomElement(),
-                       let targetIdx = battle.localTeam.firstIndex(where: { $0.id == target.id }) {
-                        
-                        var targetPlayer = battle.localTeam[targetIdx]
-                        var damage = Int.random(in: 8...16)
-                        var armorText = ""
-                        
-                        // Apply equipped armor defense to reduce damage if it's the local hero taking damage
-                        if targetPlayer.id == self.currentCharacter?.id {
-                            if let armorId = self.currentCharacter?.equippedArmorId,
-                               let armor = EquipmentItem.findArmor(by: armorId) {
-                                let oldDamage = damage
-                                damage = max(1, damage - armor.defense)
-                                let reducedAmt = oldDamage - damage
-                                if reducedAmt > 0 {
-                                    armorText = " (\(armor.name) blocked \(reducedAmt) DMG)"
-                                }
-                            }
-                        }
-                        
-                        var detailMsg = ""
-                        var actionType: CombatActionType = .attack
-                        
-                        // Class-specific custom moves for the opponent
-                        switch attacker.characterClass {
-                        case .archer:
-                            detailMsg = "fires Swift Shot at \(targetPlayer.name) dealing \(damage) DMG!\(armorText)"
-                        case .mage:
-                            detailMsg = "casts Fireball on \(targetPlayer.name) dealing \(damage) DMG!\(armorText)"
-                        case .swordsman:
-                            detailMsg = "performs Blade Slam on \(targetPlayer.name) dealing \(damage) DMG!\(armorText)"
-                        case .healer:
-                            // Healer can choose to self-heal or use Holy Shock on the target
-                            if Int.random(in: 0...1) == 0 {
-                                detailMsg = "casts Holy Shock on \(targetPlayer.name) dealing \(damage) DMG!\(armorText)"
-                            } else {
-                                actionType = .heal
-                                let healAmt = Int.random(in: 12...20)
-                                let attackerIdx = battle.opponentTeam.firstIndex(where: { $0.id == attacker.id }) ?? 0
-                                var oppPlayer = battle.opponentTeam[attackerIdx]
-                                oppPlayer.health = min(oppPlayer.maxHealth, oppPlayer.health + healAmt)
-                                battle.opponentTeam[attackerIdx] = oppPlayer
-                                damage = healAmt
-                                detailMsg = "casts Rejuvenate on themselves to restore \(healAmt) HP!"
-                            }
-                        }
-                        
-                        if actionType == .attack {
-                            // Handle shield first
-                            if targetPlayer.shield > 0 {
-                                let shieldDamage = min(targetPlayer.shield, damage)
-                                targetPlayer.shield -= shieldDamage
-                                let remainingDamage = damage - shieldDamage
-                                targetPlayer.health = max(0, targetPlayer.health - remainingDamage)
-                            } else {
-                                targetPlayer.health = max(0, targetPlayer.health - damage)
-                            }
-                            battle.localTeam[targetIdx] = targetPlayer
-                        }
-                        
-                        let event = CombatEvent(
-                            actorName: attacker.name,
-                            targetName: actionType == .heal ? attacker.name : targetPlayer.name,
-                            actionType: actionType,
-                            value: damage,
-                            detailText: detailMsg
-                        )
-                        battle.combatLog.append(event)
-                    }
-                }
-                
-                // 2. Random teammate action every 5 seconds (only in 3v3)
-                if isTeamBattle && battle.secondsRemaining % 5 == 0 {
-                    let aliveTeammates = battle.localTeam.enumerated().filter { $0.offset != 0 && !$0.element.isDead }
-                    let aliveOpponents = battle.opponentTeam.filter { !$0.isDead }
-                    
-                    if let teammatePair = aliveTeammates.randomElement(),
-                       let targetOpponent = aliveOpponents.randomElement(),
-                       let opponentIdx = battle.opponentTeam.firstIndex(where: { $0.id == targetOpponent.id }) {
-                        
-                        let teammateIdx = teammatePair.offset
-                        var teammate = battle.localTeam[teammateIdx]
-                        teammate.reps += 1
-                        
-                        let actionVal = Int.random(in: 10...20)
-                        var detail = ""
-                        
-                        if teammate.characterClass == .healer {
-                            // Healer heals or shields a random alive teammate
-                            var targetAllyIdx = Int.random(in: 0..<battle.localTeam.count)
-                            while battle.localTeam[targetAllyIdx].isDead {
-                                targetAllyIdx = Int.random(in: 0..<battle.localTeam.count)
-                            }
-                            var targetAlly = battle.localTeam[targetAllyIdx]
-                            
-                            if Int.random(in: 0...1) == 0 {
-                                targetAlly.health = min(targetAlly.maxHealth, targetAlly.health + actionVal)
-                                detail = "casts Rejuvenate on \(targetAlly.name) restoring \(actionVal) HP!"
-                            } else {
-                                targetAlly.shield += actionVal
-                                detail = "casts Vitality Shield on \(targetAlly.name) (+\(actionVal) Shield)!"
-                            }
-                            battle.localTeam[targetAllyIdx] = targetAlly
-                        } else {
-                            // Mage or Archer attacks opponent
-                            var opp = battle.opponentTeam[opponentIdx]
-                            opp.health = max(0, opp.health - actionVal)
-                            battle.opponentTeam[opponentIdx] = opp
-                            
-                            let skillName = teammate.characterClass == .mage ? "Fireball" : "Swift Shot"
-                            detail = "performs exercise and casts \(skillName) on \(opp.name) dealing \(actionVal) damage!"
-                        }
-                        
-                        battle.localTeam[teammateIdx] = teammate
-                        
-                        let event = CombatEvent(
-                            actorName: teammate.name,
-                            targetName: teammate.characterClass == .healer ? "Team" : targetOpponent.name,
-                            actionType: teammate.characterClass == .healer ? .heal : .attack,
-                            value: actionVal,
-                            detailText: detail
-                        )
-                        battle.combatLog.append(event)
-                    }
-                }
-                
-                // 3. Check win / loss conditions
-                let localTeamDead = battle.localTeam.allSatisfy { $0.isDead }
-                let opponentTeamDead = battle.opponentTeam.allSatisfy { $0.isDead }
-                
-                if localTeamDead {
-                    battle.status = .completed
-                    battle.winnerId = "opponents"
-                    self.battleTimer?.invalidate()
-                } else if opponentTeamDead {
-                    battle.status = .completed
-                    battle.winnerId = self.currentCharacter?.id
-                    self.battleTimer?.invalidate()
-                    self.awardBattleRewards(xp: 250, gold: 60, isPvP: true)
-                }
-                
-                if battle.secondsRemaining <= 0 {
-                    battle.status = .completed
-                    // Compare aggregate team reps
-                    let localReps = battle.localTeam.reduce(0) { $0 + $1.reps }
-                    let opponentReps = battle.opponentTeam.reduce(0) { $0 + $1.reps }
-                    
-                    if localReps >= opponentReps {
-                        battle.winnerId = self.currentCharacter?.id
-                        self.awardBattleRewards(xp: 180, gold: 45, isPvP: true)
-                    } else {
-                        battle.winnerId = "opponents"
-                        self.awardBattleRewards(xp: 60, gold: 15, isPvP: false)
-                    }
-                    self.battleTimer?.invalidate()
-                }
-                
-                self.activeBattle = battle
+                completion(nil)
             }
         }
     }
     
-    func registerLocalRepetition() {
-        guard var battle = activeBattle, var local = battle.localTeam.first else { return }
-        
-        local.reps += 1
-        
-        // Find alive opponents
-        let aliveOpponents = battle.opponentTeam.filter { !$0.isDead }
-        if let targetOpponent = aliveOpponents.randomElement(),
-           let oppIdx = battle.opponentTeam.firstIndex(where: { $0.id == targetOpponent.id }) {
-            
-            let damage = Int(Double(currentCharacter?.combatPower ?? 100) * 0.08)
-            var opp = battle.opponentTeam[oppIdx]
-            opp.health = max(0, opp.health - damage)
-            battle.opponentTeam[oppIdx] = opp
-            
-            let event = CombatEvent(
-                actorName: local.name,
-                targetName: opp.name,
-                actionType: .attack,
-                value: damage,
-                detailText: "performs \(local.characterClass.primaryExercise) to deal \(damage) damage to \(opp.name)!"
-            )
-            battle.combatLog.append(event)
+    func attackWorldBoss(damage: Int) {
+        let functions = Functions.functions()
+        functions.httpsCallable("attackWorldBoss").call(["damage": damage]) { result, error in
+            if let error = error {
+                print("Error attacking world boss: \(error)")
+            }
         }
-        
-        battle.localTeam[0] = local
-        
-        let allOpponentsDead = battle.opponentTeam.allSatisfy { $0.isDead }
-        if allOpponentsDead {
-            battle.status = .completed
-            battle.winnerId = local.id
-            battleTimer?.invalidate()
-            awardBattleRewards(xp: 250, gold: 60, isPvP: true)
-        }
-        
-        self.activeBattle = battle
     }
-    
-    func leaveMatch() {
-        battleTimer?.invalidate()
-        activeBattle = nil
-    }
-    
     // MARK: - Clan Operations
     func createClan(name: String, description: String, emblem: String) {
         guard let char = currentCharacter else { return }
@@ -503,6 +253,106 @@ class FirebaseService: ObservableObject {
         var updatedChar = char
         updatedChar.clanId = newClan.id
         syncCharacter(updatedChar)
+    }
+    
+    func sendFriendRequest(to targetUid: String) async {
+        guard currentCharacter != nil else { return }
+        let functions = Functions.functions()
+        do {
+            _ = try await functions.httpsCallable("sendFriendRequest").call(["targetUid": targetUid])
+        } catch {
+            print("Failed to send friend request: \(error)")
+        }
+    }
+    
+    func fetchCharacters(byUids uids: [String]) async -> [Character] {
+        guard !uids.isEmpty else { return [] }
+        var characters: [Character] = []
+        do {
+            for i in stride(from: 0, to: uids.count, by: 10) {
+                let end = min(i + 10, uids.count)
+                let chunk = Array(uids[i..<end])
+                let snapshot = try await Firestore.firestore().collection("users")
+                    .whereField("id", in: chunk)
+                    .getDocuments()
+                for doc in snapshot.documents {
+                    if let char = try? doc.data(as: Character.self) {
+                        characters.append(char)
+                    }
+                }
+            }
+        } catch {
+            print("Failed to fetch characters: \(error)")
+        }
+        return characters
+    }
+    
+    func acceptFriendRequest(from uid: String) async {
+        let functions = Functions.functions()
+        do {
+            _ = try await functions.httpsCallable("acceptFriendRequest").call(["senderUid": uid])
+        } catch {
+            print("Failed to accept friend request: \(error)")
+        }
+    }
+    
+    func declineFriendRequest(from uid: String) {
+        let functions = Functions.functions()
+        functions.httpsCallable("declineFriendRequest").call(["senderUid": uid]) { _, error in
+            if let error = error {
+                print("Failed to decline friend request: \(error)")
+            }
+        }
+    }
+    
+    func startFriendDuel(playerClass: CharacterClass, friendName: String, friendClass: CharacterClass, completion: @escaping (Bool) -> Void) {
+        // Mock duel start. Real logic would go through MultiplayerService.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            completion(true)
+        }
+    }
+    
+    func consumeEnergy(amount: Int) -> Bool {
+        guard let char = currentCharacter else { return false }
+        if char.energy >= amount {
+            var updated = char
+            updated.energy -= amount
+            syncCharacter(updated)
+            return true
+        }
+        return false
+    }
+    
+    func handleHealthSync(result: HealthSyncResult) {
+        guard var char = currentCharacter else { return }
+        
+        var prog = char.progressions[char.selectedClass.rawValue] ?? ClassProgression()
+        
+        prog.xp += result.xpGained
+        char.energy = min(char.maxEnergy, char.energy + result.energyGained)
+        char.gold += result.goldGained
+        char.lastHealthSyncDate = Date()
+        
+        var leveledUp = false
+        while prog.xp >= (prog.level * 150) {
+            prog.xp -= (prog.level * 150)
+            prog.level += 1
+            char.maxEnergy += 10
+            char.energy = char.maxEnergy
+            leveledUp = true
+        }
+        
+        char.progressions[char.selectedClass.rawValue] = prog
+        
+        if result.damageDealt > 0 {
+            attackWorldBoss(damage: result.damageDealt)
+        }
+        
+        syncCharacter(char)
+        
+        if leveledUp {
+            print("Leveled up to \(prog.level)!")
+        }
     }
     
     func updateClanDescription(description: String) {
@@ -590,11 +440,12 @@ class FirebaseService: ObservableObject {
         guard var clan = userClan else { return }
         let endsAt = Date().addingTimeInterval(86400) // 24 hours from now
         clan.activeWar = ClanWar(
+            phase: .active,
+            phaseEndsAt: endsAt,
             opponentClanId: "opponent_clan_555",
             opponentClanName: "IronBeasts",
             myClanScore: 0,
-            opponentClanScore: 15,
-            endsAt: endsAt
+            opponentClanScore: 15
         )
         self.userClan = clan
     }
@@ -606,50 +457,46 @@ class FirebaseService: ObservableObject {
         self.userClan = clan
     }
     
+    func recordClanWarBattle(won: Bool) {
+        let points = won ? 3 : 1
+        contributeWarScore(points: points)
+    }
+    
     // MARK: - Leaderboard Fetch
-    private func loadMockLeaderboards() {
-        let classes: [CharacterClass] = [.archer, .mage, .swordsman, .healer]
-        let names = ["Valkyrie", "Aegis", "Gollum", "Wizard99", "Merlin", "Legolas", "Conan", "PriestOfLight"]
-        
-        var players: [Character] = []
-        for i in 0..<20 {
-            let cls = classes.randomElement() ?? .swordsman
-            let level = Int.random(in: 5...25)
-            let totalReps = Int.random(in: 50...1200)
-            
-            var mockStats = CharacterStats()
-            switch cls {
-            case .archer: mockStats.totalSquats = totalReps
-            case .mage: mockStats.totalPushups = totalReps
-            case .swordsman: mockStats.totalPullups = totalReps
-            case .healer: mockStats.totalDips = totalReps
+    // MARK: - Leaderboard Fetch
+    func fetchLeaderboards() {
+        Firestore.firestore().collection("users")
+            .order(by: "level", descending: true)
+            .limit(to: 20)
+            .getDocuments { [weak self] snapshot, error in
+                guard let self = self, let docs = snapshot?.documents else { return }
+                
+                var players: [Character] = []
+                for doc in docs {
+                    if let char = try? doc.data(as: Character.self) {
+                        players.append(char)
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    self.leaderboards["global"] = players
+                    self.leaderboards["friends"] = players.filter { self.friends.contains($0.username) }
+                }
             }
-            
-            let pvpWins = Int.random(in: 5...60)
-            let pvpTrophies = 1000 + pvpWins * 20 + Int.random(in: -50...50)
-            
-            var char = Character(
-                id: "mock_user_\(i)",
-                username: names.randomElement() ?? "Hero\(i)",
-                selectedClass: cls,
-                level: level,
-                xp: 0,
-                gold: Int.random(in: 100...2000),
-                stats: mockStats
-            )
-            char.pvpWins = pvpWins
-            char.pvpTrophies = pvpTrophies
-            players.append(char)
+    }
+    
+    func equipItem(itemId: String, slot: EquipmentSlot) {
+        guard var char = currentCharacter else { return }
+        switch slot {
+        case .weapon:
+            char.equipWeapon(itemId: itemId)
+        case .armor:
+            char.equipArmor(itemId: itemId)
+        case .ring:
+            char.equipRing(itemId: itemId)
+        case .amulet:
+            char.equipAmulet(itemId: itemId)
         }
-        
-        // Sort by level/reps to mock global standings
-        self.leaderboards["global"] = players.sorted(by: { $0.level > $1.level })
-        self.leaderboards["pvp_1v1"] = players.sorted(by: { $0.pvpTrophies > $1.pvpTrophies })
-        
-        for cls in CharacterClass.allCases {
-            self.leaderboards[cls.rawValue] = players
-                .filter { $0.selectedClass == cls }
-                .sorted(by: { $0.stats.totalReps > $1.stats.totalReps })
-        }
+        syncCharacter(char)
     }
 }

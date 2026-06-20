@@ -1,16 +1,17 @@
 import Foundation
 import Combine
 import SwiftUI
+import Vision
 
+@MainActor
 class CameraTrackingVM: ObservableObject {
     @Published var repCount: Int = 0
     @Published var isPersonDetected: Bool = false
     @Published var isCorrectForm: Bool = true
     @Published var feedbackMessage: String = "Place your device 2 meters away"
-    @Published var isSimulatorMode: Bool = true // Default to simulator mode for ease of local testing
+    @Published var isSimulatorMode: Bool = true
     
-    @Published var skeletonPoints: [JointPoint] = []
-    @Published var skeletonLines: [BoneLine] = []
+    @Published var rawJoints: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
     
     // Boss HP & Combat Metrics
     @Published var bossMaxHP: Int = 0
@@ -26,7 +27,9 @@ class CameraTrackingVM: ObservableObject {
     let targetReps: Int?
     var onComplete: ((Int) -> Void)?
     
-    private let tracker = VisionTracker()
+    let engine = AITrackerEngine()
+    let cameraManager = CameraManager()
+    
     private let firebaseService = FirebaseService.shared
     private var cancellables = Set<AnyCancellable>()
     private var lastRepTimestamp: Date? = nil
@@ -48,14 +51,13 @@ class CameraTrackingVM: ObservableObject {
             self.targetReps = targetReps
         }
         
-        tracker.setExercise(selectedClass)
-        tracker.isSimulatorMode = self.isSimulatorMode
+        engine.setExercise(selectedClass)
         
         setupBindings()
     }
     
     private func setupBindings() {
-        tracker.$repCount
+        engine.$repsCount
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newCount in
                 guard let self = self else { return }
@@ -66,36 +68,43 @@ class CameraTrackingVM: ObservableObject {
             }
             .store(in: &cancellables)
             
-        tracker.$isPersonDetected
+        engine.$isPersonDetected
             .receive(on: DispatchQueue.main)
             .assign(to: &$isPersonDetected)
             
-        tracker.$isCorrectForm
+        engine.$isCorrectForm
             .receive(on: DispatchQueue.main)
             .assign(to: &$isCorrectForm)
             
-        tracker.$currentFeedback
+        engine.$feedbackMessage
             .receive(on: DispatchQueue.main)
             .assign(to: &$feedbackMessage)
             
-        tracker.$bodySkeletonPoints
+        cameraManager.$joints
             .receive(on: DispatchQueue.main)
-            .assign(to: &$skeletonPoints)
-            
-        tracker.$bodySkeletonLines
-            .receive(on: DispatchQueue.main)
-            .assign(to: &$skeletonLines)
+            .sink { [weak self] joints in
+                guard let self = self else { return }
+                self.rawJoints = joints
+                if !self.isSimulatorMode {
+                    self.engine.processFrame(joints: joints)
+                }
+            }
+            .store(in: &cancellables)
             
         $isSimulatorMode
             .receive(on: DispatchQueue.main)
             .sink { [weak self] mode in
-                self?.tracker.isSimulatorMode = mode
+                if mode {
+                    self?.cameraManager.stopSession()
+                } else {
+                    self?.cameraManager.checkPermission()
+                }
             }
             .store(in: &cancellables)
     }
     
     func simulateRep() {
-        tracker.simulateRepetition()
+        engine.simulateRepetition()
     }
     
     private func onRepetitionPerformed() {
@@ -157,8 +166,11 @@ class CameraTrackingVM: ObservableObject {
         }
         
         // Record reps to character profile
-        if firebaseService.activeBattle != nil {
-            firebaseService.registerLocalRepetition()
+        if BattleEngine.shared.activeBattle != nil || MultiplayerService.shared.activeBattle != nil {
+            let isCritical = activeCombo >= 1.5
+            // Register rep in the current active battle (Firebase or local Boss Engine)
+            BattleEngine.shared.registerPlayerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
+            MultiplayerService.shared.registerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
         } else {
             firebaseService.awardBattleRewards(xp: 15, gold: 5)
         }

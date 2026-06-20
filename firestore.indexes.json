@@ -1,0 +1,37 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "selectedClass", "order": "ASCENDING" },
+        { "fieldPath": "stats.totalSquats", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "selectedClass", "order": "ASCENDING" },
+        { "fieldPath": "stats.totalPushups", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "selectedClass", "order": "ASCENDING" },
+        { "fieldPath": "stats.totalPullups", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "selectedClass", "order": "ASCENDING" },
+        { "fieldPath": "stats.totalDips", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

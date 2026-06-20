@@ -1,0 +1,146 @@
+rules_version = '2';
+
+// =====================================================
+// Firestore security rules for WorkoutTracker, FoodTracker & RPG Fitness
+// =====================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =====================================================
+    // WORKOUT TRACKER RULES (Do not touch)
+    // =====================================================
+
+    // === Curated content (read-only) ===
+    match /legendary_routines/{routineId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /explore_programs/{programId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // === User-generated shared workouts ===
+    match /shared_workouts/{workoutId} {
+      // Read: only approved workouts, OR your own doc (any status)
+      allow read: if (resource.data.status == "approved")
+                  || (request.auth != null
+                      && resource.data.creatorUid == request.auth.uid);
+
+      // Create: must be authed; creatorUid must equal own UID;
+      // must start as pending with zero reports; size limits on text.
+      allow create: if request.auth != null
+                    && request.resource.data.creatorUid == request.auth.uid
+                    && request.resource.data.status == "pending"
+                    && request.resource.data.reportCount == 0
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() > 0
+                    && request.resource.data.title.size() <= 200
+                    && (!("description" in request.resource.data)
+                        || (request.resource.data.description is string
+                            && request.resource.data.description.size() <= 2000));
+
+      // Update: server-only (no client updates — moderation function uses admin)
+      allow update: if false;
+
+      // Delete: only owner can delete their own document
+      allow delete: if request.auth != null
+                    && resource.data.creatorUid == request.auth.uid;
+    }
+
+    // === Reports ===
+    match /reports/{reportId} {
+      allow create: if request.auth != null
+                    && request.resource.data.reporterUid == request.auth.uid
+                    && request.resource.data.workoutId is string
+                    && request.resource.data.reason in
+["spam", "hate", "harassment", "sexual", "violence", "dangerous", "other"]
+                    && (!("details" in request.resource.data)
+                        || (request.resource.data.details is string
+                            && request.resource.data.details.size() <= 500));
+      allow read, update, delete: if false;
+    }
+
+    // === Per-user blocked list ===
+    match /users/{userId}/blocked/{blockedUid} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // =====================================================
+    // FOOD TRACKER RULES
+    // =====================================================
+
+    // === Curated content (read-only for clients, managed by admin) ===
+    match /premium_recipes/{recipeId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /academy_categories/{categoryId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /diets/{dietId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /fasting_plans/{planId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // === Custom Barcodes (Shared Crowdsourced DB) ===
+    match /custom_barcodes/{barcode} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    // === Global Community Foods (AI & Manual) ===
+    match /global_community_foods/{foodId} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+      allow delete: if false;
+    }
+
+    // =====================================================
+    // RPG FITNESS RULES
+    // =====================================================
+    
+    // Users Collection
+    match /users/{userId} {
+      // Anyone logged in can read user profiles
+      allow read: if request.auth != null;
+      // Users can only write to their own document
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Clans Collection
+    match /clans/{clanId} {
+      // Anyone can read clans
+      allow read: if request.auth != null;
+      // Writing to clans must be done via Cloud Functions ONLY
+      allow write: if false;
+    }
+    
+    // World Bosses Collection
+    match /world_bosses/{bossId} {
+      // Anyone can read the active world boss
+      allow read: if request.auth != null;
+      // Attacking the world boss must be done via Cloud Functions ONLY
+      allow write: if false;
+    }
+    
+    // Matchmaking Collection
+    match /matchmaking/{ticketId} {
+      // Anyone can read tickets
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // === Default deny for everything else ===
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

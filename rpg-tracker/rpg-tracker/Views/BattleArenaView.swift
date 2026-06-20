@@ -32,11 +32,13 @@ enum StorySetupStep: Equatable {
 }
 
 struct BattleArenaView: View {
+    @Environment(\.scenePhase) var scenePhase
     @StateObject private var viewModel = BattleVM()
     @State private var selectedTab: Int = 0 // 0: Arena, 1: 1v1 Leaderboards
     @State private var isInLobby: Bool = false
     @State private var showInviteSheet: Bool = false
     @State private var showMatchmakingClassPicker: Bool = false
+    var initialPvPType: BattleType? = nil
     
     // Story mode state extensions
     @State private var isStoryModeActive: Bool = false
@@ -168,6 +170,22 @@ struct BattleArenaView: View {
                                     withAnimation {
                                         storySetupStep = .selectMode
                                     }
+                                },
+                                selectBossRaid: {
+                                    viewModel.selectedPvPType = .bossRaid
+                                    if let char = FirebaseService.shared.currentCharacter {
+                                        if let wb = FirebaseService.shared.activeWorldBoss, wb.isActive {
+                                            let template = Boss.templates.first { $0.id == wb.bossTemplateId } ?? Boss.templates.last!
+                                            var activeTemplate = template
+                                            activeTemplate.maxHealth = wb.maxHealth
+                                            activeTemplate.currentHealth = wb.currentHealth
+                                            activeTemplate.isGlobalWorldBoss = true
+                                            BattleEngine.shared.startBossRaid(bossTemplate: activeTemplate, player: char)
+                                        } else {
+                                            let randomBoss = Boss.templates.randomElement()!
+                                            BattleEngine.shared.startBossRaid(bossTemplate: randomBoss, player: char)
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -176,7 +194,14 @@ struct BattleArenaView: View {
                 .overlay(
                     Group {
                         if viewModel.duelFinished {
-                            DuelResultOverlay(winnerTitle: viewModel.winnerName, closeAction: viewModel.endMatch)
+                            if viewModel.selectedPvPType == .bossRaid {
+                                BossRaidResultOverlay(
+                                    winnerTitle: viewModel.winnerName,
+                                    closeAction: viewModel.endMatch
+                                )
+                            } else {
+                                DuelResultOverlay(winnerTitle: viewModel.winnerName, closeAction: viewModel.endMatch)
+                            }
                         }
                         if showStoryWinOverlay {
                             StoryWinOverlay(stage: selectedStoryStage ?? 1, closeAction: {
@@ -271,6 +296,38 @@ struct BattleArenaView: View {
                 }
             }
         }
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .background {
+                if viewModel.activeBattle != nil {
+                    // Surrender the match if app goes to background
+                    MultiplayerService.shared.surrenderMatch()
+                } else if viewModel.isSearching {
+                    // Just cancel queue if we are searching
+                    viewModel.cancelQueue()
+                }
+            }
+        }
+        .navigationTitle("ARENA & ARENAS")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if let type = initialPvPType {
+                viewModel.selectedPvPType = type
+                if type == .bossRaid {
+                    if let char = FirebaseService.shared.currentCharacter {
+                        if let wb = FirebaseService.shared.activeWorldBoss, wb.isActive {
+                            let template = Boss.templates.first { $0.id == wb.bossTemplateId } ?? Boss.templates.last!
+                            var activeTemplate = template
+                            activeTemplate.maxHealth = wb.maxHealth
+                            activeTemplate.currentHealth = wb.currentHealth
+                            activeTemplate.isGlobalWorldBoss = true
+                            BattleEngine.shared.startBossRaid(bossTemplate: activeTemplate, player: char)
+                        }
+                    }
+                } else {
+                    viewModel.startQueue()
+                }
+            }
+        }
     }
     
     private func handleStoryStageWin() {
@@ -294,6 +351,7 @@ struct PvPModeSelectorView: View {
     let select1v1: () -> Void
     let select3v3: () -> Void
     let selectStory: () -> Void
+    let selectBossRaid: () -> Void
     
     var body: some View {
         VStack(spacing: 24) {
@@ -469,6 +527,57 @@ struct PvPModeSelectorView: View {
                     .shadow(color: Theme.primary.opacity(0.1), radius: 8, x: 0, y: 4)
                 }
                 .buttonStyle(TactileButtonStyle())
+                
+                // Solo Boss Raid Card
+                Button(action: selectBossRaid) {
+                    HStack(spacing: 18) {
+                        ZStack {
+                            Circle()
+                                .fill(Theme.warning.opacity(0.15))
+                                .frame(width: 54, height: 54)
+                            
+                            Image(systemName: "flame.fill")
+                                .font(.title3)
+                                .foregroundColor(Theme.warning)
+                        }
+                        .glow(color: Theme.warning.opacity(0.35), radius: 6)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("SOLO BOSS RAID")
+                                .font(.system(.subheadline, design: .default))
+                                .fontWeight(.black)
+                                .foregroundColor(Theme.textPrimary)
+                            
+                            Text("Face off against a massive boss. Your workout reps deal direct damage to the beast.")
+                                .font(.caption2)
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .lineSpacing(2)
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Theme.cardBackground.opacity(0.85))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(LinearGradient(
+                                colors: [Theme.warning.opacity(0.35), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ), lineWidth: 1.5)
+                    )
+                    .shadow(color: Theme.warning.opacity(0.1), radius: 8, x: 0, y: 4)
+                }
+                .buttonStyle(TactileButtonStyle())
             }
             .padding(.horizontal)
             
@@ -602,24 +711,24 @@ struct LobbySlotRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if let name = friendName {
-                let mockClass: CharacterClass = name == "AquaHealer" ? .healer : .mage
+                let friendClass: CharacterClass = name == "AquaHealer" ? .healer : .mage
                 Circle()
-                    .fill(mockClass.themeColor.opacity(0.15))
+                    .fill(friendClass.themeColor.opacity(0.15))
                     .frame(width: 44, height: 44)
                     .overlay(
                         Image(systemName: "person.fill")
-                            .foregroundColor(mockClass.themeColor)
+                            .foregroundColor(friendClass.themeColor)
                     )
-                    .glow(color: mockClass.themeColor.opacity(0.3), radius: 4)
+                    .glow(color: friendClass.themeColor.opacity(0.3), radius: 4)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
                         .font(.subheadline)
                         .fontWeight(.bold)
                         .foregroundColor(Theme.textPrimary)
-                    Text(mockClass.rawValue.uppercased())
+                    Text(friendClass.rawValue.uppercased())
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundColor(mockClass.themeColor)
+                        .foregroundColor(friendClass.themeColor)
                 }
                 
                 Spacer()
@@ -679,14 +788,14 @@ struct InviteFriendsSheet: View {
             ScrollView {
                 VStack(spacing: 12) {
                     ForEach(viewModel.friendsList, id: \.self) { friend in
-                        let mockClass: CharacterClass = friend == "AquaHealer" ? .healer : (friend == "FireMage" ? .mage : (friend == "WindArcher" ? .archer : .swordsman))
+                        let friendClass: CharacterClass = friend == "AquaHealer" ? .healer : (friend == "FireMage" ? .mage : (friend == "WindArcher" ? .archer : .swordsman))
                         HStack {
                             Circle()
-                                .fill(mockClass.themeColor.opacity(0.15))
+                                .fill(friendClass.themeColor.opacity(0.15))
                                 .frame(width: 38, height: 38)
                                 .overlay(
                                     Image(systemName: "person.fill")
-                                        .foregroundColor(mockClass.themeColor)
+                                        .foregroundColor(friendClass.themeColor)
                                 )
                             
                             VStack(alignment: .leading, spacing: 2) {
@@ -694,7 +803,7 @@ struct InviteFriendsSheet: View {
                                     .font(.subheadline)
                                     .fontWeight(.bold)
                                     .foregroundColor(Theme.textPrimary)
-                                Text("Online • \(mockClass.rawValue)")
+                                Text("Online • \(friendClass.rawValue)")
                                     .font(.caption2)
                                     .foregroundColor(Theme.textSecondary)
                             }
@@ -807,6 +916,11 @@ struct MatchmakingQueueView: View {
                         .foregroundColor(Theme.textPrimary)
                         .tracking(1)
                     
+                    Text("Estimated wait time: ~30s")
+                        .font(.subheadline)
+                        .foregroundColor(Theme.textSecondary)
+                        .padding(.top, 4)
+                        
                     Text("Securing low latency server sync...")
                         .font(.caption)
                         .foregroundColor(Theme.textMuted)
@@ -836,9 +950,21 @@ struct MatchmakingQueueView: View {
 }
 
 // 5. Combat Arena panel (Supports both 1v1 and 3v3 layout)
+struct FloatingDamage: Identifiable {
+    let id = UUID()
+    let amount: Int
+    let isCritical: Bool
+    let isPlayer: Bool
+    var position: CGPoint
+}
+
 struct CombatArenaView: View {
     let battle: Battle
     @ObservedObject var viewModel: BattleVM
+    
+    @State private var shakeOffset: CGFloat = 0
+    @State private var combatLogCount: Int = 0
+    @State private var damageNumbers: [FloatingDamage] = []
     
     var body: some View {
         VStack(spacing: 16) {
@@ -881,7 +1007,51 @@ struct CombatArenaView: View {
             .padding(.top, 16)
             
             // Fighters Grid Layout
-            if battle.type == .duel1v1 {
+            if battle.type == .bossRaid {
+                VStack(spacing: 16) {
+                    if let boss = BattleEngine.shared.activeBoss {
+                        VStack(spacing: 8) {
+                            Text(boss.name)
+                                .font(.system(.title3, design: .monospaced))
+                                .fontWeight(.black)
+                                .foregroundColor(Theme.danger)
+                            
+                            // Big Boss HP Bar
+                            GeometryReader { geo in
+                                let isEnraged = Double(boss.currentHealth) < Double(boss.maxHealth) * 0.5
+                                
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color.black.opacity(0.5))
+                                    
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(isEnraged ? Color.red : Theme.danger)
+                                        .frame(width: max(0, geo.size.width * CGFloat(boss.currentHealth) / CGFloat(boss.maxHealth)))
+                                        .animation(.spring(), value: boss.currentHealth)
+                                        .shadow(color: isEnraged ? Color.red : Color.clear, radius: isEnraged ? 8 : 0)
+                                }
+                            }
+                            .frame(height: 24)
+                            .overlay(
+                                Text("\(boss.currentHealth) / \(boss.maxHealth) HP")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                            )
+                            .padding(.horizontal, 32)
+                        }
+                    }
+                    
+                    Text("VS")
+                        .font(.system(.headline, design: .monospaced))
+                        .fontWeight(.bold)
+                        .foregroundColor(Theme.textMuted)
+                    
+                    if let p1 = battle.localTeam.first {
+                        FighterCard(player: p1, isLocal: true)
+                    }
+                }
+            } else if battle.type == .duel1v1 {
                 // 1v1 Layout
                 HStack(spacing: 12) {
                     if let p1 = battle.localTeam.first {
@@ -977,6 +1147,88 @@ struct CombatArenaView: View {
             .padding(.horizontal)
             .padding(.bottom, 24)
         }
+        .overlay(
+            ZStack {
+                ForEach(damageNumbers) { dmg in
+                    DamageNumberView(damage: dmg)
+                }
+            }
+        )
+        .offset(x: shakeOffset)
+        .onChange(of: battle.combatLog.count) { newCount in
+            if newCount > combatLogCount {
+                combatLogCount = newCount
+                if let lastEvent = battle.combatLog.last {
+                    if lastEvent.actionType == .skill {
+                        triggerScreenShake()
+                    }
+                    
+                    let isPlayerTarget = lastEvent.targetName == FirebaseService.shared.currentCharacter?.username
+                    spawnDamageNumber(amount: lastEvent.value, isCritical: lastEvent.isCritical ?? false, isPlayerTarget: isPlayerTarget)
+                }
+            }
+        }
+        .onAppear {
+            combatLogCount = battle.combatLog.count
+        }
+    }
+    
+    private func triggerScreenShake() {
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.error)
+        
+        withAnimation(.linear(duration: 0.05)) { shakeOffset = -10 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.linear(duration: 0.05)) { shakeOffset = 10 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                withAnimation(.linear(duration: 0.05)) { shakeOffset = -5 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    withAnimation(.linear(duration: 0.05)) { shakeOffset = 0 }
+                }
+            }
+        }
+    }
+    
+    private func spawnDamageNumber(amount: Int, isCritical: Bool, isPlayerTarget: Bool) {
+        let screenWidth = UIScreen.main.bounds.width
+        let xPos = isPlayerTarget ? screenWidth * 0.25 : screenWidth * 0.75
+        let yPos: CGFloat = isPlayerTarget ? 400 : 250 // Rough estimates
+        
+        let damage = FloatingDamage(
+            amount: amount,
+            isCritical: isCritical,
+            isPlayer: !isPlayerTarget,
+            position: CGPoint(x: xPos + CGFloat.random(in: -20...20), y: yPos + CGFloat.random(in: -20...20))
+        )
+        
+        damageNumbers.append(damage)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            damageNumbers.removeAll { $0.id == damage.id }
+        }
+    }
+}
+
+struct DamageNumberView: View {
+    let damage: FloatingDamage
+    @State private var yOffset: CGFloat = 0
+    @State private var opacity: Double = 1.0
+    
+    var body: some View {
+        Text("-\(damage.amount)")
+            .font(.system(size: damage.isCritical ? 36 : 24, weight: .black, design: .monospaced))
+            .foregroundColor(damage.isCritical ? Theme.healerColor : Theme.danger)
+            .shadow(color: .black, radius: 2)
+            .position(x: damage.position.x, y: damage.position.y + yOffset)
+            .opacity(opacity)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.0)) {
+                    yOffset = -100
+                }
+                withAnimation(.easeIn(duration: 0.5).delay(0.5)) {
+                    opacity = 0
+                }
+            }
     }
 }
 
@@ -1043,6 +1295,7 @@ struct FighterCard: View {
                                 endPoint: .trailing
                              ))
                             .frame(width: CGFloat(player.health) / CGFloat(player.maxHealth) * geo.size.width)
+                            .animation(.spring(), value: player.health)
                     }
                 }
                 .frame(height: 8)
@@ -1101,6 +1354,7 @@ struct CompactFighterCard: View {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(player.isDead ? Color.clear : (player.health < 30 ? Theme.danger : player.characterClass.themeColor))
                         .frame(width: CGFloat(player.health) / CGFloat(player.maxHealth) * geo.size.width)
+                        .animation(.spring(), value: player.health)
                 }
             }
             .frame(height: 5)
@@ -1140,10 +1394,19 @@ struct LogRowView: View {
                 HStack(spacing: 4) {
                     Text(event.actorName)
                         .fontWeight(.bold)
-                        .foregroundColor(Theme.textPrimary)
+                        .foregroundColor(event.actorName == FirebaseService.shared.currentCharacter?.username ? FirebaseService.shared.currentCharacter?.selectedClass.themeColor ?? Theme.textPrimary : Theme.danger)
                     
-                    Text(event.detailText)
-                        .foregroundColor(Theme.textSecondary)
+                    if event.isCritical == true {
+                        Text(event.detailText)
+                            .foregroundColor(Theme.healerColor) // Gold/Yellow color for crits
+                            .fontWeight(.black)
+                    } else if event.detailText.contains("[BAD FORM]") || event.detailText.contains("[ENRAGED]") || event.detailText.contains("[SKILL:") {
+                        Text(event.detailText)
+                            .foregroundColor(Theme.danger)
+                    } else {
+                        Text(event.detailText)
+                            .foregroundColor(Theme.textSecondary)
+                    }
                 }
                 .font(.system(size: 11, design: .monospaced))
             }
@@ -1175,8 +1438,8 @@ struct DuelResultOverlay: View {
                         .fontWeight(.semibold)
                     
                     HStack(spacing: 24) {
-                        RewardBadge(icon: "star.fill", color: Theme.success, label: "+250 XP")
-                        RewardBadge(icon: "centsign.circle.fill", color: Theme.healerColor, label: "+60 Gold")
+                        RewardBadge(icon: "star.fill", value: "+250 XP", color: Theme.success)
+                        RewardBadge(icon: "centsign.circle.fill", value: "+60 Gold", color: Theme.healerColor)
                     }
                 }
                 .padding()
@@ -1207,19 +1470,111 @@ struct DuelResultOverlay: View {
     }
 }
 
-struct RewardBadge: View {
-    let icon: String
-    let color: Color
-    let label: String
+struct BossRaidResultOverlay: View {
+    @ObservedObject var engine = BattleEngine.shared
+    let winnerTitle: String
+    let closeAction: () -> Void
     
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .foregroundColor(color)
-            Text(label)
-                .font(.caption)
-                .fontWeight(.bold)
-                .foregroundColor(Theme.textPrimary)
+        ZStack {
+            Color.black.opacity(0.85)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 24) {
+                Text(winnerTitle)
+                    .font(.system(size: 36, weight: .black, design: .monospaced))
+                    .foregroundColor(winnerTitle == "VICTORY!" ? Theme.success : Theme.danger)
+                    .glow(color: winnerTitle == "VICTORY!" ? Theme.success.opacity(0.5) : Theme.danger.opacity(0.5), radius: 10)
+                
+                VStack(spacing: 12) {
+                    Text(winnerTitle == "VICTORY!" ? "BOSS DEFEATED" : "YOU DIED")
+                        .font(.caption)
+                        .foregroundColor(Theme.textMuted)
+                        .fontWeight(.semibold)
+                    
+                    if winnerTitle == "VICTORY!" {
+                        // We don't have the boss's exact xp/gold here easily without passing it,
+                        // so we can just show a generic "Bounty Claimed" or pass it.
+                        // For now just show "Bounty Claimed"
+                        HStack(spacing: 24) {
+                            RewardBadge(icon: "star.fill", value: "XP BTY", color: Theme.success)
+                            RewardBadge(icon: "centsign.circle.fill", value: "GOLD BTY", color: Theme.healerColor)
+                        }
+                        
+                        if let droppedLoot = engine.droppedLoot {
+                            Divider()
+                                .background(Theme.border)
+                                .padding(.vertical, 8)
+                            
+                            Text("EPIC LOOT SECURED")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(droppedLoot.rarity.color)
+                                .fontWeight(.bold)
+                                .glow(color: droppedLoot.rarity.color.opacity(0.5), radius: 4)
+                            
+                            HStack(spacing: 16) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Theme.cardBackground)
+                                        .frame(width: 50, height: 50)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(droppedLoot.rarity.color, lineWidth: 2)
+                                        )
+                                        .glow(color: droppedLoot.rarity.color.opacity(0.4), radius: 6)
+                                    
+                                    Image(systemName: droppedLoot.getIconName())
+                                        .font(.title2)
+                                        .foregroundColor(droppedLoot.rarity.color)
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(droppedLoot.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Theme.textPrimary)
+                                    Text("\(droppedLoot.rarity.rawValue) \(droppedLoot.slot.rawValue)")
+                                        .font(.caption2)
+                                        .foregroundColor(droppedLoot.rarity.color)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(Color.black.opacity(0.4))
+                            .cornerRadius(12)
+                        }
+                    } else {
+                        Text("The Boss proved too powerful. Train harder.")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding()
+                .background(Theme.secondaryCard)
+                .cornerRadius(12)
+                
+                Button(action: closeAction) {
+                    Text("CONFIRM & CLOSE")
+                        .font(.subheadline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Theme.primary)
+                        .cornerRadius(10)
+                }
+                .padding(.horizontal)
+            }
+            .padding(24)
+            .background(Theme.cardBackground)
+            .cornerRadius(20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Theme.border, lineWidth: 2)
+            )
+            .padding(.horizontal, 32)
         }
     }
 }
@@ -1389,14 +1744,14 @@ struct StoryInviteFriendsInlineView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     ForEach(friends, id: \.self) { friend in
-                        let mockClass: CharacterClass = friend == "AquaHealer" ? .healer : (friend == "FireMage" ? .mage : (friend == "WindArcher" ? .archer : .swordsman))
+                        let friendClass: CharacterClass = friend == "AquaHealer" ? .healer : (friend == "FireMage" ? .mage : (friend == "WindArcher" ? .archer : .swordsman))
                         HStack {
                             Circle()
-                                .fill(mockClass.themeColor.opacity(0.15))
+                                .fill(friendClass.themeColor.opacity(0.15))
                                 .frame(width: 38, height: 38)
                                 .overlay(
                                     Image(systemName: "person.fill")
-                                        .foregroundColor(mockClass.themeColor)
+                                        .foregroundColor(friendClass.themeColor)
                                 )
                             
                             VStack(alignment: .leading, spacing: 2) {
@@ -1404,7 +1759,7 @@ struct StoryInviteFriendsInlineView: View {
                                     .font(.caption)
                                     .fontWeight(.bold)
                                     .foregroundColor(Theme.textPrimary)
-                                Text("Online • Lvl 12 \(mockClass.rawValue)")
+                                Text("Online • Lvl 12 \(friendClass.rawValue)")
                                     .font(.system(size: 8))
                                     .foregroundColor(Theme.textSecondary)
                             }
@@ -2078,8 +2433,8 @@ struct StoryWinOverlay: View {
                         .foregroundColor(Theme.textMuted)
                     
                     HStack(spacing: 20) {
-                        RewardBadge(icon: "star.fill", color: Theme.success, label: "+\(stage * 50) XP")
-                        RewardBadge(icon: "centsign.circle.fill", color: Theme.healerColor, label: "+\(stage * 10) Gold")
+                        RewardBadge(icon: "star.fill", value: "+\(stage * 50) XP", color: Theme.success)
+                        RewardBadge(icon: "centsign.circle.fill", value: "+\(stage * 10) Gold", color: Theme.healerColor)
                     }
                 }
                 .padding()

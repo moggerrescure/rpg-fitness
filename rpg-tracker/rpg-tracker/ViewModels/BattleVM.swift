@@ -7,7 +7,6 @@ class BattleVM: ObservableObject {
     @Published var duelFinished: Bool = false
     @Published var winnerName: String = ""
     @Published var showCameraTracker: Bool = false
-    
     // PvP selector additions
     @Published var selectedPvPType: BattleType = .duel1v1
     @Published var invitedFriends: [String] = []
@@ -25,31 +24,89 @@ class BattleVM: ObservableObject {
             }
             .store(in: &cancellables)
             
-        // Bind to firebaseService activeBattle state
-        firebaseService.$activeBattle
+            
+        // Bind to BattleEngine activeBattle state for Boss Raids
+        BattleEngine.shared.$activeBattle
             .receive(on: DispatchQueue.main)
             .sink { [weak self] battle in
                 guard let self = self else { return }
-                
-                let oldBattle = self.activeBattle
-                self.activeBattle = battle
-                
-                // Auto-trigger camera tracking if we transition into a new active combat session
-                if oldBattle == nil && battle != nil && battle?.status == .active {
-                    self.showCameraTracker = true
-                }
-                
-                if let battle = battle, battle.status == .completed {
-                    self.duelFinished = true
-                    if let winnerId = battle.winnerId {
-                        if winnerId == self.firebaseService.currentCharacter?.id {
-                            self.winnerName = "VICTORY!"
-                        } else {
-                            self.winnerName = "DEFEAT!"
-                        }
-                    } else {
-                        self.winnerName = "DRAW!"
+                // Only process if it's a bossRaid
+                if battle?.type == .bossRaid {
+                    let oldBattle = self.activeBattle
+                    self.activeBattle = battle
+                    
+                    if oldBattle == nil && battle != nil && battle?.status == .active {
+                        self.showCameraTracker = true
                     }
+                    
+                    if let battle = battle, battle.status == .completed {
+                        self.duelFinished = true
+                        if let winnerId = battle.winnerId {
+                            if winnerId == self.firebaseService.currentCharacter?.id {
+                                self.winnerName = "VICTORY!"
+                            } else {
+                                self.winnerName = "DEFEAT!"
+                            }
+                        } else {
+                            self.winnerName = "DRAW!"
+                        }
+                    }
+                }
+            }
+            .store(in: &cancellables)
+            
+        // Bind to MultiplayerService activeBattle state for real 1v1, team3v3, clanWar PvP
+        MultiplayerService.shared.$activeBattle
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] battle in
+                guard let self = self else { return }
+                if battle?.type == .duel1v1 || battle?.type == .clanWar || battle?.type == .team3v3 || battle?.type == .bossRaid {
+                    let oldBattle = self.activeBattle
+                    self.activeBattle = battle
+                    
+                    if oldBattle == nil && battle != nil && battle?.status == .active {
+                        self.showCameraTracker = true
+                    }
+                    
+                    if let battle = battle, battle.status == .completed {
+                        self.duelFinished = true
+                        
+                        if battle.type == .bossRaid {
+                            // Calculate total damage dealt to the boss
+                            if let bossPlayer = battle.opponentTeam.first {
+                                let damageDealt = bossPlayer.maxHealth - bossPlayer.health
+                                self.winnerName = "\(damageDealt) DMG!"
+                                self.firebaseService.attackWorldBoss(damage: damageDealt)
+                            }
+                        } else {
+                            if let winnerId = battle.winnerId {
+                                let won = winnerId == self.firebaseService.currentCharacter?.id
+                                if won {
+                                    self.winnerName = "VICTORY!"
+                                } else {
+                                    self.winnerName = "DEFEAT!"
+                                }
+                                
+                                if self.selectedPvPType == .clanWar || battle.type == .clanWar {
+                                    self.firebaseService.recordClanWarBattle(won: won)
+                                }
+                            } else {
+                                self.winnerName = "DRAW!"
+                                if self.selectedPvPType == .clanWar || battle.type == .clanWar {
+                                    self.firebaseService.recordClanWarBattle(won: false)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .store(in: &cancellables)
+            
+        MultiplayerService.shared.$isSearching
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] searching in
+                if self?.selectedPvPType == .duel1v1 || self?.selectedPvPType == .clanWar || self?.selectedPvPType == .team3v3 {
+                    self?.isSearching = searching
                 }
             }
             .store(in: &cancellables)
@@ -60,26 +117,22 @@ class BattleVM: ObservableObject {
     }
     
     func startQueue() {
-        isSearching = true
-        firebaseService.startMatchmaking(
-            for: currentClass,
-            type: selectedPvPType,
-            invitedFriends: invitedFriends
-        ) { [weak self] success in
-            if success {
-                self?.isSearching = false
-                self?.showCameraTracker = true
-            }
+        if selectedPvPType == .bossRaid {
+            // Wait, does MultiplayerService handle bossRaid? Yes.
+            MultiplayerService.shared.startMatchmaking(for: currentClass, type: selectedPvPType, invitedFriends: invitedFriends)
+        } else {
+            MultiplayerService.shared.startMatchmaking(for: currentClass, type: selectedPvPType, invitedFriends: invitedFriends)
         }
     }
     
     func cancelQueue() {
         isSearching = false
-        firebaseService.leaveMatch()
+        MultiplayerService.shared.leaveMatch()
     }
     
     func endMatch() {
-        firebaseService.leaveMatch()
+        BattleEngine.shared.endBattle()
+        MultiplayerService.shared.leaveMatch()
         duelFinished = false
         showCameraTracker = false
         invitedFriends.removeAll() // Clear invited friends after match

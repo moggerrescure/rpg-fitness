@@ -8,6 +8,7 @@ struct PlayerProfileView: View {
     @State private var isEditingUsername = false
     @State private var usernameInput = ""
     @State private var showAvatarSelector = false
+    @State private var showInventory = false
     
     init(character: Character) {
         // Direct observation of FirebaseService handles reactivity; signature kept for compatibility.
@@ -15,6 +16,11 @@ struct PlayerProfileView: View {
     
     private var character: Character {
         firebaseService.currentCharacter ?? Character(id: "local", username: "FitnessHero", selectedClass: .archer)
+    }
+    
+    var equippedWeapon: EquipmentItem? {
+        guard let weaponId = character.equippedWeaponId else { return nil }
+        return EquipmentItem.findWeapon(by: weaponId)
     }
     
     var equippedArmor: EquipmentItem? {
@@ -442,6 +448,12 @@ struct PlayerProfileView: View {
         }
         .sheet(isPresented: $showArmoryShop) {
             ArmoryShopView()
+        }
+        .sheet(isPresented: $showArmoryShop) {
+            ArmoryShopView()
+        }
+        .fullScreenCover(isPresented: $showInventory) {
+            InventoryView()
         }
         .sheet(isPresented: $showAvatarSelector) {
             AvatarSelectorView(selectedAvatar: Binding(

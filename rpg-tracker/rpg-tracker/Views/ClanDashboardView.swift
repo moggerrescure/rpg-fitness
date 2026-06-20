@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct ClanDashboardView: View {
@@ -34,6 +35,15 @@ struct ClanDashboardView: View {
                 } else {
                     FriendsSocialView(currentTab: $currentTab)
                 }
+            }
+            
+            if let result = viewModel.showWarResults {
+                WarResultOverlay(result: result, onClose: {
+                    withAnimation {
+                        viewModel.showWarResults = nil
+                    }
+                })
+                .zIndex(100)
             }
         }
         .hideNavigationBar()
@@ -154,7 +164,7 @@ struct NoClanView: View {
                             .background(Theme.border)
                         
                         HStack(spacing: 16) {
-                            Label("\(clan.members.count)/3 members", systemImage: "person.3.fill")
+                            Label("\(clan.members.count)/\(clan.maxMembers) members", systemImage: "person.3.fill")
                             Spacer()
                             Label("\(clan.trophies)", systemImage: "trophy.fill")
                                 .foregroundColor(Theme.healerColor)
@@ -319,6 +329,7 @@ struct ActiveClanView: View {
     @ObservedObject var viewModel: ClanVM
     @State private var isEditingDescription: Bool = false
     @State private var editedDescription: String = ""
+    @State private var showWarBattle: Bool = false
     
     var body: some View {
         VStack(spacing: 20) {
@@ -338,6 +349,21 @@ struct ActiveClanView: View {
                         Text("ID: \(clan.id)")
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundColor(Theme.textMuted)
+                        
+                        HStack(spacing: 6) {
+                            Text("LVL \(clan.level)")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Theme.accent)
+                                .foregroundColor(.white)
+                                .cornerRadius(4)
+                            
+                            Text("\(clan.xp) / \(clan.level * 2000) XP")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        .padding(.top, 2)
                     }
                     Spacer()
                     Label("\(clan.trophies)", systemImage: "trophy.fill")
@@ -476,7 +502,7 @@ struct ActiveClanView: View {
                 
                 // Member Contribution List
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("CLAN MEMBERS (\(clan.members.count)/3)")
+                    Text("CLAN MEMBERS (\(clan.members.count)/\(clan.maxMembers))")
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .foregroundColor(Theme.textSecondary)
                         .tracking(1)
@@ -572,68 +598,140 @@ struct ActiveClanView: View {
                 
                 if let war = clan.activeWar {
                     VStack(spacing: 14) {
-                        HStack {
-                            Text(clan.name.uppercased())
-                                .font(.system(.caption, design: .monospaced))
-                                .fontWeight(.black)
-                            Spacer()
-                            Text("VS")
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundColor(Theme.textMuted)
-                            Spacer()
-                            Text(war.opponentClanName.uppercased())
-                                .font(.system(.caption, design: .monospaced))
-                                .fontWeight(.black)
-                        }
-                        .foregroundColor(Theme.textPrimary)
-                        
-                        // Score bar comparison
-                        HStack(spacing: 16) {
-                            Text("\(war.myClanScore)")
-                                .font(.system(.title3, design: .monospaced))
-                                .fontWeight(.black)
-                                .foregroundColor(Theme.primary)
-                                .glow(color: Theme.primary.opacity(0.4), radius: 5)
+                        if war.phase == .searching {
+                            HStack(spacing: 12) {
+                                ProgressView()
+                                    .tint(Theme.accent)
+                                Text("SEARCHING FOR OPPONENT...")
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .fontWeight(.bold)
+                                    .foregroundColor(Theme.textPrimary)
+                                Spacer()
+                            }
                             
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(Theme.danger.opacity(0.8))
+                            HStack {
+                                LiveCountdownView(targetDate: war.phaseEndsAt, prefix: "Max wait:")
+                                Spacer()
+                            }
+                            
+                            Text("If no opponent is found within 24 hours, a training opponent will be generated.")
+                                .font(.caption2)
+                                .foregroundColor(Theme.textSecondary)
+                        } else if war.phase == .preparation {
+                            HStack {
+                                Text(clan.name.uppercased())
+                                    .font(.system(.caption, design: .monospaced))
+                                    .fontWeight(.black)
+                                Spacer()
+                                Text("VS")
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundColor(Theme.textMuted)
+                                Spacer()
+                                Text(war.opponentClanName?.uppercased() ?? "UNKNOWN")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .fontWeight(.black)
+                            }
+                            .foregroundColor(Theme.textPrimary)
+                            
+                            Text("PREPARATION PHASE")
+                                .font(.system(.subheadline, design: .monospaced))
+                                .fontWeight(.black)
+                                .foregroundColor(Theme.warning)
+                                .glow(color: Theme.warning.opacity(0.3), radius: 5)
+                            
+                            LiveCountdownView(targetDate: war.phaseEndsAt, prefix: "War starts in:")
+                                .padding(.top, 4)
+                        } else {
+                            HStack {
+                                Text(clan.name.uppercased())
+                                    .font(.system(.caption, design: .monospaced))
+                                    .fontWeight(.black)
+                                Spacer()
+                                Text("VS")
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundColor(Theme.textMuted)
+                                Spacer()
+                                Text(war.opponentClanName?.uppercased() ?? "UNKNOWN")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .fontWeight(.black)
+                            }
+                            .foregroundColor(Theme.textPrimary)
+                            
+                            // Score bar comparison
+                            HStack(spacing: 16) {
+                                Text("\(war.myClanScore)")
+                                    .font(.system(.title3, design: .monospaced))
+                                    .fontWeight(.black)
+                                    .foregroundColor(Theme.primary)
+                                    .glow(color: Theme.primary.opacity(0.4), radius: 5)
+                                
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Theme.danger.opacity(0.8))
+                                        
+                                        let total = max(1, war.myClanScore + war.opponentClanScore)
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Theme.primary)
+                                            .frame(width: CGFloat(war.myClanScore) / CGFloat(total) * geo.size.width)
+                                            .glow(color: Theme.primary.opacity(0.4), radius: 4)
+                                    }
+                                }
+                                .frame(height: 12)
+                                
+                                Text("\(war.opponentClanScore)")
+                                    .font(.system(.title3, design: .monospaced))
+                                    .fontWeight(.black)
+                                    .foregroundColor(Theme.danger)
+                                    .glow(color: Theme.danger.opacity(0.4), radius: 5)
+                            }
+                            
+                            // Show MVP if anyone scored
+                            if let mvp = clan.members.max(by: { $0.warScoreContributed < $1.warScoreContributed }), mvp.warScoreContributed > 0 {
+                                HStack {
+                                    Image(systemName: "star.fill")
+                                        .foregroundColor(.yellow)
+                                        .font(.caption2)
+                                    Text("MVP: \(mvp.username) (\(mvp.warScoreContributed) pts)")
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundColor(Theme.textSecondary)
+                                    Spacer()
+                                }
+                                .padding(.top, 4)
+                            }
+                            
+                            HStack {
+                                LiveCountdownView(targetDate: war.phaseEndsAt, prefix: "Ends in:")
+                                Spacer()
+                                let myMember = clan.members.first { $0.id == FirebaseService.shared.currentCharacter?.id }
+                                let attacksUsed = myMember?.warAttacksUsed ?? 0
+                                
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    Text("Attacks: \(attacksUsed)/3")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundColor(attacksUsed >= 3 ? Theme.danger : Theme.textSecondary)
                                     
-                                    let total = max(1, war.myClanScore + war.opponentClanScore)
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(Theme.primary)
-                                        .frame(width: CGFloat(war.myClanScore) / CGFloat(total) * geo.size.width)
-                                        .glow(color: Theme.primary.opacity(0.4), radius: 4)
+                                    Button(action: {
+                                        showWarBattle = true
+                                    }) {
+                                        Text("BATTLE (WAR)")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 8)
+                                            .background(attacksUsed >= 3 ? Theme.cardBackground : Theme.danger)
+                                            .foregroundColor(attacksUsed >= 3 ? Theme.textMuted : .white)
+                                            .cornerRadius(6)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 6)
+                                                    .stroke(attacksUsed >= 3 ? Theme.border : Color.clear, lineWidth: 1)
+                                            )
+                                    }
+                                    .buttonStyle(TactileButtonStyle())
+                                    .disabled(attacksUsed >= 3)
                                 }
                             }
-                            .frame(height: 12)
-                            
-                            Text("\(war.opponentClanScore)")
-                                .font(.system(.title3, design: .monospaced))
-                                .fontWeight(.black)
-                                .foregroundColor(Theme.danger)
-                                .glow(color: Theme.danger.opacity(0.4), radius: 5)
+                            .padding(.top, 8)
                         }
-                        
-                        HStack {
-                            Label("Ends in: 23 hours", systemImage: "clock")
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(Theme.textSecondary)
-                            Spacer()
-                            
-                            Button(action: viewModel.contributeWarScore) {
-                                Text("+ Contribute (Sim)")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Theme.success)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(6)
-                            }
-                            .buttonStyle(TactileButtonStyle())
-                        }
-                        .padding(.top, 8)
                     }
                     .padding()
                     .background(Theme.cardBackground.opacity(0.8))
@@ -674,6 +772,19 @@ struct ActiveClanView: View {
             
             Spacer()
                 .frame(height: 100)
+        }
+        .fullScreenCover(isPresented: $showWarBattle) {
+            NavigationView {
+                BattleArenaView(initialPvPType: .clanWar)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Flee War") {
+                                showWarBattle = false
+                            }
+                            .foregroundColor(Theme.danger)
+                        }
+                    }
+            }
         }
     }
 }
@@ -1126,5 +1237,161 @@ struct FriendsSocialView: View {
 struct ClanDashboardView_Previews: PreviewProvider {
     static var previews: some View {
         ClanDashboardView(currentTab: .constant(3))
+    }
+}
+
+struct WarResultOverlay: View {
+    let result: ClanWarResult
+    let onClose: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.85).ignoresSafeArea()
+            
+            VStack(spacing: 24) {
+                Text("WAR RESULTS")
+                    .font(.system(size: 32, weight: .black, design: .monospaced))
+                    .foregroundColor(result.won ? Theme.healerColor : Theme.danger)
+                    .glow(color: (result.won ? Theme.healerColor : Theme.danger).opacity(0.5), radius: 10)
+                
+                Text(result.won ? "VICTORY!" : "DEFEAT")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                
+                HStack(spacing: 40) {
+                    VStack {
+                        Text("Us")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                        Text("\(result.myScore)")
+                            .font(.title)
+                            .fontWeight(.black)
+                            .foregroundColor(result.won ? Theme.healerColor : .white)
+                    }
+                    
+                    Text("VS")
+                        .font(.headline)
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    VStack {
+                        Text("Them")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                        Text("\(result.oppScore)")
+                            .font(.title)
+                            .fontWeight(.black)
+                            .foregroundColor(!result.won ? Theme.healerColor : .white)
+                    }
+                }
+                .padding()
+                .background(Theme.cardBackground)
+                .cornerRadius(12)
+                
+                VStack(spacing: 12) {
+                    Text("REWARDS")
+                        .font(.headline)
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    HStack(spacing: 16) {
+                        Label("+\(result.xpEarned) XP", systemImage: "star.fill")
+                            .foregroundColor(.yellow)
+                        
+                        Label("\(result.trophiesChange > 0 ? "+" : "")\(result.trophiesChange)", systemImage: "trophy.fill")
+                            .foregroundColor(Theme.healerColor)
+                    }
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.bold)
+                    
+                    if result.clanLeveledUp {
+                        Text("CLAN LEVELED UP!")
+                            .font(.subheadline)
+                            .fontWeight(.black)
+                            .foregroundColor(Theme.accent)
+                            .padding(.top, 4)
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Theme.cardBackground)
+                .cornerRadius(12)
+                
+                if let loot = result.lootRewarded {
+                    VStack {
+                        Text("WAR CHEST LOOT")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                        
+                        Text(loot.name)
+                            .font(.headline)
+                            .foregroundColor(loot.rarity.color)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Theme.cardBackground)
+                    .cornerRadius(12)
+                }
+                
+                Button(action: onClose) {
+                    Text("CLAIM")
+                        .font(.headline)
+                        .fontWeight(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Theme.primary)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                .padding(.top, 16)
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Theme.background)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(result.won ? Theme.healerColor : Theme.danger, lineWidth: 2)
+                    )
+            )
+            .padding(32)
+        }
+    }
+}
+
+// 5. Live Countdown Timer View
+struct LiveCountdownView: View {
+    let targetDate: Date
+    let prefix: String
+    
+    @State private var timeRemaining: TimeInterval = 0
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "clock")
+                .font(.caption2)
+            Text("\(prefix) \(formatTime(timeRemaining))")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+        }
+        .foregroundColor(timeRemaining < 3600 ? Theme.danger : Theme.textSecondary)
+        .onAppear {
+            updateTime()
+        }
+        .onReceive(timer) { _ in
+            updateTime()
+        }
+    }
+    
+    private func updateTime() {
+        let remaining = targetDate.timeIntervalSince(Date())
+        timeRemaining = max(0, remaining)
+    }
+    
+    private func formatTime(_ interval: TimeInterval) -> String {
+        if interval <= 0 { return "00:00:00" }
+        let h = Int(interval) / 3600
+        let m = (Int(interval) % 3600) / 60
+        let s = Int(interval) % 60
+        return String(format: "%02d:%02d:%02d", h, m, s)
     }
 }

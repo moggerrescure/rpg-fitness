@@ -6,6 +6,8 @@ struct MainHubView: View {
     @State private var showClassSelection: Bool = false
     @State private var showProfile: Bool = false
     @State private var toastMessage: String? = nil
+    @State private var showDungeonRun: Bool = false
+    @State private var showNotifications: Bool = false
     
     var body: some View {
         NavigationView {
@@ -19,8 +21,10 @@ struct MainHubView: View {
                     AnimatedBackgroundView(backgroundType: .trainingRuins)
                 case 3:
                     AnimatedBackgroundView(backgroundType: .clanHall)
+                case 4:
+                    AnimatedBackgroundView(backgroundType: .mountain)
                 default:
-                    AnimatedBackgroundView(backgroundType: .tavern)
+                    AnimatedBackgroundView(backgroundType: .general)
                 }
                 
                 if firebaseService.currentCharacter == nil {
@@ -33,15 +37,17 @@ struct MainHubView: View {
                         ZStack {
                             switch currentTab {
                             case 0:
-                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage)
+                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage, showNotifications: $showNotifications)
                             case 1:
                                 BattleArenaView()
                             case 2:
                                 CameraTrackingView(selectedClass: firebaseService.currentCharacter?.selectedClass ?? .archer)
                             case 3:
                                 ClanDashboardView(currentTab: $currentTab)
+                            case 4:
+                                WorldBossDashboardView(currentTab: $currentTab)
                             default:
-                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage)
+                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage, showNotifications: $showNotifications)
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -61,6 +67,65 @@ struct MainHubView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(100)
                 }
+                
+                // Incoming Duel Challenge Overlay
+                if let duelTicket = MultiplayerService.shared.incomingDuel {
+                    Color.black.opacity(0.85).ignoresSafeArea()
+                        .zIndex(200)
+                    
+                    VStack(spacing: 24) {
+                        Image(duelTicket.playerAvatar)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 80, height: 80)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(duelTicket.playerClass.themeColor, lineWidth: 3))
+                            .shadow(color: duelTicket.playerClass.themeColor, radius: 15)
+                        
+                        Text("\(duelTicket.playerName) challenged you to a Duel!")
+                            .font(.title2.bold())
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                        
+                        Text("Class: \(duelTicket.playerClass.rawValue) | Level: \(duelTicket.playerLevel)")
+                            .font(.subheadline)
+                            .foregroundColor(Theme.textSecondary)
+                        
+                        HStack(spacing: 20) {
+                            Button("Decline") {
+                                MultiplayerService.shared.declineDuel(duelTicket)
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 24)
+                            .background(Color.red.opacity(0.8))
+                            .cornerRadius(12)
+                            
+                            Button("Accept!") {
+                                MultiplayerService.shared.acceptDuel(duelTicket)
+                                currentTab = 1 // Switch to PVP arena
+                            }
+                            .font(.headline.bold())
+                            .foregroundColor(.white)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 32)
+                            .background(Color.green)
+                            .cornerRadius(12)
+                            .shadow(color: Color.green.opacity(0.5), radius: 10)
+                        }
+                    }
+                    .padding(30)
+                    .background(Theme.cardBackground)
+                    .cornerRadius(24)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(duelTicket.playerClass.themeColor, lineWidth: 2)
+                    )
+                    .padding(.horizontal, 20)
+                    .zIndex(201)
+                    .transition(.scale.combined(with: .opacity))
+                }
             }
             .hideNavigationBar()
             .sheet(isPresented: $showClassSelection) {
@@ -72,6 +137,28 @@ struct MainHubView: View {
                 if let char = firebaseService.currentCharacter {
                     PlayerProfileView(character: char)
                 }
+            }
+            .sheet(isPresented: $showNotifications) {
+                NotificationCenterView()
+            }
+            .task {
+                MultiplayerService.shared.listenForIncomingDuels()
+                if let uid = firebaseService.currentCharacter?.id {
+                    NotificationManager.shared.listenForInAppNotifications(userId: uid)
+                }
+            }
+            .onChange(of: firebaseService.currentCharacter?.id) { newId in
+                if let uid = newId {
+                    NotificationManager.shared.listenForInAppNotifications(userId: uid)
+                } else {
+                    NotificationManager.shared.stopListening()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowDungeonRun"))) { _ in
+                showDungeonRun = true
+            }
+            .fullScreenCover(isPresented: $showDungeonRun) {
+                DungeonRunView()
             }
         }
     }
@@ -108,6 +195,7 @@ struct HomeDashboardView: View {
     @Binding var showClassSelection: Bool
     @Binding var showProfile: Bool
     @Binding var toastMessage: String?
+    @Binding var showNotifications: Bool
     @State private var showArmoryShop: Bool = false
     
     private var equippedWeapon: EquipmentItem? {
@@ -200,6 +288,29 @@ struct HomeDashboardView: View {
                             RoundedRectangle(cornerRadius: 14)
                                 .stroke(Theme.border, lineWidth: 1)
                         )
+                        // Notifications Button
+                        Button(action: { showNotifications = true }) {
+                            ZStack(alignment: .topTrailing) {
+                                Image(systemName: "bell.fill")
+                                    .foregroundColor(Theme.textPrimary)
+                                    .padding(10)
+                                    .background(Theme.cardBackground.opacity(0.85))
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+                                
+                                let unreadCount = NotificationManager.shared.inAppNotifications.filter({ !$0.isRead }).count
+                                if unreadCount > 0 {
+                                    Text("\(unreadCount)")
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.white)
+                                        .padding(4)
+                                        .background(Theme.danger)
+                                        .clipShape(Circle())
+                                        .offset(x: 4, y: -4)
+                                }
+                            }
+                        }
+                        .buttonStyle(TactileButtonStyle())
                         
                         // Shop Cart Button
                         Button(action: { showArmoryShop = true }) {
@@ -295,6 +406,10 @@ struct HomeDashboardView: View {
                     )
                     .padding(.horizontal)
                     
+                    // HealthKit Integration
+                    HealthSyncCard()
+                        .padding(.horizontal)
+                    
                     // Gear Slots Grid
                     VStack(alignment: .leading, spacing: 12) {
                         Text("EQUIPPED SLOTS (TAP TO EDIT)")
@@ -366,6 +481,34 @@ struct HomeDashboardView: View {
                             QuestRow(title: "Complete 1 real-time PvP match", progress: "1/1", completed: true, xpReward: "+80 XP")
                         }
                         .padding(.horizontal)
+                    }
+                    
+                    // Dungeon Run Panel
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("DUNGEON RUN (ENDLESS)")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.danger)
+                            .tracking(1)
+                            .padding(.horizontal)
+                        
+                        Button(action: {
+                            // Show dungeon run view
+                            NotificationCenter.default.post(name: NSNotification.Name("ShowDungeonRun"), object: nil)
+                        }) {
+                            HStack {
+                                Image(systemName: "flame.fill")
+                                Text("ENTER DUNGEON")
+                                    .fontWeight(.black)
+                                Spacer()
+                                Text("3 Waves")
+                                    .font(.caption)
+                            }
+                            .padding()
+                            .background(LinearGradient(colors: [Theme.danger, Theme.danger.opacity(0.7)], startPoint: .leading, endPoint: .trailing))
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                            .padding(.horizontal)
+                        }
                     }
                     
                     // Season Pass progression bar
@@ -560,13 +703,15 @@ struct CustomBottomNavBar: View {
     
     var body: some View {
         HStack {
-            NavBarItem(icon: "gamecontroller.fill", label: "HUB", tab: 0, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "house.fill", label: "HOME", tab: 0, currentTab: $currentTab, color: activeColor)
             Spacer()
-            NavBarItem(icon: "shield.fill", label: "PVP", tab: 1, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "swords.fill", label: "ARENA", tab: 1, currentTab: $currentTab, color: activeColor)
             Spacer()
-            NavBarItem(icon: "camera.fill", label: "TRAIN", tab: 2, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "figure.cross.training", label: "TRAIN", tab: 2, currentTab: $currentTab, color: activeColor)
             Spacer()
-            NavBarItem(icon: "person.3.fill", label: "CLAN", tab: 3, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "shield.lefthalf.filled", label: "CLAN", tab: 3, currentTab: $currentTab, color: activeColor)
+            Spacer()
+            NavBarItem(icon: "flame.fill", label: "RAIDS", tab: 4, currentTab: $currentTab, color: activeColor)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 10)

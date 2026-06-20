@@ -3,6 +3,8 @@ import Foundation
 enum BattleType: String, Codable {
     case duel1v1 = "1v1 Duel"
     case team3v3 = "3v3 Team Battle"
+    case bossRaid = "Boss Raid"
+    case clanWar = "Clan War Battle"
 }
 
 enum BattleStatus: String, Codable {
@@ -31,6 +33,7 @@ enum CombatActionType: String, Codable {
     case heal = "Heal"
     case shield = "Shield"
     case debuff = "Debuff"
+    case skill = "Skill"
 }
 
 struct CombatEvent: Codable, Identifiable {
@@ -41,6 +44,7 @@ struct CombatEvent: Codable, Identifiable {
     var actionType: CombatActionType
     var value: Int
     var detailText: String
+    var isCritical: Bool?
 }
 
 struct Battle: Codable, Identifiable {

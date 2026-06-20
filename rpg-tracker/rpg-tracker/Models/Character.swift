@@ -78,13 +78,27 @@ struct Character: Codable, Identifiable {
     var gold: Int = 0
     var avatarName: String? = "avatar_knight"
     
+    var statPoints: Int = 0
+    var baseStrength: Int = 10
+    var baseDexterity: Int = 10
+    var baseIntelligence: Int = 10
+    var baseVitality: Int = 10
+    
     var stats: CharacterStats = CharacterStats()
     var equippedWeaponId: String? = nil
     var equippedArmorId: String? = nil
+    var equippedRingId: String? = nil
+    var equippedAmuletId: String? = nil
     var ownedEquipmentIds: [String] = ["w_arch_1", "a_arch_1", "w_mage_1", "a_mage_1", "w_swor_1", "a_swor_1", "w_heal_1", "a_heal_1"]
     var clanId: String? = nil
     var pvpWins: Int = 0
     var pvpTrophies: Int = 1000
+    
+    var friends: [String] = []
+    var friendRequests: [String] = []
+    
+    var fcmToken: String? = nil
+    var lastHealthSyncDate: Date? = nil
     
     // Track stats and progression for each class independently
     var progressions: [String: ClassProgression] = [
@@ -105,13 +119,24 @@ struct Character: Codable, Identifiable {
         energy: Int = 100,
         maxEnergy: Int = 100,
         basePower: Int = 100,
+        statPoints: Int = 0,
+        baseStrength: Int = 10,
+        baseDexterity: Int = 10,
+        baseIntelligence: Int = 10,
+        baseVitality: Int = 10,
         stats: CharacterStats = CharacterStats(),
         equippedWeaponId: String? = nil,
         equippedArmorId: String? = nil,
+        equippedRingId: String? = nil,
+        equippedAmuletId: String? = nil,
         ownedEquipmentIds: [String]? = nil,
         clanId: String? = nil,
         pvpWins: Int = 0,
         pvpTrophies: Int = 1000,
+        friends: [String] = [],
+        friendRequests: [String] = [],
+        fcmToken: String? = nil,
+        lastHealthSyncDate: Date? = nil,
         progressions: [String: ClassProgression]? = nil,
         avatarName: String? = "avatar_knight"
     ) {
@@ -121,15 +146,26 @@ struct Character: Codable, Identifiable {
         self.energy = energy
         self.maxEnergy = maxEnergy
         self.basePower = basePower
+        self.statPoints = statPoints
+        self.baseStrength = baseStrength
+        self.baseDexterity = baseDexterity
+        self.baseIntelligence = baseIntelligence
+        self.baseVitality = baseVitality
         self.gold = gold
         self.avatarName = avatarName ?? "avatar_knight"
         self.stats = stats
         self.equippedWeaponId = equippedWeaponId
         self.equippedArmorId = equippedArmorId
+        self.equippedRingId = equippedRingId
+        self.equippedAmuletId = equippedAmuletId
         self.ownedEquipmentIds = ownedEquipmentIds ?? ["w_arch_1", "a_arch_1", "w_mage_1", "a_mage_1", "w_swor_1", "a_swor_1", "w_heal_1", "a_heal_1"]
         self.clanId = clanId
         self.pvpWins = pvpWins
         self.pvpTrophies = pvpTrophies
+        self.friends = friends
+        self.friendRequests = friendRequests
+        self.fcmToken = fcmToken
+        self.lastHealthSyncDate = lastHealthSyncDate
         
         var baseProgressions = progressions ?? [
             CharacterClass.archer.rawValue: ClassProgression(level: 1, xp: 0, totalReps: 0, storyStage: 1),
@@ -158,6 +194,50 @@ struct Character: Codable, Identifiable {
         }
     }
     
+    mutating func equipWeapon(itemId: String) {
+        if ownedEquipmentIds.contains(itemId) {
+            equippedWeaponId = itemId
+        }
+    }
+    
+    mutating func equipRing(itemId: String) {
+        if ownedEquipmentIds.contains(itemId) {
+            equippedRingId = itemId
+        }
+    }
+    
+    mutating func equipAmulet(itemId: String) {
+        if ownedEquipmentIds.contains(itemId) {
+            equippedAmuletId = itemId
+        }
+    }
+    
+    // Helper to get actual Equipment objects
+    var equippedWeapon: EquipmentItem? {
+        guard let id = equippedWeaponId else { return nil }
+        return EquipmentItem.findWeapon(by: id) ?? EquipmentItem.allShopArmors.first(where: { $0.id == id && $0.slot == .weapon })
+    }
+    
+    var equippedArmor: EquipmentItem? {
+        guard let id = equippedArmorId else { return nil }
+        return EquipmentItem.findArmor(by: id)
+    }
+    
+    var equippedRing: EquipmentItem? {
+        guard let id = equippedRingId else { return nil }
+        return EquipmentItem.findRing(by: id)
+    }
+    
+    var equippedAmulet: EquipmentItem? {
+        guard let id = equippedAmuletId else { return nil }
+        return EquipmentItem.findAmulet(by: id)
+    }
+    
+    var totalDefense: Int {
+        let gearDef = (equippedArmor?.defense ?? 0) + (equippedWeapon?.defense ?? 0) + (equippedRing?.defense ?? 0) + (equippedAmulet?.defense ?? 0)
+        return gearDef + (baseVitality * 2)
+    }
+    
     // Computed Properties mapped to the currently active class
     var level: Int {
         progressions[selectedClass.rawValue]?.level ?? 1
@@ -177,7 +257,29 @@ struct Character: Codable, Identifiable {
     
     var combatPower: Int {
         let levelMultiplier = 1.0 + (Double(level - 1) * 0.1)
-        return Int(Double(basePower + selectedClass.baseCombatPower) * levelMultiplier)
+        let gearBonus = (equippedWeapon?.combatPowerBonus ?? 0) + (equippedArmor?.combatPowerBonus ?? 0) + (equippedRing?.combatPowerBonus ?? 0) + (equippedAmulet?.combatPowerBonus ?? 0)
+        
+        let statBonus: Int
+        switch selectedClass {
+        case .swordsman: statBonus = baseStrength * 2
+        case .archer: statBonus = baseDexterity * 2
+        case .mage: statBonus = baseIntelligence * 2
+        case .healer: statBonus = baseIntelligence + baseVitality
+        }
+        
+        return Int(Double(basePower + selectedClass.baseCombatPower + statBonus + gearBonus) * levelMultiplier)
+    }
+    
+    mutating func allocateStatPoint(stat: String) {
+        guard statPoints > 0 else { return }
+        switch stat {
+        case "STR": baseStrength += 1
+        case "DEX": baseDexterity += 1
+        case "INT": baseIntelligence += 1
+        case "VIT": baseVitality += 1
+        default: return
+        }
+        statPoints -= 1
     }
     
     mutating func addXP(_ amount: Int) -> Bool {
@@ -190,6 +292,7 @@ struct Character: Codable, Identifiable {
             maxEnergy += 5
             energy = maxEnergy // Restore energy on level up
             basePower += 15
+            statPoints += 3
             leveledUp = true
         }
         progressions[selectedClass.rawValue] = prog

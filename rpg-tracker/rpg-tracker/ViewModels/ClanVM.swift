@@ -1,14 +1,30 @@
 import Foundation
 import Combine
+import FirebaseFirestore
+
+struct ClanWarResult {
+    var won: Bool
+    var myScore: Int
+    var oppScore: Int
+    var xpEarned: Int
+    var trophiesChange: Int
+    var clanLeveledUp: Bool
+    var lootRewarded: EquipmentItem?
+}
 
 class ClanVM: ObservableObject {
-    @Published var userClan: Clan?
+    @Published var userClan: Clan? {
+        didSet {
+            checkWarEnd()
+        }
+    }
     @Published var searchResults: [Clan] = []
     @Published var leaderboardType: String = "global"
     @Published var clanNameInput: String = ""
     @Published var clanDescriptionInput: String = ""
     @Published var clanEmblemInput: String = "shield.fill"
     @Published var leaderboardPlayers: [Character] = []
+    @Published var showWarResults: ClanWarResult? = nil
     
     private let firebaseService = FirebaseService.shared
     private var cancellables = Set<AnyCancellable>()
@@ -34,9 +50,7 @@ class ClanVM: ObservableObject {
                 guard let self = self else { return }
                 self.leaderboardPlayers = self.firebaseService.leaderboards[lType] ?? []
             }
-            .store(in: &cancellables)
-            
-        loadMockClansToJoin()
+        fetchClans()
     }
     
     func createClan() {
@@ -77,14 +91,21 @@ class ClanVM: ObservableObject {
         firebaseService.contributeWarScore(points: 5)
     }
     
-    private func loadMockClansToJoin() {
-        let member1 = ClanMember(id: "m1", username: "Berserker", level: 14, characterClass: .swordsman, role: .leader)
-        let member2 = ClanMember(id: "m2", username: "ElvenArcher", level: 9, characterClass: .archer, role: .officer)
-        let mockClan1 = Clan(id: "clan_mock_111", name: "FitWarriors", description: "Only the strongest warriors who do squats every day!", emblem: "flame.fill", leaderId: "m1", members: [member1, member2], trophies: 1500, totalReps: 450)
-        
-        let member3 = ClanMember(id: "m3", username: "SaintPriest", level: 18, characterClass: .healer, role: .leader)
-        let mockClan2 = Clan(id: "clan_mock_222", name: "SolarGuild", description: "Chilled and casual workouts. All classes welcome.", emblem: "bolt.fill", leaderId: "m3", members: [member3], trophies: 2100, totalReps: 890)
-        
-        self.searchResults = [mockClan1, mockClan2]
+    func fetchClans() {
+        Task {
+            do {
+                let snapshot = try await Firestore.firestore().collection("clans").limit(to: 20).getDocuments()
+                let clans = snapshot.documents.compactMap { try? $0.data(as: Clan.self) }
+                DispatchQueue.main.async {
+                    self.searchResults = clans
+                }
+            } catch {
+                print("Error fetching clans: \(error)")
+            }
+        }
+    }
+    
+    private func checkWarEnd() {
+        // Handled by Cloud Functions
     }
 }

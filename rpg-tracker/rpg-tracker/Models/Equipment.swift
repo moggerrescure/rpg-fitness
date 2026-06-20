@@ -22,6 +22,8 @@ enum ItemRarity: String, Codable, CaseIterable {
 enum EquipmentSlot: String, Codable {
     case weapon = "Weapon"
     case armor = "Armor"
+    case ring = "Ring"
+    case amulet = "Amulet"
 }
 
 struct EquipmentItem: Codable, Identifiable, Hashable {
@@ -41,7 +43,13 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
     
     func getIconName() -> String {
         if slot == .weapon {
-            return "shield.fill"
+            return "sword.fill" // wait, previous was shield.fill for weapon? Actually no, previous said "shield.fill" for weapon, but that was a bug. Wait let's check previous content.
+        }
+        if slot == .ring {
+            return "hands.sparkles.fill"
+        }
+        if slot == .amulet {
+            return "necklace.fill"
         }
         guard let classRestriction = self.classRestriction else {
             switch self.rarity {
@@ -75,6 +83,14 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
             return starter
         }
         return nil
+    }
+    
+    static func findRing(by id: String) -> EquipmentItem? {
+        return allShopRings.first(where: { $0.id == id })
+    }
+    
+    static func findAmulet(by id: String) -> EquipmentItem? {
+        return allShopAmulets.first(where: { $0.id == id })
     }
     
     static let starterWeapons: [CharacterClass: EquipmentItem] = [
@@ -252,5 +268,21 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
                       description: "A sacred vestment radiating a golden aura that renders the wearer nearly immune."),
         EquipmentItem(id: "arm_myt_5", name: "Antigravity Nano-Suit", slot: .armor, rarity: .mythical, combatPowerBonus: 70, defense: 45, cost: 4500, classRestriction: nil,
                       description: "Futuristic nano-armor that neutralizes mass and gravity, dampening all force.")
+    ]
+    
+    static let allShopRings: [EquipmentItem] = [
+        EquipmentItem(id: "rng_com_1", name: "Copper Band", slot: .ring, rarity: .common, combatPowerBonus: 5, defense: 1, cost: 0, classRestriction: nil, description: "A simple copper ring."),
+        EquipmentItem(id: "rng_rar_1", name: "Silver Signet", slot: .ring, rarity: .rare, combatPowerBonus: 10, defense: 3, cost: 0, classRestriction: nil, description: "A silver ring bearing an unknown crest."),
+        EquipmentItem(id: "rng_epi_1", name: "Obsidian Loop", slot: .ring, rarity: .epic, combatPowerBonus: 20, defense: 5, cost: 0, classRestriction: nil, description: "Carved from dark volcanic glass."),
+        EquipmentItem(id: "rng_leg_1", name: "Dragon's Eye Ring", slot: .ring, rarity: .legendary, combatPowerBonus: 35, defense: 10, cost: 0, classRestriction: nil, description: "A ring with a fiery red gemstone."),
+        EquipmentItem(id: "rng_myt_1", name: "Band of the Void", slot: .ring, rarity: .mythical, combatPowerBonus: 50, defense: 15, cost: 0, classRestriction: nil, description: "It feels completely weightless.")
+    ]
+    
+    static let allShopAmulets: [EquipmentItem] = [
+        EquipmentItem(id: "amu_com_1", name: "String Necklace", slot: .amulet, rarity: .common, combatPowerBonus: 3, defense: 3, cost: 0, classRestriction: nil, description: "A simple string with a wooden bead."),
+        EquipmentItem(id: "amu_rar_1", name: "Sapphire Pendant", slot: .amulet, rarity: .rare, combatPowerBonus: 8, defense: 6, cost: 0, classRestriction: nil, description: "A glowing blue sapphire pendant."),
+        EquipmentItem(id: "amu_epi_1", name: "Ruby Heart", slot: .amulet, rarity: .epic, combatPowerBonus: 15, defense: 12, cost: 0, classRestriction: nil, description: "A red ruby that pulses faintly."),
+        EquipmentItem(id: "amu_leg_1", name: "Talisman of the Ancients", slot: .amulet, rarity: .legendary, combatPowerBonus: 25, defense: 20, cost: 0, classRestriction: nil, description: "An ancient golden talisman."),
+        EquipmentItem(id: "amu_myt_1", name: "Amulet of Antigravity", slot: .amulet, rarity: .mythical, combatPowerBonus: 40, defense: 30, cost: 0, classRestriction: nil, description: "A mysterious artifact that defies gravity.")
     ]
 }
