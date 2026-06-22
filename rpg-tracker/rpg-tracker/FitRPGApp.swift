@@ -2,6 +2,7 @@ import SwiftUI
 import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseAppCheck
 
 import GoogleSignIn
 
@@ -12,6 +13,11 @@ import FirebaseMessaging
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        
+        #if DEBUG
+        AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
+        #endif
+        
         FirebaseApp.configure()
         
         #if canImport(FirebaseMessaging)
@@ -82,6 +88,20 @@ struct FitRPGApp: App {
                 // Initialize Notifications
                 NotificationManager.shared.requestAuthorization()
                 NotificationManager.shared.scheduleDailyReminder()
+                
+                // Request HealthKit authorization automatically on launch
+                let healthService = HealthKitService.shared
+                if healthService.isAvailable && !healthService.isAuthorized {
+                    try? await healthService.requestAuthorization()
+                }
+                // Auto-sync health data if authorized and user has a character
+                if healthService.isAuthorized,
+                   let char = firebaseService.currentCharacter {
+                    let result = try? await healthService.syncHealthData(since: char.lastHealthSyncDate)
+                    if let result = result {
+                        firebaseService.handleHealthSync(result: result)
+                    }
+                }
             }
             .onOpenURL { url in
                 if url.scheme == "rpgfitness", url.host == "friend" {

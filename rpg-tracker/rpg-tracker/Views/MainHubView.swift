@@ -39,9 +39,9 @@ struct MainHubView: View {
                             case 0:
                                 HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage, showNotifications: $showNotifications)
                             case 1:
-                                BattleArenaView()
+                                TrainingSelectionView()
                             case 2:
-                                CameraTrackingView(selectedClass: firebaseService.currentCharacter?.selectedClass ?? .archer)
+                                BattleArenaView()
                             case 3:
                                 ClanDashboardView(currentTab: $currentTab)
                             case 4:
@@ -197,391 +197,566 @@ struct HomeDashboardView: View {
     @Binding var toastMessage: String?
     @Binding var showNotifications: Bool
     @State private var showArmoryShop: Bool = false
-    
+    @State private var armoryInitialSlot: EquipmentSlot = .weapon
+    @State private var questsAnimated: Bool = false
+
+    private var character: Character? { firebaseService.currentCharacter }
+
     private var equippedWeapon: EquipmentItem? {
-        guard let char = firebaseService.currentCharacter else { return nil }
-        if let weaponId = char.equippedWeaponId {
-            return EquipmentItem.findWeapon(by: weaponId)
-        }
+        guard let char = character else { return nil }
+        if let id = char.equippedWeaponId { return EquipmentItem.findWeapon(by: id) }
         return EquipmentItem.starterWeapons[char.selectedClass]
     }
-    
+
     private var equippedArmor: EquipmentItem? {
-        guard let char = firebaseService.currentCharacter else { return nil }
-        if let armorId = char.equippedArmorId {
-            return EquipmentItem.findArmor(by: armorId)
-        }
+        guard let char = character else { return nil }
+        if let id = char.equippedArmorId { return EquipmentItem.findArmor(by: id) }
         return EquipmentItem.starterArmors[char.selectedClass]
     }
-    
+
+    private var dailyQuests: [DailyQuest] {
+        DailyQuestEngine.dailyQuests()
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Top header profile
-                if let char = firebaseService.currentCharacter {
-                    HStack {
-                        Button(action: { showProfile = true }) {
-                            HStack(spacing: 12) {
-                                ZStack {
-                                    if let avatar = char.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                                        Image(platformImage: uiImage)
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 40, height: 40)
-                                            .clipShape(Circle())
-                                    } else {
-                                        Circle()
-                                            .fill(char.selectedClass.themeColor.opacity(0.15))
-                                            .frame(width: 40, height: 40)
-                                            .overlay(
-                                                Image(systemName: "person.crop.circle.fill")
-                                                    .font(.system(size: 30))
-                                                    .foregroundColor(char.selectedClass.themeColor)
-                                            )
-                                    }
-                                }
-                                .overlay(
-                                    Circle()
-                                        .stroke(
-                                            LinearGradient(
-                                                colors: [char.selectedClass.themeColor, char.selectedClass.themeColor.opacity(0.4)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ),
-                                            lineWidth: 1.5
-                                        )
-                                )
-                                .glow(color: char.selectedClass.themeColor.opacity(0.35), radius: 6)
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("LEVEL \(char.level)")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .fontWeight(.bold)
-                                        .foregroundColor(char.selectedClass.themeColor)
-                                        .tracking(1.5)
-                                    
-                                    Text(char.username)
-                                        .font(.system(.title3, design: .default))
-                                        .fontWeight(.black)
-                                        .foregroundColor(Theme.textPrimary)
-                                }
-                            }
-                        }
-                        .buttonStyle(TactileButtonStyle())
-                        
-                        Spacer()
-                        
-                        // Gold Count
-                        HStack(spacing: 6) {
-                            Image(systemName: "centsign.circle.fill")
-                                .foregroundColor(Theme.healerColor)
-                            Text("\(char.gold)")
-                                .font(.system(.body, design: .monospaced))
-                                .fontWeight(.black)
-                                .foregroundColor(Theme.textPrimary)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Theme.cardBackground.opacity(0.85))
-                        .cornerRadius(14)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(Theme.border, lineWidth: 1)
-                        )
-                        // Notifications Button
-                        Button(action: { showNotifications = true }) {
-                            ZStack(alignment: .topTrailing) {
-                                Image(systemName: "bell.fill")
-                                    .foregroundColor(Theme.textPrimary)
-                                    .padding(10)
-                                    .background(Theme.cardBackground.opacity(0.85))
-                                    .clipShape(Circle())
-                                    .overlay(Circle().stroke(Theme.border, lineWidth: 1))
-                                
-                                let unreadCount = NotificationManager.shared.inAppNotifications.filter({ !$0.isRead }).count
-                                if unreadCount > 0 {
-                                    Text("\(unreadCount)")
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.white)
-                                        .padding(4)
-                                        .background(Theme.danger)
-                                        .clipShape(Circle())
-                                        .offset(x: 4, y: -4)
-                                }
-                            }
-                        }
-                        .buttonStyle(TactileButtonStyle())
-                        
-                        // Shop Cart Button
-                        Button(action: { showArmoryShop = true }) {
-                            Image(systemName: "cart.fill")
-                                .foregroundColor(Theme.warning)
-                                .padding(10)
-                                .background(Theme.cardBackground.opacity(0.85))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
-                        }
-                        .buttonStyle(TactileButtonStyle())
-                        
-                        // Switch class gear icon
-                        Button(action: { showClassSelection = true }) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .foregroundColor(Theme.textSecondary)
-                                .padding(10)
-                                .background(Theme.cardBackground.opacity(0.85))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
-                        }
-                        .buttonStyle(TactileButtonStyle())
-                    }
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                if let char = character {
+                    DashboardNavBar(
+                        char: char,
+                        showProfile: $showProfile,
+                        showNotifications: $showNotifications,
+                        onShop: { showArmoryShop = true },
+                        onSwitchClass: { showClassSelection = true }
+                    )
+
+                    HeroCard(
+                        char: char,
+                        equippedWeapon: equippedWeapon,
+                        equippedArmor: equippedArmor,
+                        onWeaponTap: { armoryInitialSlot = .weapon; showArmoryShop = true },
+                        onArmorTap:  { armoryInitialSlot = .armor;  showArmoryShop = true }
+                    )
                     .padding(.horizontal)
-                    .padding(.top, 16)
-                    
-                    // Horizontal Class Switcher Panel
+                    .padding(.top, 14)
+
                     ClassSwitcherPanel(toastMessage: $toastMessage)
-                    
-                    // XP bar progression
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("XP PROGRESSION")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundColor(Theme.textSecondary)
-                                .tracking(1)
-                            Spacer()
-                            Text("\(char.xp)/\(char.xpForNextLevel) XP")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundColor(Theme.textSecondary)
-                        }
-                        
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Theme.cardBackground)
-                                
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(char.selectedClass.themeColor)
-                                    .frame(width: CGFloat(char.xp) / CGFloat(char.xpForNextLevel) * geo.size.width)
-                                    .glow(color: char.selectedClass.themeColor.opacity(0.4), radius: 4)
-                            }
-                        }
-                        .frame(height: 10)
-                    }
-                    .padding(.horizontal)
-                    
-                    // Combat Power details
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("COMBAT FORCE POWER")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundColor(Theme.textSecondary)
-                                .tracking(1)
-                            Text("\(char.combatPower)")
-                                .font(.system(size: 32, weight: .black, design: .monospaced))
-                                .foregroundColor(Theme.textPrimary)
-                                .glow(color: char.selectedClass.themeColor.opacity(0.35), radius: 6)
-                        }
-                        Spacer()
-                        ZStack {
-                            Circle()
-                                .fill(char.selectedClass.themeColor.opacity(0.15))
-                                .frame(width: 50, height: 50)
-                            Image(systemName: "bolt.fill")
-                                .font(.title)
-                                .foregroundColor(char.selectedClass.themeColor)
-                                .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 8)
+                        .padding(.top, 14)
+
+                    DailyQuestsSection(
+                        quests: dailyQuests,
+                        character: char,
+                        animated: questsAnimated
+                    )
+                    .padding(.top, 18)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            withAnimation { questsAnimated = true }
                         }
                     }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 18)
-                            .fill(Theme.cardBackground.opacity(0.8))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(LinearGradient(
-                                colors: [char.selectedClass.themeColor.opacity(0.4), Color.clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ), lineWidth: 1.5)
-                    )
-                    .padding(.horizontal)
-                    
-                    // HealthKit Integration
-                    HealthSyncCard()
+
+                    DungeonEntryCard(char: char)
                         .padding(.horizontal)
-                    
-                    // Gear Slots Grid
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("EQUIPPED SLOTS (TAP TO EDIT)")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor(Theme.textSecondary)
-                            .tracking(1)
-                            .padding(.horizontal)
-                        
-                        HStack(spacing: 16) {
-                            // Slot Weapon
-                            if let weapon = equippedWeapon {
-                                SlotCard(
-                                    title: "Weapon",
-                                    itemName: weapon.name,
-                                    rarity: weapon.rarity,
-                                    combatBonus: "+\(weapon.combatPowerBonus) PWR",
-                                    icon: "shield.fill",
-                                    color: char.selectedClass.themeColor,
-                                    action: { showArmoryShop = true }
-                                )
-                            } else {
-                                SlotCard(
-                                    title: "Weapon",
-                                    itemName: "No Weapon",
-                                    rarity: .common,
-                                    combatBonus: "+0 PWR",
-                                    icon: "shield.slash.fill",
-                                    color: Theme.textMuted,
-                                    action: { showArmoryShop = true }
-                                )
-                            }
-                            
-                            // Slot Armor
-                            if let armor = equippedArmor {
-                                SlotCard(
-                                    title: "Armor",
-                                    itemName: armor.name,
-                                    rarity: armor.rarity,
-                                    combatBonus: "+\(armor.defense) DEF",
-                                    icon: "tshirt.fill",
-                                    color: armor.rarity.color,
-                                    action: { showArmoryShop = true }
-                                )
-                            } else {
-                                SlotCard(
-                                    title: "Armor",
-                                    itemName: "No Armor",
-                                    rarity: .common,
-                                    combatBonus: "+0 DEF",
-                                    icon: "tshirt.fill",
-                                    color: Theme.textMuted,
-                                    action: { showArmoryShop = true }
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                    
-                    // Quests card panel
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("DAILY MISSION OBJECTIVES")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor(Theme.textSecondary)
-                            .tracking(1)
-                            .padding(.horizontal)
-                        
-                        VStack(spacing: 8) {
-                            QuestRow(title: "Perform 15 Squats in training", progress: "12/15", completed: false, xpReward: "+50 XP")
-                            QuestRow(title: "Complete 1 real-time PvP match", progress: "1/1", completed: true, xpReward: "+80 XP")
-                        }
-                        .padding(.horizontal)
-                    }
-                    
-                    // Dungeon Run Panel
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("DUNGEON RUN (ENDLESS)")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor(Theme.danger)
-                            .tracking(1)
-                            .padding(.horizontal)
-                        
-                        Button(action: {
-                            // Show dungeon run view
-                            NotificationCenter.default.post(name: NSNotification.Name("ShowDungeonRun"), object: nil)
-                        }) {
-                            HStack {
-                                Image(systemName: "flame.fill")
-                                Text("ENTER DUNGEON")
-                                    .fontWeight(.black)
-                                Spacer()
-                                Text("3 Waves")
-                                    .font(.caption)
-                            }
-                            .padding()
-                            .background(LinearGradient(colors: [Theme.danger, Theme.danger.opacity(0.7)], startPoint: .leading, endPoint: .trailing))
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                            .padding(.horizontal)
-                        }
-                    }
-                    
-                    // Season Pass progression bar
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            Text("SEASON PASS: CHAPTER 1")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(Theme.textPrimary)
-                            Spacer()
-                            Text("LEVEL 4")
-                                .font(.system(size: 10, weight: .black, design: .monospaced))
-                                .foregroundColor(Theme.healerColor)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Theme.healerColor.opacity(0.15))
-                                .cornerRadius(6)
-                                .glow(color: Theme.healerColor.opacity(0.35), radius: 4)
-                        }
-                        
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(Theme.secondaryCard)
-                                
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(LinearGradient(
-                                        colors: [Theme.healerColor, Theme.warning],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    ))
-                                    .frame(width: 0.65 * geo.size.width)
-                                    .glow(color: Theme.healerColor.opacity(0.4), radius: 5)
-                            }
-                        }
-                        .frame(height: 10)
-                        
-                        HStack {
-                            Text("Next Tier reward:")
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(Theme.textMuted)
-                            Spacer()
-                            Text("Dragon Pet (Legendary)")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundColor(Theme.healerColor)
-                        }
-                    }
-                    .padding(18)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18)
-                            .fill(Theme.cardBackground.opacity(0.8))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(LinearGradient(
-                                colors: [Theme.healerColor.opacity(0.25), Color.clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ), lineWidth: 1.5)
-                    )
-                    .padding(.horizontal)
-                    
-                    // Space for floating tab bar
-                    Spacer()
-                        .frame(height: 100)
+                        .padding(.top, 18)
+
+                    Color.clear.frame(height: 110)
                 }
             }
-            .sheet(isPresented: $showArmoryShop) {
-                ArmoryShopView()
+        }
+        .sheet(isPresented: $showArmoryShop) {
+            ArmoryShopView(initialSlot: armoryInitialSlot)
+        }
+    }
+}
+
+// MARK: - Dashboard Nav Bar
+struct DashboardNavBar: View {
+    let char: Character
+    @Binding var showProfile: Bool
+    @Binding var showNotifications: Bool
+    let onShop: () -> Void
+    let onSwitchClass: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: { showProfile = true }) {
+                HStack(spacing: 11) {
+                    ZStack {
+                        Circle()
+                            .fill(char.selectedClass.themeColor.opacity(0.18))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.system(size: 34))
+                            .foregroundColor(char.selectedClass.themeColor)
+                    }
+                    .overlay(Circle().stroke(char.selectedClass.themeColor.opacity(0.6), lineWidth: 1.5))
+                    .glow(color: char.selectedClass.themeColor.opacity(0.3), radius: 6)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("LVL \(char.level) · \(char.selectedClass.rawValue.uppercased())")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(char.selectedClass.themeColor)
+                            .tracking(0.8)
+                        Text(char.username)
+                            .font(.system(.callout, design: .default))
+                            .fontWeight(.black)
+                            .foregroundColor(Theme.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                }
+            }
+            .buttonStyle(TactileButtonStyle())
+
+            Spacer()
+
+            HStack(spacing: 5) {
+                Image(systemName: "centsign.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Theme.healerColor)
+                Text("\(char.gold)")
+                    .font(.system(size: 13, weight: .black, design: .monospaced))
+                    .foregroundColor(Theme.textPrimary)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .background(Theme.cardBackground.opacity(0.9))
+            .cornerRadius(12)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.healerColor.opacity(0.25), lineWidth: 1))
+
+            navIconButton(systemName: "bell.fill", color: Theme.textPrimary, action: { showNotifications = true })
+            navIconButton(systemName: "cart.fill", color: Theme.warning, action: { onShop() })
+        }
+        .padding(.horizontal)
+        .padding(.top, 16)
+    }
+
+    @ViewBuilder
+    private func navIconButton(systemName: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(color)
+                .frame(width: 36, height: 36)
+                .background(Theme.cardBackground.opacity(0.9))
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+        }
+        .buttonStyle(TactileButtonStyle())
+    }
+}
+
+// MARK: - Hero Card
+struct HeroCard: View {
+    let char: Character
+    let equippedWeapon: EquipmentItem?
+    let equippedArmor: EquipmentItem?
+    let onWeaponTap: () -> Void
+    let onArmorTap: () -> Void
+
+    private var xpProgress: CGFloat {
+        let cap = max(1, char.xpForNextLevel)
+        return min(CGFloat(char.xp) / CGFloat(cap), 1.0)
+    }
+    private var energyProgress: CGFloat {
+        guard char.maxEnergy > 0 else { return 0 }
+        return min(CGFloat(char.energy) / CGFloat(char.maxEnergy), 1.0)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 18) {
+                // Avatar with energy ring
+                ZStack {
+                    Circle()
+                        .stroke(Theme.secondaryCard, lineWidth: 4)
+                        .frame(width: 84, height: 84)
+                    Circle()
+                        .trim(from: 0, to: energyProgress)
+                        .stroke(
+                            AngularGradient(
+                                colors: [char.selectedClass.themeColor, char.selectedClass.themeColor.opacity(0.4)],
+                                center: .center
+                            ),
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                        )
+                        .frame(width: 84, height: 84)
+                        .rotationEffect(.degrees(-90))
+                        .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 5)
+
+                    Circle()
+                        .fill(char.selectedClass.themeColor.opacity(0.14))
+                        .frame(width: 72, height: 72)
+                    Image(systemName: heroClassIcon(char.selectedClass))
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundColor(char.selectedClass.themeColor)
+                        .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 6)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("COMBAT POWER")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.textMuted)
+                            .tracking(1)
+                        Text("\(char.combatPower)")
+                            .font(.system(size: 30, weight: .black, design: .monospaced))
+                            .foregroundColor(Theme.textPrimary)
+                            .glow(color: char.selectedClass.themeColor.opacity(0.3), radius: 5)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("XP")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundColor(Theme.textMuted)
+                            Spacer()
+                            Text("\(char.xp) / \(char.xpForNextLevel)")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 4).fill(Theme.secondaryCard)
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(LinearGradient(
+                                        colors: [char.selectedClass.themeColor, char.selectedClass.themeColor.opacity(0.6)],
+                                        startPoint: .leading, endPoint: .trailing
+                                    ))
+                                    .frame(width: xpProgress * geo.size.width)
+                                    .glow(color: char.selectedClass.themeColor.opacity(0.4), radius: 3)
+                            }
+                        }
+                        .frame(height: 6)
+
+                        HStack(spacing: 5) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(char.selectedClass.themeColor)
+                            Text("ENERGY \(char.energy)/\(char.maxEnergy)")
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .foregroundColor(char.selectedClass.themeColor)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(char.selectedClass.themeColor.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+            .padding(18)
+
+            Divider().background(Theme.border).padding(.horizontal, 14)
+
+            // Gear strip
+            HStack(spacing: 0) {
+                GearSlotStrip(slot: "WEAPON", item: equippedWeapon, fallbackIcon: "bolt.slash.fill",
+                              accentColor: char.selectedClass.themeColor, action: onWeaponTap)
+                    .frame(maxWidth: .infinity)
+
+                Rectangle().fill(Theme.border).frame(width: 1, height: 52)
+
+                GearSlotStrip(slot: "ARMOR", item: equippedArmor, fallbackIcon: "tshirt.fill",
+                              accentColor: Theme.textMuted, action: onArmorTap)
+                    .frame(maxWidth: .infinity)
+
+                Rectangle().fill(Theme.border).frame(width: 1, height: 52)
+
+                GearSlotStrip(slot: "RING", item: nil, fallbackIcon: "circle.dotted",
+                              accentColor: Theme.textMuted, action: {})
+                    .frame(maxWidth: .infinity)
+
+                Rectangle().fill(Theme.border).frame(width: 1, height: 52)
+
+                GearSlotStrip(slot: "AMULET", item: nil, fallbackIcon: "sparkles",
+                              accentColor: Theme.textMuted, action: {})
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.vertical, 12)
+        }
+        .background(RoundedRectangle(cornerRadius: 22).fill(Theme.cardBackground.opacity(0.9)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(LinearGradient(
+                    colors: [char.selectedClass.themeColor.opacity(0.45), Color.clear],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ), lineWidth: 1.5)
+        )
+        .shadow(color: char.selectedClass.themeColor.opacity(0.12), radius: 16, y: 6)
+    }
+
+    private func heroClassIcon(_ c: CharacterClass) -> String {
+        switch c {
+        case .archer:    return "arrow.up.right.circle.fill"
+        case .mage:      return "wand.and.stars"
+        case .swordsman: return "shield.fill"
+        case .healer:    return "cross.case.fill"
+        }
+    }
+}
+
+// MARK: - Gear Slot Strip
+struct GearSlotStrip: View {
+    let slot: String
+    let item: EquipmentItem?
+    let fallbackIcon: String
+    let accentColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill((item?.rarity.color ?? accentColor).opacity(item != nil ? 0.14 : 0.06))
+                        .frame(width: 40, height: 40)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(item?.rarity.color ?? accentColor, lineWidth: 1)
+                                .opacity(item != nil ? 0.5 : 0.2)
+                        )
+                    Image(systemName: item?.getIconName() ?? fallbackIcon)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(item?.rarity.color ?? accentColor)
+                }
+                .glow(color: (item?.rarity.color ?? Color.clear).opacity(0.3), radius: 4)
+
+                Text(slot)
+                    .font(.system(size: 7, weight: .black, design: .monospaced))
+                    .foregroundColor(item != nil ? Theme.textSecondary : Theme.textMuted)
+
+                if let item = item {
+                    Text(item.name)
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(item.rarity.color)
+                        .lineLimit(1)
+                } else {
+                    Text("EMPTY")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        .buttonStyle(TactileButtonStyle())
+    }
+}
+
+// MARK: - Daily Quests Section
+struct DailyQuestsSection: View {
+    let quests: [DailyQuest]
+    let character: Character
+    let animated: Bool
+
+    private var resetLabel: String {
+        let secs = Int(DailyQuestEngine.secondsUntilReset)
+        let h = secs / 3600
+        let m = (secs % 3600) / 60
+        return "\(h)h \(m)m"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Section header
+            HStack {
+                HStack(spacing: 7) {
+                    Image(systemName: "target")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Theme.warning)
+                    Text("DAILY MISSIONS")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(Theme.textPrimary)
+                        .tracking(1)
+                }
+                Spacer()
+                HStack(spacing: 5) {
+                    Image(systemName: "clock.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(Theme.textMuted)
+                    Text("RESETS IN \(resetLabel)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.textMuted)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Theme.secondaryCard.opacity(0.6))
+                .cornerRadius(8)
+            }
+            .padding(.horizontal)
+
+            VStack(spacing: 10) {
+                ForEach(Array(quests.enumerated()), id: \.element.id) { idx, quest in
+                    let progress = DailyQuestEngine.progress(for: quest, character: character)
+                    DailyQuestCard(quest: quest, progress: progress, index: idx, animated: animated)
+                }
+            }
+            .padding(.horizontal)
+
+            let completedCount = quests.filter {
+                DailyQuestEngine.progress(for: $0, character: character) >= 1.0
+            }.count
+            if completedCount > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.success)
+                    Text("\(completedCount)/\(quests.count) COMPLETED TODAY")
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .foregroundColor(Theme.success)
+                }
+                .padding(.horizontal)
             }
         }
     }
 }
 
+// MARK: - Daily Quest Card
+struct DailyQuestCard: View {
+    let quest: DailyQuest
+    let progress: Double
+    let index: Int
+    let animated: Bool
+
+    private var isComplete: Bool { progress >= 1.0 }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(quest.iconColor.opacity(isComplete ? 0.22 : 0.13))
+                    .frame(width: 46, height: 46)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(quest.iconColor.opacity(isComplete ? 0.6 : 0.25), lineWidth: 1.5)
+                    )
+                if isComplete {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(quest.iconColor)
+                        .glow(color: quest.iconColor.opacity(0.5), radius: 5)
+                } else {
+                    Image(systemName: quest.icon)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(quest.iconColor)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(quest.title)
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(isComplete ? Theme.textSecondary : Theme.textPrimary)
+                    .strikethrough(isComplete, color: Theme.textMuted)
+                    .lineLimit(1)
+
+                Text(quest.description)
+                    .font(.system(size: 10, design: .default))
+                    .foregroundColor(Theme.textMuted)
+                    .lineLimit(1)
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3).fill(Theme.secondaryCard)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(LinearGradient(
+                                colors: [quest.iconColor, quest.iconColor.opacity(0.6)],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(width: animated ? min(CGFloat(progress), 1.0) * geo.size.width : 0)
+                            .animation(.spring(response: 0.8, dampingFraction: 0.75).delay(Double(index) * 0.12), value: animated)
+                            .glow(color: quest.iconColor.opacity(0.4), radius: 3)
+                    }
+                }
+                .frame(height: 4)
+            }
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("+\(quest.xpReward) XP")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundColor(Theme.primary)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(Theme.primary.opacity(0.12))
+                    .cornerRadius(6)
+                Text("+\(quest.goldReward)g")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundColor(Theme.healerColor)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(Theme.healerColor.opacity(0.12))
+                    .cornerRadius(6)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(isComplete ? quest.iconColor.opacity(0.06) : Theme.cardBackground.opacity(0.85))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isComplete ? quest.iconColor.opacity(0.3) : Theme.border, lineWidth: 1)
+        )
+        .shadow(color: isComplete ? quest.iconColor.opacity(0.08) : Color.black.opacity(0.07), radius: 8, y: 3)
+        .scaleEffect(animated ? 1 : 0.94)
+        .opacity(animated ? 1 : 0)
+        .animation(.spring(response: 0.5, dampingFraction: 0.78).delay(Double(index) * 0.08), value: animated)
+    }
+}
+
+// MARK: - Dungeon Entry Card
+struct DungeonEntryCard: View {
+    let char: Character
+    @State private var pulse = false
+
+    var body: some View {
+        Button(action: {
+            NotificationCenter.default.post(name: NSNotification.Name("ShowDungeonRun"), object: nil)
+        }) {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.danger.opacity(0.18))
+                        .frame(width: 52, height: 52)
+                        .scaleEffect(pulse ? 1.18 : 1.0)
+                        .opacity(pulse ? 0.3 : 0.18)
+                        .animation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true), value: pulse)
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(Theme.danger)
+                        .glow(color: Theme.danger.opacity(0.6), radius: 8)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("DUNGEON RUN")
+                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                        .foregroundColor(.white)
+                        .tracking(0.5)
+                    Text("3 waves · Endless combat · Loot drops")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.white.opacity(0.8))
+            }
+            .padding(.vertical, 16)
+            .padding(.horizontal, 18)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "9B1C1C"), Color(hex: "7F1D1D"), Color(hex: "450A0A")],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+            )
+            .cornerRadius(20)
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.danger.opacity(0.4), lineWidth: 1.5))
+            .shadow(color: Theme.danger.opacity(0.35), radius: 12, y: 5)
+        }
+        .buttonStyle(TactileButtonStyle())
+        .onAppear { pulse = true }
+    }
+}
+
+// MARK: - SlotCard (legacy compat)
 struct SlotCard: View {
     let title: String
     let itemName: String
@@ -590,109 +765,62 @@ struct SlotCard: View {
     let icon: String
     let color: Color
     var action: () -> Void = {}
-    
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 10) {
                 Text(title.uppercased())
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.textSecondary)
-                    .tracking(1)
-                
+                    .foregroundColor(Theme.textSecondary).tracking(1)
                 ZStack {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(color.opacity(0.12))
-                        .frame(width: 52, height: 52)
-                    
-                    Image(systemName: icon)
-                        .font(.title3)
-                        .foregroundColor(color)
+                    RoundedRectangle(cornerRadius: 14).fill(color.opacity(0.12)).frame(width: 52, height: 52)
+                    Image(systemName: icon).font(.title3).foregroundColor(color)
                 }
                 .glow(color: color.opacity(0.35), radius: 6)
-                
                 VStack(spacing: 2) {
-                    Text(itemName)
-                        .font(.system(.caption, design: .default))
-                        .fontWeight(.black)
-                        .foregroundColor(Theme.textPrimary)
-                        .lineLimit(1)
-                    
-                    Text(combatBonus)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(Theme.success)
+                    Text(itemName).font(.system(.caption)).fontWeight(.black).foregroundColor(Theme.textPrimary).lineLimit(1)
+                    Text(combatBonus).font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(Theme.success)
                 }
             }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Theme.cardBackground.opacity(0.8))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(LinearGradient(
-                        colors: [color.opacity(0.35), Color.clear],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ), lineWidth: 1.5)
-            )
-            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+            .padding(.vertical, 16).padding(.horizontal, 10).frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.cardBackground.opacity(0.8)))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(LinearGradient(colors: [color.opacity(0.35), Color.clear], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.5))
+            .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
         }
         .buttonStyle(TactileButtonStyle())
     }
 }
 
+// MARK: - QuestRow (legacy compat)
 struct QuestRow: View {
     let title: String
     let progress: String
     let completed: Bool
     let xpReward: String
-    
+
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
-                Circle()
-                    .fill(completed ? Theme.success.opacity(0.15) : Theme.secondaryCard)
-                    .frame(width: 28, height: 28)
-                
+                Circle().fill(completed ? Theme.success.opacity(0.15) : Theme.secondaryCard).frame(width: 28, height: 28)
                 Image(systemName: completed ? "checkmark" : "circle")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(completed ? Theme.success : Theme.textSecondary)
             }
             .glow(color: completed ? Theme.success.opacity(0.3) : .clear, radius: 4)
-            
+
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(completed ? Theme.textSecondary : Theme.textPrimary)
-                    .lineLimit(2)
-                
-                Text(xpReward)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.success)
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundColor(completed ? Theme.textSecondary : Theme.textPrimary).lineLimit(2)
+                Text(xpReward).font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundColor(Theme.success)
             }
-            
             Spacer()
-            
             Text(progress)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(completed ? Theme.success : Theme.textSecondary)
-                .fontWeight(.bold)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(completed ? Theme.success.opacity(0.1) : Theme.secondaryCard.opacity(0.5))
-                .cornerRadius(6)
+                .font(.system(.caption, design: .monospaced)).foregroundColor(completed ? Theme.success : Theme.textSecondary).fontWeight(.bold)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(completed ? Theme.success.opacity(0.1) : Theme.secondaryCard.opacity(0.5)).cornerRadius(6)
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Theme.cardBackground.opacity(0.8))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(completed ? Theme.success.opacity(0.3) : Theme.border, lineWidth: 1)
-        )
+        .background(RoundedRectangle(cornerRadius: 14).fill(Theme.cardBackground.opacity(0.8)))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(completed ? Theme.success.opacity(0.3) : Theme.border, lineWidth: 1))
     }
 }
 
@@ -705,9 +833,9 @@ struct CustomBottomNavBar: View {
         HStack {
             NavBarItem(icon: "house.fill", label: "HOME", tab: 0, currentTab: $currentTab, color: activeColor)
             Spacer()
-            NavBarItem(icon: "swords.fill", label: "ARENA", tab: 1, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "figure.cross.training", label: "TRAIN", tab: 1, currentTab: $currentTab, color: activeColor)
             Spacer()
-            NavBarItem(icon: "figure.cross.training", label: "TRAIN", tab: 2, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "trophy.fill", label: "ARENA", tab: 2, currentTab: $currentTab, color: activeColor)
             Spacer()
             NavBarItem(icon: "shield.lefthalf.filled", label: "CLAN", tab: 3, currentTab: $currentTab, color: activeColor)
             Spacer()

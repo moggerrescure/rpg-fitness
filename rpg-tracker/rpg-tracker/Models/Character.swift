@@ -98,7 +98,14 @@ struct Character: Codable, Identifiable {
     var friendRequests: [String] = []
     
     var fcmToken: String? = nil
+    var lastActive: Date? = nil
     var lastHealthSyncDate: Date? = nil
+    
+    var isOnline: Bool {
+        guard let lastActive = lastActive else { return false }
+        // Online if active in the last 15 minutes
+        return Date().timeIntervalSince(lastActive) < 900
+    }
     
     // Track stats and progression for each class independently
     var progressions: [String: ClassProgression] = [
@@ -136,6 +143,7 @@ struct Character: Codable, Identifiable {
         friends: [String] = [],
         friendRequests: [String] = [],
         fcmToken: String? = nil,
+        lastActive: Date? = nil,
         lastHealthSyncDate: Date? = nil,
         progressions: [String: ClassProgression]? = nil,
         avatarName: String? = "avatar_knight"
@@ -147,6 +155,7 @@ struct Character: Codable, Identifiable {
         self.maxEnergy = maxEnergy
         self.basePower = basePower
         self.statPoints = statPoints
+        self.lastActive = lastActive
         self.baseStrength = baseStrength
         self.baseDexterity = baseDexterity
         self.baseIntelligence = baseIntelligence
@@ -185,6 +194,15 @@ struct Character: Codable, Identifiable {
         gold -= armor.cost
         if !ownedEquipmentIds.contains(armor.id) {
             ownedEquipmentIds.append(armor.id)
+        }
+    }
+
+    /// Universal buy: deducts gold and adds to owned list regardless of slot.
+    mutating func buyItem(_ item: EquipmentItem) {
+        guard gold >= item.cost else { return }
+        gold -= item.cost
+        if !ownedEquipmentIds.contains(item.id) {
+            ownedEquipmentIds.append(item.id)
         }
     }
     

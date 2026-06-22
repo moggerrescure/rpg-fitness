@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AC365FCD2FE97A13006D8C07 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = AC365FCC2FE97A13006D8C07 /* FirebaseAppCheck */; };
 		AC7766A12FE736EE0067B7D3 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE90E3BE538AFF14CF764E5 /* FirebaseAuth */; };
 		AC7766A22FE736EE0067B7D3 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = EBEC446B8D30AE874EF05AB9 /* FirebaseFirestore */; };
 		AC7766A42FE736EE0067B7D3 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = A3BF7510C5B6B780EC4A57E6 /* FirebaseRemoteConfig */; };
@@ -36,6 +37,7 @@
 				AC7766A52FE736EE0067B7D3 /* GoogleSignIn in Frameworks */,
 				AC7766A42FE736EE0067B7D3 /* FirebaseRemoteConfig in Frameworks */,
 				AC7769E92FE73D970067B7D3 /* FirebaseFunctions in Frameworks */,
+				AC365FCD2FE97A13006D8C07 /* FirebaseAppCheck in Frameworks */,
 				AC7766A22FE736EE0067B7D3 /* FirebaseFirestore in Frameworks */,
 				AC7766A12FE736EE0067B7D3 /* FirebaseAuth in Frameworks */,
 			);
@@ -94,6 +96,7 @@
 				5F7203E8C8463C592AFE691E /* GoogleSignIn */,
 				8EB1AEBA9744F78D8CB919FC /* GoogleSignInSwift */,
 				AC7769E82FE73D970067B7D3 /* FirebaseFunctions */,
+				AC365FCC2FE97A13006D8C07 /* FirebaseAppCheck */,
 			);
 			productName = "rpg-tracker";
 			productReference = 93E04F1A2FE41A0700C2384D /* rpg-tracker.app */;
@@ -112,6 +115,9 @@
 					93E04F192FE41A0700C2384D = {
 						CreatedOnToolsVersion = 26.3;
 						SystemCapabilities = {
+							com.apple.HealthKit = {
+								enabled = 1;
+							};
 							com.apple.SignInWithApple = {
 								enabled = 1;
 							};
@@ -292,6 +298,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "RPG Fitness reads your steps, calories and workouts to reward you with XP, gold and in-game power.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -340,6 +347,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "RPG Fitness reads your steps, calories and workouts to reward you with XP, gold and in-game power.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -435,6 +443,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 42F411DD04724776A5C041AF /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseRemoteConfig;
+		};
+		AC365FCC2FE97A13006D8C07 /* FirebaseAppCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 42F411DD04724776A5C041AF /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAppCheck;
 		};
 		AC7769E82FE73D970067B7D3 /* FirebaseFunctions */ = {
 			isa = XCSwiftPackageProductDependency;

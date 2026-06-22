@@ -9,7 +9,7 @@ class CameraTrackingVM: ObservableObject {
     @Published var isPersonDetected: Bool = false
     @Published var isCorrectForm: Bool = true
     @Published var feedbackMessage: String = "Place your device 2 meters away"
-    @Published var isSimulatorMode: Bool = true
+    let isDungeonMode: Bool
     
     @Published var rawJoints: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
     
@@ -35,9 +35,10 @@ class CameraTrackingVM: ObservableObject {
     private var lastRepTimestamp: Date? = nil
     private var hasTriggeredCompletion = false
     
-    init(selectedClass: CharacterClass, targetReps: Int? = nil, bossMaxHP: Int? = nil, damagePerRep: Int? = nil, onComplete: ((Int) -> Void)? = nil) {
+    init(selectedClass: CharacterClass, targetReps: Int? = nil, bossMaxHP: Int? = nil, damagePerRep: Int? = nil, isDungeonMode: Bool = false, onComplete: ((Int) -> Void)? = nil) {
         self.selectedClass = selectedClass
         self.onComplete = onComplete
+        self.isDungeonMode = isDungeonMode
         
         let maxHP = bossMaxHP ?? 0
         let dmg = damagePerRep ?? 0
@@ -85,26 +86,10 @@ class CameraTrackingVM: ObservableObject {
             .sink { [weak self] joints in
                 guard let self = self else { return }
                 self.rawJoints = joints
-                if !self.isSimulatorMode {
-                    self.engine.processFrame(joints: joints)
-                }
+                self.engine.processFrame(joints: joints)
             }
             .store(in: &cancellables)
             
-        $isSimulatorMode
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] mode in
-                if mode {
-                    self?.cameraManager.stopSession()
-                } else {
-                    self?.cameraManager.checkPermission()
-                }
-            }
-            .store(in: &cancellables)
-    }
-    
-    func simulateRep() {
-        engine.simulateRepetition()
     }
     
     private func onRepetitionPerformed() {
@@ -165,14 +150,15 @@ class CameraTrackingVM: ObservableObject {
             }
         }
         
-        // Record reps to character profile
-        if BattleEngine.shared.activeBattle != nil || MultiplayerService.shared.activeBattle != nil {
-            let isCritical = activeCombo >= 1.5
-            // Register rep in the current active battle (Firebase or local Boss Engine)
-            BattleEngine.shared.registerPlayerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
-            MultiplayerService.shared.registerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
-        } else {
-            firebaseService.awardBattleRewards(xp: 15, gold: 5)
+        // Record reps to character profile — skip PvP logic in dungeon mode
+        if !isDungeonMode {
+            if BattleEngine.shared.activeBattle != nil || MultiplayerService.shared.activeBattle != nil {
+                let isCritical = activeCombo >= 1.5
+                BattleEngine.shared.registerPlayerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
+                MultiplayerService.shared.registerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
+            } else {
+                firebaseService.awardBattleRewards(xp: 15, gold: 5)
+            }
         }
         
         // Check complete conditions

@@ -43,27 +43,42 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
     
     func getIconName() -> String {
         if slot == .weapon {
-            return "sword.fill" // wait, previous was shield.fill for weapon? Actually no, previous said "shield.fill" for weapon, but that was a bug. Wait let's check previous content.
+            // Class-specific weapon icons
+            switch classRestriction {
+            case .archer:    return "arrow.up.right"
+            case .mage:      return "wand.and.stars"
+            case .healer:    return "cross.case.fill"
+            case .swordsman: return "shield.fill"
+            case .none:
+                // Generic weapon icon by rarity
+                switch rarity {
+                case .mythical:   return "bolt.trianglebadge.exclamationmark.fill"
+                case .legendary:  return "flame.fill"
+                case .epic:       return "bolt.fill"
+                default:          return "knife.fill"
+                }
+            }
         }
         if slot == .ring {
-            return "hands.sparkles.fill"
+            return "circle.dotted"
         }
         if slot == .amulet {
-            return "necklace.fill"
+            return "sparkles"
         }
+        // Armor: by rarity or class
         guard let classRestriction = self.classRestriction else {
             switch self.rarity {
-            case .mythical: return "shield.lefthalf.filled.triangles"
+            case .mythical:  return "shield.lefthalf.filled.triangles"
             case .legendary: return "shield.righthalf.filled.triangles"
-            case .epic: return "shield.checkerboard"
-            default: return "shield.fill"
+            case .epic:      return "shield.checkerboard"
+            default:         return "shield.fill"
             }
         }
         switch classRestriction {
-        case .archer: return "figure.run"
-        case .mage: return "bolt.shield.fill"
+        case .archer:    return "figure.run"
+        case .mage:      return "bolt.shield.fill"
         case .swordsman: return "shield.fill"
-        case .healer: return "heart.text.square.fill"
+        case .healer:    return "heart.text.square.fill"
         }
     }
     
@@ -82,7 +97,7 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
         if let starter = starterWeapons.values.first(where: { $0.id == id }) {
             return starter
         }
-        return nil
+        return allShopWeapons.first(where: { $0.id == id })
     }
     
     static func findRing(by id: String) -> EquipmentItem? {
@@ -187,6 +202,65 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
         )
     ]
     
+    // Static database of shop weapons across all rarities
+    static let allShopWeapons: [EquipmentItem] = [
+        // --- COMMON ---
+        EquipmentItem(id: "wpn_com_1", name: "Short Sword", slot: .weapon, rarity: .common, combatPowerBonus: 12, defense: 0, cost: 60, classRestriction: nil,
+                      description: "A basic iron blade used by city guards and low-level adventurers."),
+        EquipmentItem(id: "wpn_com_2", name: "Hunting Bow", slot: .weapon, rarity: .common, combatPowerBonus: 10, defense: 0, cost: 55, classRestriction: .archer,
+                      description: "A lightweight bow ideal for hunting small game and scout missions."),
+        EquipmentItem(id: "wpn_com_3", name: "Wooden Staff", slot: .weapon, rarity: .common, combatPowerBonus: 11, defense: 0, cost: 50, classRestriction: .mage,
+                      description: "A simple staff carved from oak, channeling basic spell energy."),
+        EquipmentItem(id: "wpn_com_4", name: "Healing Wand", slot: .weapon, rarity: .common, combatPowerBonus: 9, defense: 2, cost: 55, classRestriction: .healer,
+                      description: "Infused with minor restorative runes to aid battlefield triage."),
+        EquipmentItem(id: "wpn_com_5", name: "Dagger", slot: .weapon, rarity: .common, combatPowerBonus: 14, defense: 0, cost: 70, classRestriction: nil,
+                      description: "Fast and precise, favored by rogues and backup fighters."),
+
+        // --- RARE ---
+        EquipmentItem(id: "wpn_rar_1", name: "Elven Longbow", slot: .weapon, rarity: .rare, combatPowerBonus: 28, defense: 0, cost: 260, classRestriction: .archer,
+                      description: "Crafted from silvermoon wood, it fires arrows with uncanny precision."),
+        EquipmentItem(id: "wpn_rar_2", name: "Frost Shard Staff", slot: .weapon, rarity: .rare, combatPowerBonus: 30, defense: 0, cost: 280, classRestriction: .mage,
+                      description: "Topped with an ice crystal that slows enemy movement."),
+        EquipmentItem(id: "wpn_rar_3", name: "Battle Axe", slot: .weapon, rarity: .rare, combatPowerBonus: 34, defense: 0, cost: 310, classRestriction: .swordsman,
+                      description: "A heavy two-handed axe designed to cleave through armor."),
+        EquipmentItem(id: "wpn_rar_4", name: "Blessed Mace", slot: .weapon, rarity: .rare, combatPowerBonus: 26, defense: 4, cost: 290, classRestriction: .healer,
+                      description: "Enchanted by temple priests to boost both strike and recovery power."),
+        EquipmentItem(id: "wpn_rar_5", name: "Silver Rapier", slot: .weapon, rarity: .rare, combatPowerBonus: 32, defense: 2, cost: 330, classRestriction: nil,
+                      description: "A nimble thrusting sword forged from polished silver alloy."),
+
+        // --- EPIC ---
+        EquipmentItem(id: "wpn_epi_1", name: "Thunderstrike Bow", slot: .weapon, rarity: .epic, combatPowerBonus: 50, defense: 0, cost: 580, classRestriction: .archer,
+                      description: "Arrows crackle with static electricity, paralysing on hit."),
+        EquipmentItem(id: "wpn_epi_2", name: "Stormcaller Staff", slot: .weapon, rarity: .epic, combatPowerBonus: 54, defense: 0, cost: 620, classRestriction: .mage,
+                      description: "Summons miniature lightning storms at will."),
+        EquipmentItem(id: "wpn_epi_3", name: "Obsidian Claymore", slot: .weapon, rarity: .epic, combatPowerBonus: 60, defense: 0, cost: 690, classRestriction: .swordsman,
+                      description: "Forged from volcanic glass, it shatters armor on contact."),
+        EquipmentItem(id: "wpn_epi_4", name: "Celestial Sceptre", slot: .weapon, rarity: .epic, combatPowerBonus: 45, defense: 8, cost: 640, classRestriction: .healer,
+                      description: "Channels divine light into powerful healing waves."),
+        EquipmentItem(id: "wpn_epi_5", name: "Twin Fangs", slot: .weapon, rarity: .epic, combatPowerBonus: 56, defense: 0, cost: 710, classRestriction: nil,
+                      description: "Dual curved blades that strike twice per attack cycle."),
+
+        // --- LEGENDARY ---
+        EquipmentItem(id: "wpn_leg_1", name: "Stardust Shortbow", slot: .weapon, rarity: .legendary, combatPowerBonus: 80, defense: 0, cost: 1300, classRestriction: .archer,
+                      description: "Woven from celestial threads, arrows travel faster than light."),
+        EquipmentItem(id: "wpn_leg_2", name: "Arcane Tome of Ruin", slot: .weapon, rarity: .legendary, combatPowerBonus: 85, defense: 0, cost: 1450, classRestriction: .mage,
+                      description: "Ancient spellbook binding reality-rending incantations."),
+        EquipmentItem(id: "wpn_leg_3", name: "Excalibur Replica", slot: .weapon, rarity: .legendary, combatPowerBonus: 90, defense: 5, cost: 1600, classRestriction: .swordsman,
+                      description: "A near-perfect recreation of the legendary holy blade."),
+        EquipmentItem(id: "wpn_leg_4", name: "Aether Lute", slot: .weapon, rarity: .legendary, combatPowerBonus: 70, defense: 15, cost: 1500, classRestriction: .healer,
+                      description: "Musical healing resonates through allies boosting their recovery."),
+
+        // --- MYTHICAL ---
+        EquipmentItem(id: "wpn_myt_1", name: "Voidcleaver", slot: .weapon, rarity: .mythical, combatPowerBonus: 130, defense: 0, cost: 3000, classRestriction: .swordsman,
+                      description: "Tears rifts in space with every swing, hitting enemies across dimensions."),
+        EquipmentItem(id: "wpn_myt_2", name: "Nebula Strand Bow", slot: .weapon, rarity: .mythical, combatPowerBonus: 120, defense: 0, cost: 2800, classRestriction: .archer,
+                      description: "Arrows materialise from starlight, striking before they are loosed."),
+        EquipmentItem(id: "wpn_myt_3", name: "The Singularity Staff", slot: .weapon, rarity: .mythical, combatPowerBonus: 140, defense: 0, cost: 3500, classRestriction: .mage,
+                      description: "Contains a compressed black hole at its tip, collapsing enemy defences."),
+        EquipmentItem(id: "wpn_myt_4", name: "Genesis Rod", slot: .weapon, rarity: .mythical, combatPowerBonus: 110, defense: 25, cost: 3200, classRestriction: .healer,
+                      description: "Channels the force of creation itself, restoring life on a cosmic scale."),
+    ]
+
     // Static database of 35 generated armors categorized by rank/rarity
     static let allShopArmors: [EquipmentItem] = [
         // --- COMMON (8 Items) ---

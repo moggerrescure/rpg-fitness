@@ -1,4 +1,5 @@
 import SwiftUI
+import HealthKit
 
 struct PlayerProfileView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
@@ -413,6 +414,10 @@ struct PlayerProfileView: View {
                     }
                     .padding(.horizontal)
                     
+                    // Health Sync Section
+                    HealthSyncTabView()
+                        .padding(.horizontal)
+                    
                     // Achievements
                     VStack(alignment: .leading, spacing: 16) {
                         Text("ACHIEVEMENTS")
@@ -445,9 +450,6 @@ struct PlayerProfileView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .zIndex(100)
             }
-        }
-        .sheet(isPresented: $showArmoryShop) {
-            ArmoryShopView()
         }
         .sheet(isPresented: $showArmoryShop) {
             ArmoryShopView()

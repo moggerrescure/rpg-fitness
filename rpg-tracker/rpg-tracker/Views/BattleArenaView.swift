@@ -3,7 +3,7 @@ import SwiftUI
 enum BattleArenaSheetType: Identifiable, Equatable {
     case generalCameraTracker
     case storyStagePrep(stage: Int)
-    case storyCameraTracker(exerciseClass: CharacterClass, bossMaxHP: Int, damagePerRep: Int)
+    case storyCameraTracker(exerciseClass: CharacterClass, bossMaxHP: Int, damagePerRep: Int, bossName: String?, bossImage: String?)
     case pvpInviteFriends
     
     var id: String {
@@ -12,8 +12,8 @@ enum BattleArenaSheetType: Identifiable, Equatable {
             return "generalCameraTracker"
         case .storyStagePrep(let stage):
             return "storyStagePrep_\(stage)"
-        case .storyCameraTracker(let cls, let hp, let dmg):
-            return "storyCameraTracker_\(cls.rawValue)_\(hp)_\(dmg)"
+        case .storyCameraTracker(let cls, let hp, let dmg, let name, _):
+            return "storyCameraTracker_\(cls.rawValue)_\(hp)_\(dmg)_\(name ?? "")"
         case .pvpInviteFriends:
             return "pvpInviteFriends"
         }
@@ -38,6 +38,7 @@ struct BattleArenaView: View {
     @State private var isInLobby: Bool = false
     @State private var showInviteSheet: Bool = false
     @State private var showMatchmakingClassPicker: Bool = false
+    @State private var showBossRaid: Bool = false
     var initialPvPType: BattleType? = nil
     
     // Story mode state extensions
@@ -172,20 +173,7 @@ struct BattleArenaView: View {
                                     }
                                 },
                                 selectBossRaid: {
-                                    viewModel.selectedPvPType = .bossRaid
-                                    if let char = FirebaseService.shared.currentCharacter {
-                                        if let wb = FirebaseService.shared.activeWorldBoss, wb.isActive {
-                                            let template = Boss.templates.first { $0.id == wb.bossTemplateId } ?? Boss.templates.last!
-                                            var activeTemplate = template
-                                            activeTemplate.maxHealth = wb.maxHealth
-                                            activeTemplate.currentHealth = wb.currentHealth
-                                            activeTemplate.isGlobalWorldBoss = true
-                                            BattleEngine.shared.startBossRaid(bossTemplate: activeTemplate, player: char)
-                                        } else {
-                                            let randomBoss = Boss.templates.randomElement()!
-                                            BattleEngine.shared.startBossRaid(bossTemplate: randomBoss, player: char)
-                                        }
-                                    }
+                                    showBossRaid = true
                                 }
                             )
                         }
@@ -227,7 +215,10 @@ struct BattleArenaView: View {
                 }
             }
         }
-        .sheet(item: $activeSheet) { sheet in
+        .fullScreenCover(isPresented: $showBossRaid) {
+            BossRaidView()
+        }
+        .fullScreenCover(item: $activeSheet) { sheet in
             switch sheet {
             case .generalCameraTracker:
                 CameraTrackingView(selectedClass: viewModel.currentClass)
@@ -242,16 +233,37 @@ struct BattleArenaView: View {
                         selectedStoryDamagePerRep = repDMG
                         activeSheet = nil
                         
+                        let bName: String
+                        let bImg: String
+                        if stage == 10 {
+                            bName = "Gorgon's Behemoth"
+                            bImg = "boss_gorgon_behemoth"
+                        } else if stage == 20 {
+                            bName = "Dark Lord"
+                            bImg = "boss_dark_lord"
+                        } else if stage == 30 {
+                            bName = "Ice Colossus"
+                            bImg = "boss_ice_colossus"
+                        } else if stage == 40 {
+                            bName = "Volcanic Demon"
+                            bImg = "boss_volcanic_peak"
+                        } else {
+                            bName = "Stage \(stage) Boss"
+                            bImg = "boss_gorgon_behemoth"
+                        }
+                        
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            activeSheet = .storyCameraTracker(exerciseClass: exerciseClass, bossMaxHP: bossHP, damagePerRep: repDMG)
+                            activeSheet = .storyCameraTracker(exerciseClass: exerciseClass, bossMaxHP: bossHP, damagePerRep: repDMG, bossName: bName, bossImage: bImg)
                         }
                     }
                 )
-            case .storyCameraTracker(let exerciseClass, let bossMaxHP, let damagePerRep):
+            case .storyCameraTracker(let exerciseClass, let bossMaxHP, let damagePerRep, let bossName, let bossImage):
                 CameraTrackingView(
                     selectedClass: exerciseClass,
                     bossMaxHP: bossMaxHP,
                     damagePerRep: damagePerRep,
+                    bossName: bossName,
+                    bossImage: bossImage,
                     onComplete: { repsCompleted in
                         activeSheet = nil
                         handleStoryStageWin()
@@ -313,16 +325,7 @@ struct BattleArenaView: View {
             if let type = initialPvPType {
                 viewModel.selectedPvPType = type
                 if type == .bossRaid {
-                    if let char = FirebaseService.shared.currentCharacter {
-                        if let wb = FirebaseService.shared.activeWorldBoss, wb.isActive {
-                            let template = Boss.templates.first { $0.id == wb.bossTemplateId } ?? Boss.templates.last!
-                            var activeTemplate = template
-                            activeTemplate.maxHealth = wb.maxHealth
-                            activeTemplate.currentHealth = wb.currentHealth
-                            activeTemplate.isGlobalWorldBoss = true
-                            BattleEngine.shared.startBossRaid(bossTemplate: activeTemplate, player: char)
-                        }
-                    }
+                    showBossRaid = true
                 } else {
                     viewModel.startQueue()
                 }
@@ -346,244 +349,240 @@ struct BattleArenaView: View {
 }
 
 
-// 1. PvP Mode selector (Cards selection screen)
+// 1. PvP Mode selector (Beautiful Hero Cards Grid)
 struct PvPModeSelectorView: View {
     let select1v1: () -> Void
     let select3v3: () -> Void
     let selectStory: () -> Void
     let selectBossRaid: () -> Void
-    
+
+    @State private var appear = false
+
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-                .frame(height: 60)
-            
-            VStack(spacing: 8) {
-                Text("GAME ADVENTURE MODES")
-                    .font(.system(.title3, design: .monospaced))
-                    .fontWeight(.black)
-                    .foregroundColor(Theme.textPrimary)
-                    .tracking(2)
-                    .glow(color: Theme.accent.opacity(0.35), radius: 8)
-                
-                Text("Select battle arena or journey fit campaign")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(Theme.textSecondary)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                // Spacer for segment control
+                Color.clear.frame(height: 76)
+
+                // ── HEADER ─────────────────────────────────────────
+                VStack(spacing: 12) {
+                    // Decorative badge
+                    HStack(spacing: 6) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Theme.warning)
+                        Text("CHOOSE YOUR BATTLE")
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .foregroundColor(Theme.warning)
+                            .tracking(2)
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Theme.warning)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Theme.warning.opacity(0.1))
+                    .cornerRadius(20)
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.warning.opacity(0.3), lineWidth: 1))
+
+                    Text("SELECT BATTLEGROUND")
+                        .font(.system(size: 22, weight: .black, design: .monospaced))
+                        .foregroundColor(.white)
+                        .tracking(1)
+                        .multilineTextAlignment(.center)
+                        .glow(color: Theme.warning.opacity(0.2), radius: 8)
+
+                    Text("Every rep counts. Every match matters.")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 10)
+                .padding(.bottom, 22)
+                .opacity(appear ? 1 : 0)
+                .offset(y: appear ? 0 : 16)
+
+                // ── 2×2 HERO CARD GRID ─────────────────────────────
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                    ArenaHeroCard(
+                        title: "STORY\nCAMPAIGN",
+                        subtitle: "20 Islands · Epic Bosses",
+                        detail: "CO-OP / SOLO",
+                        icon: "map.fill",
+                        gradient: [Color(hex: "1A4D2E"), Color(hex: "071C10")],
+                        accentColor: Color(hex: "34D399"),
+                        badge: "CO-OP",
+                        badgeColor: Color(hex: "34D399"),
+                        animDelay: 0.08,
+                        appear: appear,
+                        action: selectStory
+                    )
+                    ArenaHeroCard(
+                        title: "1V1\nSPEED DUEL",
+                        subtitle: "60s Exercise Race",
+                        detail: "PVP · RANKED",
+                        icon: "figure.martial.arts",
+                        gradient: [Color(hex: "7F1D1D"), Color(hex: "2D0A0A")],
+                        accentColor: Color(hex: "F87171"),
+                        badge: "PVP",
+                        badgeColor: Color(hex: "F87171"),
+                        animDelay: 0.14,
+                        appear: appear,
+                        action: select1v1
+                    )
+                    ArenaHeroCard(
+                        title: "3V3\nCO-OP",
+                        subtitle: "Team Attacks & Heals",
+                        detail: "INVITE FRIENDS",
+                        icon: "person.3.fill",
+                        gradient: [Color(hex: "1E3A5F"), Color(hex: "071424")],
+                        accentColor: Color(hex: "60A5FA"),
+                        badge: "TEAM",
+                        badgeColor: Color(hex: "60A5FA"),
+                        animDelay: 0.20,
+                        appear: appear,
+                        action: select3v3
+                    )
+                    ArenaHeroCard(
+                        title: "BOSS\nRAID",
+                        subtitle: "Reps = Direct Damage",
+                        detail: "WORLD BOSS",
+                        icon: "flame.fill",
+                        gradient: [Color(hex: "7C2D12"), Color(hex: "2A0D04")],
+                        accentColor: Color(hex: "FB923C"),
+                        badge: "RAID",
+                        badgeColor: Color(hex: "FB923C"),
+                        animDelay: 0.26,
+                        appear: appear,
+                        action: selectBossRaid
+                    )
+                }
+                .padding(.horizontal, 16)
+
+                Color.clear.frame(height: 110)
             }
-            .padding(.top, 20)
-            
-            Spacer()
-            
-            VStack(spacing: 16) {
-                // Story Campaign Card
-                Button(action: selectStory) {
-                    HStack(spacing: 18) {
-                        ZStack {
-                            Circle()
-                                .fill(Theme.healerColor.opacity(0.15))
-                                .frame(width: 54, height: 54)
-                            
-                            Image(systemName: "map.fill")
-                                .font(.title3)
-                                .foregroundColor(Theme.healerColor)
-                        }
-                        .glow(color: Theme.healerColor.opacity(0.35), radius: 6)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("STORY CAMPAIGN (CO-OP / SOLO)")
-                                .font(.system(.subheadline, design: .default))
-                                .fontWeight(.black)
-                                .foregroundColor(Theme.textPrimary)
-                            
-                            Text("Journey through 20 islands. Face epic bosses at stages 10 & 20. Team up or go solo.")
-                                .font(.caption2)
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                                .lineSpacing(2)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 18)
-                            .fill(Theme.cardBackground.opacity(0.85))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(LinearGradient(
-                                colors: [Theme.healerColor.opacity(0.35), Color.clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ), lineWidth: 1.5)
-                    )
-                    .shadow(color: Theme.healerColor.opacity(0.1), radius: 8, x: 0, y: 4)
-                }
-                .buttonStyle(TactileButtonStyle())
-                
-                // 1v1 Duel Card
-                Button(action: select1v1) {
-                    HStack(spacing: 18) {
-                        ZStack {
-                            Circle()
-                                .fill(Theme.danger.opacity(0.15))
-                                .frame(width: 54, height: 54)
-                            
-                            Image(systemName: "sword.and.shield.flightpath")
-                                .font(.title3)
-                                .foregroundColor(Theme.danger)
-                        }
-                        .glow(color: Theme.danger.opacity(0.35), radius: 6)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("1V1 SPEED DUEL")
-                                .font(.system(.subheadline, design: .default))
-                                .fontWeight(.black)
-                                .foregroundColor(Theme.textPrimary)
-                            
-                            Text("Fast automated match. Push your limits in a 60-second exercise race.")
-                                .font(.caption2)
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                                .lineSpacing(2)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 18)
-                            .fill(Theme.cardBackground.opacity(0.85))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(LinearGradient(
-                                colors: [Theme.danger.opacity(0.35), Color.clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ), lineWidth: 1.5)
-                    )
-                    .shadow(color: Theme.danger.opacity(0.1), radius: 8, x: 0, y: 4)
-                }
-                .buttonStyle(TactileButtonStyle())
-                
-                // 3v3 Co-op Card
-                Button(action: select3v3) {
-                    HStack(spacing: 18) {
-                        ZStack {
-                            Circle()
-                                .fill(Theme.primary.opacity(0.15))
-                                .frame(width: 54, height: 54)
-                            
-                            Image(systemName: "person.3.fill")
-                                .font(.title3)
-                                .foregroundColor(Theme.primary)
-                        }
-                        .glow(color: Theme.primary.opacity(0.35), radius: 6)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("3V3 CO-OP BATTLE")
-                                .font(.system(.subheadline, design: .default))
-                                .fontWeight(.black)
-                                .foregroundColor(Theme.textPrimary)
-                            
-                            Text("Invite up to 2 friends. Coordinate exercises to execute team attacks and heals.")
-                                .font(.caption2)
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                                .lineSpacing(2)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 18)
-                            .fill(Theme.cardBackground.opacity(0.85))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(LinearGradient(
-                                colors: [Theme.primary.opacity(0.35), Color.clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ), lineWidth: 1.5)
-                    )
-                    .shadow(color: Theme.primary.opacity(0.1), radius: 8, x: 0, y: 4)
-                }
-                .buttonStyle(TactileButtonStyle())
-                
-                // Solo Boss Raid Card
-                Button(action: selectBossRaid) {
-                    HStack(spacing: 18) {
-                        ZStack {
-                            Circle()
-                                .fill(Theme.warning.opacity(0.15))
-                                .frame(width: 54, height: 54)
-                            
-                            Image(systemName: "flame.fill")
-                                .font(.title3)
-                                .foregroundColor(Theme.warning)
-                        }
-                        .glow(color: Theme.warning.opacity(0.35), radius: 6)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("SOLO BOSS RAID")
-                                .font(.system(.subheadline, design: .default))
-                                .fontWeight(.black)
-                                .foregroundColor(Theme.textPrimary)
-                            
-                            Text("Face off against a massive boss. Your workout reps deal direct damage to the beast.")
-                                .font(.caption2)
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                                .lineSpacing(2)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 18)
-                            .fill(Theme.cardBackground.opacity(0.85))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(LinearGradient(
-                                colors: [Theme.warning.opacity(0.35), Color.clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ), lineWidth: 1.5)
-                    )
-                    .shadow(color: Theme.warning.opacity(0.1), radius: 8, x: 0, y: 4)
-                }
-                .buttonStyle(TactileButtonStyle())
-            }
-            .padding(.horizontal)
-            
-            Spacer()
-                .frame(height: 100) // Bottom tab space
         }
+        .onAppear {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.8)) {
+                appear = true
+            }
+        }
+    }
+}
+
+// ── Arena Hero Card ────────────────────────────────────────────────────────
+
+private struct ArenaHeroCard: View {
+    let title: String
+    let subtitle: String
+    let detail: String
+    let icon: String
+    let gradient: [Color]
+    let accentColor: Color
+    let badge: String
+    let badgeColor: Color
+    let animDelay: Double
+    let appear: Bool
+    let action: () -> Void
+
+    @State private var pressed = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .bottomLeading) {
+                // Base gradient
+                LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+
+                // Top-right accent glow
+                RadialGradient(
+                    colors: [accentColor.opacity(0.3), Color.clear],
+                    center: UnitPoint(x: 0.85, y: 0.15),
+                    startRadius: 0, endRadius: 90
+                )
+
+                // Noise/texture overlay
+                Color.white.opacity(0.02)
+
+                VStack(alignment: .leading, spacing: 0) {
+                    // Top row: badge + arrow
+                    HStack(alignment: .top) {
+                        Text(badge)
+                            .font(.system(size: 8, weight: .black, design: .monospaced))
+                            .foregroundColor(badgeColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(badgeColor.opacity(0.15))
+                            .cornerRadius(6)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(badgeColor.opacity(0.4), lineWidth: 1))
+
+                        Spacer()
+
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(accentColor.opacity(0.5))
+                    }
+
+                    Spacer()
+
+                    // Center: Big icon
+                    Image(systemName: icon)
+                        .font(.system(size: 42, weight: .bold))
+                        .foregroundColor(accentColor)
+                        .glow(color: accentColor.opacity(0.6), radius: 12)
+                        .padding(.bottom, 12)
+
+                    // Title
+                    Text(title)
+                        .font(.system(size: 15, weight: .black, design: .monospaced))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    // Subtitle
+                    Text(subtitle)
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.45))
+                        .lineLimit(1)
+                        .padding(.top, 3)
+
+                    // Detail line
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(accentColor)
+                            .frame(width: 5, height: 5)
+                        Text(detail)
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundColor(accentColor.opacity(0.8))
+                    }
+                    .padding(.top, 5)
+                }
+                .padding(16)
+            }
+            .frame(height: 210)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22)
+                    .stroke(
+                        LinearGradient(
+                            colors: [accentColor.opacity(pressed ? 0.8 : 0.4), accentColor.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+            )
+            .shadow(color: accentColor.opacity(pressed ? 0.35 : 0.18), radius: pressed ? 16 : 10, x: 0, y: pressed ? 4 : 6)
+            .scaleEffect(pressed ? 0.96 : 1.0)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onLongPressGesture(minimumDuration: 0, maximumDistance: 50, pressing: { isPressing in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
+                pressed = isPressing
+            }
+        }, perform: {})
+        .opacity(appear ? 1 : 0)
+        .scaleEffect(appear ? 1 : 0.88)
+        .animation(.spring(response: 0.5, dampingFraction: 0.72).delay(animDelay), value: appear)
     }
 }
 
@@ -943,7 +942,7 @@ struct MatchmakingQueueView: View {
                         )
                 }
                 .padding(.horizontal)
-                .padding(.bottom, 32)
+                .padding(.bottom, 120) // Raised significantly to clear the Tab Bar
             }
         }
     }
@@ -962,190 +961,233 @@ struct CombatArenaView: View {
     let battle: Battle
     @ObservedObject var viewModel: BattleVM
     
+    @StateObject private var cameraVM: CameraTrackingVM
+    
     @State private var shakeOffset: CGFloat = 0
     @State private var combatLogCount: Int = 0
     @State private var damageNumbers: [FloatingDamage] = []
     
+    init(battle: Battle, viewModel: BattleVM) {
+        self.battle = battle
+        self.viewModel = viewModel
+        
+        let dmg = Int(Double(FirebaseService.shared.currentCharacter?.combatPower ?? 10) * 0.15)
+        let cls = viewModel.currentClass
+        
+        _cameraVM = StateObject(wrappedValue: CameraTrackingVM(
+            selectedClass: cls,
+            targetReps: nil,
+            bossMaxHP: battle.type == .bossRaid ? BattleEngine.shared.activeBoss?.maxHealth : nil,
+            damagePerRep: battle.type == .bossRaid ? dmg : nil,
+            isDungeonMode: false,
+            onComplete: nil
+        ))
+    }
+    
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer()
-                .frame(height: 44)
+        ZStack {
+            // Full Screen Camera Background
+            CameraPreview(session: cameraVM.cameraManager.session)
+                .ignoresSafeArea()
             
-            // Timer & Status Header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(battle.type == .duel1v1 ? "1V1 DUEL IN PROGRESS" : "3V3 TEAM MATCH IN PROGRESS")
-                        .font(.caption)
-                        .foregroundColor(Theme.textMuted)
-                        .fontWeight(.bold)
-                    Text(battle.id)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundColor(Theme.textSecondary)
-                }
-                
+            PoseOverlayView(joints: cameraVM.rawJoints, themeColor: cameraVM.selectedClass.themeColor)
+            
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 16) {
                 Spacer()
+                    .frame(height: 44)
                 
-                // Active timer
-                ZStack {
-                    Circle()
-                        .stroke(Theme.border, lineWidth: 4)
-                        .frame(width: 48, height: 48)
-                    
-                    Circle()
-                        .trim(from: 0.0, to: CGFloat(battle.secondsRemaining) / 60.0)
-                        .stroke(battle.secondsRemaining < 15 ? Theme.danger : Theme.success, lineWidth: 4)
-                        .frame(width: 48, height: 48)
-                        .rotationEffect(Angle(degrees: -90))
-                    
-                    Text("\(battle.secondsRemaining)s")
-                        .font(.system(.caption, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(Theme.textPrimary)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 16)
-            
-            // Fighters Grid Layout
-            if battle.type == .bossRaid {
-                VStack(spacing: 16) {
-                    if let boss = BattleEngine.shared.activeBoss {
-                        VStack(spacing: 8) {
-                            Text(boss.name)
-                                .font(.system(.title3, design: .monospaced))
-                                .fontWeight(.black)
-                                .foregroundColor(Theme.danger)
-                            
-                            // Big Boss HP Bar
-                            GeometryReader { geo in
-                                let isEnraged = Double(boss.currentHealth) < Double(boss.maxHealth) * 0.5
-                                
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color.black.opacity(0.5))
-                                    
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(isEnraged ? Color.red : Theme.danger)
-                                        .frame(width: max(0, geo.size.width * CGFloat(boss.currentHealth) / CGFloat(boss.maxHealth)))
-                                        .animation(.spring(), value: boss.currentHealth)
-                                        .shadow(color: isEnraged ? Color.red : Color.clear, radius: isEnraged ? 8 : 0)
-                                }
-                            }
-                            .frame(height: 24)
-                            .overlay(
-                                Text("\(boss.currentHealth) / \(boss.maxHealth) HP")
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                            )
-                            .padding(.horizontal, 32)
-                        }
+                // Timer & Status Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(battle.type == .bossRaid ? "BOSS RAID" : (battle.type == .duel1v1 ? "1V1 DUEL" : "TEAM BATTLE"))
+                            .font(.caption)
+                            .foregroundColor(.white)
+                            .fontWeight(.bold)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(12)
                     }
                     
-                    Text("VS")
-                        .font(.system(.headline, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(Theme.textMuted)
+                    Spacer()
                     
-                    if let p1 = battle.localTeam.first {
-                        FighterCard(player: p1, isLocal: true)
+                    // Active timer
+                    ZStack {
+                        Circle()
+                            .stroke(Theme.border, lineWidth: 4)
+                            .frame(width: 48, height: 48)
+                        
+                        Circle()
+                            .trim(from: 0.0, to: CGFloat(battle.secondsRemaining) / 60.0)
+                            .stroke(battle.secondsRemaining < 15 ? Theme.danger : Theme.success, lineWidth: 4)
+                            .frame(width: 48, height: 48)
+                            .rotationEffect(Angle(degrees: -90))
+                        
+                        Text("\(battle.secondsRemaining)s")
+                            .font(.system(.caption, design: .monospaced))
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
                     }
-                }
-            } else if battle.type == .duel1v1 {
-                // 1v1 Layout
-                HStack(spacing: 12) {
-                    if let p1 = battle.localTeam.first {
-                        FighterCard(player: p1, isLocal: true)
-                    }
-                    
-                    Text("VS")
-                        .font(.system(.headline, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(Theme.textMuted)
-                    
-                    if let p2 = battle.opponentTeam.first {
-                        FighterCard(player: p2, isLocal: false)
-                    }
+                    .background(Color.black.opacity(0.5).clipShape(Circle()))
                 }
                 .padding(.horizontal)
-            } else {
-                // 3v3 Team Layout (Side-by-side columns of compact cards)
-                HStack(spacing: 8) {
-                    // Local Team (Left Column)
-                    VStack(spacing: 8) {
-                        ForEach(battle.localTeam) { player in
-                            CompactFighterCard(player: player, isLocal: player.id == FirebaseService.shared.currentCharacter?.id)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    
-                    Text("VS")
-                        .font(.system(.subheadline, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(Theme.textMuted)
-                        .padding(.horizontal, 4)
-                    
-                    // Opponent Team (Right Column)
-                    VStack(spacing: 8) {
-                        ForEach(battle.opponentTeam) { player in
-                            CompactFighterCard(player: player, isLocal: false)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .padding(.horizontal, 8)
-            }
-            
-            // Combat Log Panel
-            VStack(alignment: .leading, spacing: 10) {
-                Text("COMBAT TELEMETRY LOG")
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(Theme.textMuted)
-                    .padding(.horizontal)
-                    .padding(.top, 12)
+                .padding(.top, 16)
                 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if battle.combatLog.isEmpty {
-                            Text("> Combat initialized. Perform exercises to attack!")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(Theme.textSecondary)
-                                .padding(.horizontal)
-                        } else {
-                            ForEach(battle.combatLog) { event in
-                                LogRowView(event: event)
+                // Fighters Grid Layout
+                if battle.type == .bossRaid {
+                    VStack(spacing: 16) {
+                        if let boss = BattleEngine.shared.activeBoss {
+                            VStack(spacing: 8) {
+                                Text(boss.name)
+                                    .font(.system(.title3, design: .monospaced))
+                                    .fontWeight(.black)
+                                    .foregroundColor(Theme.danger)
+                                    .shadow(color: .black, radius: 2)
+                                
+                                // Big Boss HP Bar
+                                GeometryReader { geo in
+                                    let isEnraged = Double(boss.currentHealth) < Double(boss.maxHealth) * 0.5
+                                    
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(Color.black.opacity(0.7))
+                                        
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(isEnraged ? Color.red : Theme.danger)
+                                            .frame(width: max(0, geo.size.width * CGFloat(boss.currentHealth) / CGFloat(boss.maxHealth)))
+                                            .animation(.spring(), value: boss.currentHealth)
+                                            .shadow(color: isEnraged ? Color.red : Color.clear, radius: isEnraged ? 8 : 0)
+                                    }
+                                }
+                                .frame(height: 24)
+                                .overlay(
+                                    Text("\(boss.currentHealth) / \(boss.maxHealth) HP")
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.white)
+                                )
+                                .padding(.horizontal, 32)
+                                
+                                // Boss Image Logic
+                                Group {
+                                    if boss.name.contains("Gorgon") {
+                                        Image("boss_gorgon_behemoth")
+                                            .resizable().scaledToFit()
+                                    } else if boss.name.contains("Dark Lord") {
+                                        Image("boss_dark_lord")
+                                            .resizable().scaledToFit()
+                                    } else if boss.name.contains("Ice Colossus") {
+                                        Image("boss_ice_colossus")
+                                            .resizable().scaledToFit()
+                                    } else if boss.name.contains("Volcanic") {
+                                        Image("boss_volcanic_peak")
+                                            .resizable().scaledToFit()
+                                    } else {
+                                        Image("boss_gorgon_behemoth")
+                                            .resizable().scaledToFit()
+                                    }
+                                }
+                                .frame(height: 250)
+                                .shadow(color: Theme.danger.opacity(0.3), radius: 20)
                             }
                         }
+                        
+                        Spacer()
+                        
+                        if let p1 = battle.localTeam.first {
+                            FighterCard(player: p1, isLocal: true)
+                                .padding()
+                                .background(Color.black.opacity(0.6).cornerRadius(12))
+                        }
                     }
+                } else if battle.type == .duel1v1 {
+                    Spacer()
+                    // 1v1 Layout
+                    HStack(spacing: 12) {
+                        if let p1 = battle.localTeam.first {
+                            FighterCard(player: p1, isLocal: true)
+                                .padding()
+                                .background(Color.black.opacity(0.6).cornerRadius(12))
+                        }
+                        
+                        Text("VS")
+                            .font(.system(.title2, design: .monospaced))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                            .shadow(color: Theme.danger, radius: 4)
+                        
+                        if let p2 = battle.opponentTeam.first {
+                            FighterCard(player: p2, isLocal: false)
+                                .padding()
+                                .background(Color.black.opacity(0.6).cornerRadius(12))
+                        }
+                    }
+                    .padding(.horizontal)
+                    Spacer()
+                } else {
+                    Spacer()
+                    // 3v3 Team Layout
+                    HStack(spacing: 8) {
+                        // Local Team
+                        VStack(spacing: 8) {
+                            ForEach(battle.localTeam) { player in
+                                CompactFighterCard(player: player, isLocal: player.id == FirebaseService.shared.currentCharacter?.id)
+                                    .padding(4)
+                                    .background(Color.black.opacity(0.6).cornerRadius(8))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        
+                        Text("VS")
+                            .font(.system(.headline, design: .monospaced))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                            .shadow(color: Theme.danger, radius: 4)
+                            .padding(.horizontal, 4)
+                        
+                        // Opponent Team
+                        VStack(spacing: 8) {
+                            ForEach(battle.opponentTeam) { player in
+                                CompactFighterCard(player: player, isLocal: false)
+                                    .padding(4)
+                                    .background(Color.black.opacity(0.6).cornerRadius(8))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .padding(.horizontal, 8)
+                    Spacer()
                 }
-                .padding(.bottom, 12)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.cardBackground.opacity(0.85))
-            .cornerRadius(16)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Theme.border, lineWidth: 1)
-            )
-            .padding(.horizontal)
-            
-            // Activate Tracking Button
-            Button(action: { viewModel.showCameraTracker = true }) {
-                HStack {
-                    Image(systemName: "camera.viewfinder")
-                    Text("ACTIVATE WORKOUT CAMERA")
-                        .fontWeight(.bold)
+                
+                // Repetition Indicator (Bottom HUD)
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(cameraVM.isPersonDetected ? Theme.success : Theme.danger)
+                        .frame(width: 12, height: 12)
+                        .glow(color: cameraVM.isPersonDetected ? Theme.success : Theme.danger)
+                    
+                    Text(cameraVM.feedbackMessage)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    Spacer()
+                    
+                    Text("\(cameraVM.repCount)")
+                        .font(.system(.title, design: .monospaced))
+                        .fontWeight(.black)
+                        .foregroundColor(cameraVM.selectedClass.themeColor)
+                        .glow(color: cameraVM.selectedClass.themeColor.opacity(0.6), radius: 6)
                 }
-                .frame(maxWidth: .infinity)
                 .padding()
-                .background(viewModel.currentClass.themeColor)
-                .foregroundColor(.white)
-                .cornerRadius(12)
-                .shadow(color: viewModel.currentClass.themeColor.opacity(0.4), radius: 8, y: 4)
+                .background(Color.black.opacity(0.7))
+                .cornerRadius(16)
+                .padding(.horizontal)
+                .padding(.bottom, 32)
             }
-            .padding(.horizontal)
-            .padding(.bottom, 24)
         }
         .overlay(
             ZStack {
@@ -1170,6 +1212,11 @@ struct CombatArenaView: View {
         }
         .onAppear {
             combatLogCount = battle.combatLog.count
+            // Ensure camera tracking starts!
+            cameraVM.cameraManager.checkPermission()
+        }
+        .onDisappear {
+            cameraVM.cameraManager.stopSession()
         }
     }
     
@@ -1731,7 +1778,7 @@ struct StoryInviteFriendsInlineView: View {
     let onCompleted: () -> Void
     let onCancel: () -> Void
     
-    let friends = ["AquaHealer", "FireMage", "WindArcher", "KnightDave"]
+    @StateObject private var vm = FriendsVM()
     
     var body: some View {
         VStack(spacing: 20) {
@@ -1741,56 +1788,68 @@ struct StoryInviteFriendsInlineView: View {
                 .foregroundColor(Theme.textPrimary)
                 .tracking(1.5)
             
-            ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(friends, id: \.self) { friend in
-                        let friendClass: CharacterClass = friend == "AquaHealer" ? .healer : (friend == "FireMage" ? .mage : (friend == "WindArcher" ? .archer : .swordsman))
-                        HStack {
-                            Circle()
-                                .fill(friendClass.themeColor.opacity(0.15))
-                                .frame(width: 38, height: 38)
-                                .overlay(
-                                    Image(systemName: "person.fill")
-                                        .foregroundColor(friendClass.themeColor)
-                                )
+            if vm.isLoading {
+                ProgressView()
+                    .frame(height: 100)
+            } else if vm.friends.isEmpty {
+                Text("No friends available")
+                    .foregroundColor(Theme.textSecondary)
+                    .frame(height: 100)
+            } else {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(vm.friends) { friend in
+                            let friendClass = friend.selectedClass
+                            let isOnline = friend.isOnline
                             
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(friend)
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Theme.textPrimary)
-                                Text("Online • Lvl 12 \(friendClass.rawValue)")
-                                    .font(.system(size: 8))
-                                    .foregroundColor(Theme.textSecondary)
+                            HStack {
+                                Circle()
+                                    .fill(friendClass.themeColor.opacity(0.15))
+                                    .frame(width: 38, height: 38)
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .foregroundColor(friendClass.themeColor)
+                                    )
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(friend.username)
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Theme.textPrimary)
+                                    Text("\(isOnline ? "Online" : "Offline") • Lvl \(friend.level) \(friendClass.rawValue)")
+                                        .font(.system(size: 8))
+                                        .foregroundColor(isOnline ? Theme.success : Theme.textSecondary)
+                                }
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    invitedFriend = friend.username
+                                    onCompleted()
+                                }) {
+                                    Text("INVITE")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(isOnline ? .white : .gray)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 6)
+                                        .background(isOnline ? Theme.primary : Color.gray.opacity(0.3))
+                                        .cornerRadius(8)
+                                }
+                                .disabled(!isOnline)
                             }
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                invitedFriend = friend
-                                onCompleted()
-                            }) {
-                                Text("INVITE")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 6)
-                                    .background(Theme.primary)
-                                    .cornerRadius(8)
-                            }
+                            .padding()
+                            .background(Theme.secondaryCard)
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Theme.border, lineWidth: 0.5)
+                            )
                         }
-                        .padding()
-                        .background(Theme.secondaryCard)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Theme.border, lineWidth: 0.5)
-                        )
                     }
                 }
+                .frame(maxHeight: 250)
             }
-            .frame(maxHeight: 250)
             
             Button("CANCEL") {
                 onCancel()
@@ -2071,10 +2130,11 @@ struct StoryStageTile: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(LinearGradient(
                             colors: isUnlocked
-                                ? (isVolcanic
-                                    ? [Color(red: 0.22, green: 0.22, blue: 0.24), Color(red: 0.12, green: 0.12, blue: 0.14)] // volcanic black obsidian
-                                    : [Theme.success, Color(red: 0.18, green: 0.65, blue: 0.28)] // pasture forest grass green
-                                  )
+                                ? (isCompleted
+                                    ? (isVolcanic
+                                        ? [Color(red: 0.22, green: 0.22, blue: 0.24), Color(red: 0.12, green: 0.12, blue: 0.14)] // volcanic black obsidian
+                                        : [Theme.success, Color(red: 0.18, green: 0.65, blue: 0.28)]) // pasture forest grass green
+                                    : [Color.yellow, Color.orange]) // active next cell
                                 : [Color.gray.opacity(0.6), Color.gray.opacity(0.45)],
                             startPoint: .top,
                             endPoint: .bottom
@@ -2164,17 +2224,14 @@ struct StoryStagePrepView: View {
     @State private var timeRemaining: Int = 25
     @State private var selectedExerciseIndex: Int = 0
     @State private var timer: Timer? = nil
+    @State private var pulse: Bool = false
     @Environment(\.dismiss) private var dismiss
     
     private var isBoss: Bool { stage % 10 == 0 }
     
-    // Choose two eligible exercises for the stage
+    // Choose all exercises for the stage
     private var eligibleExercises: [CharacterClass] {
-        switch stage % 3 {
-        case 0: return [.archer, .mage]      // Squats & Push-ups
-        case 1: return [.mage, .swordsman]   // Push-ups & Pull-ups
-        default: return [.swordsman, .healer] // Pull-ups & Dips
-        }
+        return CharacterClass.allCases
     }
     
     private var bossMaxHP: Int {
@@ -2195,167 +2252,242 @@ struct StoryStagePrepView: View {
     }
     
     var body: some View {
-        VStack(spacing: 24) {
-            // Header
-            VStack(spacing: 6) {
-                Text(isBoss ? "🔥 BOSS PREPARATION 🔥" : "PREPARATION ARENA")
-                    .font(.system(.caption, design: .monospaced))
-                    .fontWeight(.black)
-                    .foregroundColor(isBoss ? Theme.danger : Theme.primary)
-                    .tracking(2)
-                
-                Text("STAGE \(stage): \(stageName(for: stage).uppercased())")
-                    .font(.title3)
-                    .fontWeight(.black)
-                    .foregroundColor(Theme.textPrimary)
-            }
-            .padding(.top, 24)
+        ZStack {
+            // Background
+            Theme.background.ignoresSafeArea()
             
-            // Countdown Timer Card
-            VStack(spacing: 8) {
-                Text("STARTING WORKOUT IN")
-                    .font(.system(size: 10, design: .monospaced))
-                    .fontWeight(.bold)
-                    .foregroundColor(Theme.textSecondary)
-                
-                Text("\(timeRemaining)")
-                    .font(.system(size: 64, weight: .black, design: .monospaced))
-                    .foregroundColor(isBoss ? Theme.danger : Theme.healerColor)
-                    .glow(color: (isBoss ? Theme.danger : Theme.healerColor).opacity(0.4), radius: 10)
-                
-                Text("SECONDS")
-                    .font(.system(size: 10, design: .monospaced))
-                    .fontWeight(.bold)
-                    .foregroundColor(Theme.textMuted)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .glassmorphicCard()
-            .padding(.horizontal)
+            // Subtle animated glow in background
+            RadialGradient(
+                colors: [(isBoss ? Theme.danger : Theme.primary).opacity(0.15), .clear],
+                center: .top,
+                startRadius: 50,
+                endRadius: 500
+            )
+            .ignoresSafeArea()
             
-            // Target HP indicator
-            VStack(spacing: 4) {
-                HStack {
-                    Text("STAGE TARGET HP")
-                        .font(.system(size: 9, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(Theme.textSecondary)
-                    Spacer()
-                    Text("\(bossMaxHP) HP")
-                        .font(.system(.caption, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(Theme.textPrimary)
-                }
-                .padding(.horizontal, 4)
-                
-                // Show HP Bar preview
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isBoss ? Theme.danger : Theme.primary)
-                    .frame(height: 8)
-                    .glow(color: (isBoss ? Theme.danger : Theme.primary).opacity(0.3), radius: 4)
-            }
-            .padding(.horizontal)
-            
-            // Exercise choices
-            VStack(alignment: .leading, spacing: 10) {
-                Text("CHOOSE YOUR COMBAT ATTACK:")
-                    .font(.system(size: 10, design: .monospaced))
-                    .fontWeight(.bold)
-                    .foregroundColor(Theme.textSecondary)
-                    .padding(.horizontal, 4)
-                
-                ForEach(0..<eligibleExercises.count, id: \.self) { idx in
-                    let cls = eligibleExercises[idx]
-                    let isSelected = selectedExerciseIndex == idx
-                    let rawDMG = damagePerRep(for: cls)
-                    let dmg = isCoop ? Int(Double(rawDMG) * 1.25) : rawDMG // 25% co-op damage buff!
-                    let repsNeeded = Int(ceil(Double(bossMaxHP) / Double(dmg)))
-                    
-                    Button(action: {
-                        selectedExerciseIndex = idx
-                    }) {
-                        HStack(spacing: 12) {
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 24) {
+                        // Header
+                        VStack(spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: isBoss ? "flame.fill" : "swords.fill")
+                                Text(isBoss ? "BOSS PREPARATION" : "PREPARATION ARENA")
+                                Image(systemName: isBoss ? "flame.fill" : "swords.fill")
+                            }
+                            .font(.system(size: 11, design: .monospaced))
+                            .fontWeight(.black)
+                            .foregroundColor(isBoss ? Theme.danger : Theme.primary)
+                            .tracking(2)
+                            
+                            Text("STAGE \(stage): \(stageName(for: stage).uppercased())")
+                                .font(.system(size: 20, weight: .black, design: .monospaced))
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.center)
+                                .glow(color: (isBoss ? Theme.danger : Theme.primary).opacity(0.3), radius: 8)
+                        }
+                        .padding(.top, 24)
+                        
+                        // Countdown Timer Card
+                        VStack(spacing: 8) {
+                            Text("STARTING WORKOUT IN")
+                                .font(.system(size: 10, design: .monospaced))
+                                .fontWeight(.bold)
+                                .foregroundColor(Theme.textSecondary)
+                            
+                            Text("\(timeRemaining)")
+                                .font(.system(size: 72, weight: .black, design: .monospaced))
+                                .foregroundColor(isBoss ? Theme.danger : Theme.accent)
+                                .glow(color: (isBoss ? Theme.danger : Theme.accent).opacity(0.6), radius: 15)
+                                .scaleEffect(pulse ? 1.05 : 1.0)
+                                .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), value: pulse)
+                            
+                            Text("SECONDS")
+                                .font(.system(size: 10, design: .monospaced))
+                                .fontWeight(.bold)
+                                .foregroundColor(Theme.textMuted)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                        .background(
                             ZStack {
-                                Circle()
-                                    .fill(cls.themeColor.opacity(isSelected ? 0.25 : 0.08))
-                                    .frame(width: 38, height: 38)
-                                
-                                Image(systemName: classIcon(for: cls))
-                                    .foregroundColor(cls.themeColor)
+                                RoundedRectangle(cornerRadius: 24)
+                                    .fill(Theme.cardBackground.opacity(0.8))
+                                RoundedRectangle(cornerRadius: 24)
+                                    .stroke(LinearGradient(colors: [(isBoss ? Theme.danger : Theme.accent).opacity(0.5), .clear], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.5)
                             }
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(cls.rawValue.uppercased())
-                                    .font(.system(.caption, design: .monospaced))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Theme.textPrimary)
-                                Text("\(cls.primaryExercise) (+\(dmg) DMG/Rep)")
-                                    .font(.caption2)
+                        )
+                        .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+                        .padding(.horizontal)
+                        
+                        // Target HP indicator
+                        VStack(spacing: 6) {
+                            HStack {
+                                Text("STAGE TARGET HP")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(Theme.textSecondary)
+                                Spacer()
+                                Text("\(bossMaxHP) HP")
+                                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                                    .foregroundColor(.white)
                             }
                             
-                            Spacer()
-                            
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("\(repsNeeded) Reps")
-                                    .font(.system(.subheadline, design: .monospaced))
-                                    .fontWeight(.black)
-                                    .foregroundColor(cls.themeColor)
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.white.opacity(0.1))
+                                    .frame(height: 10)
                                 
-                                if isCoop {
-                                    Text("+25% Co-op Buff")
-                                        .font(.system(size: 8, design: .monospaced))
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(isBoss ? Theme.danger : Theme.primary)
+                                    .frame(height: 10)
+                                    .glow(color: (isBoss ? Theme.danger : Theme.primary).opacity(0.5), radius: 6)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        
+                        // Exercise choices
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("CHOOSE COMBAT ATTACK")
+                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .foregroundColor(Theme.textSecondary)
+                                .tracking(1)
+                                .padding(.horizontal, 20)
+                            
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                                ForEach(0..<eligibleExercises.count, id: \.self) { idx in
+                                    let cls = eligibleExercises[idx]
+                                    let isSelected = selectedExerciseIndex == idx
+                                    let rawDMG = damagePerRep(for: cls)
+                                    let dmg = isCoop ? Int(Double(rawDMG) * 1.25) : rawDMG
+                                    let repsNeeded = Int(ceil(Double(bossMaxHP) / Double(dmg)))
+                                    
+                                    Button(action: {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                            selectedExerciseIndex = idx
+                                        }
+                                    }) {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            HStack {
+                                                ZStack {
+                                                    Circle()
+                                                        .fill(cls.themeColor.opacity(isSelected ? 0.2 : 0.05))
+                                                        .frame(width: 32, height: 32)
+                                                    
+                                                    Image(systemName: classIcon(for: cls))
+                                                        .font(.system(size: 14, weight: .bold))
+                                                        .foregroundColor(cls.themeColor)
+                                                }
+                                                Spacer()
+                                                if isSelected {
+                                                    Image(systemName: "checkmark.circle.fill")
+                                                        .foregroundColor(cls.themeColor)
+                                                        .font(.system(size: 16))
+                                                }
+                                            }
+                                            
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(cls.rawValue.uppercased())
+                                                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                                                    .foregroundColor(isSelected ? .white : Theme.textPrimary)
+                                                    .lineLimit(1)
+                                                    .minimumScaleFactor(0.8)
+                                                
+                                                Text(cls.primaryExercise)
+                                                    .font(.system(size: 9, weight: .medium))
+                                                    .foregroundColor(Theme.textSecondary)
+                                            }
+                                            
+                                            HStack(alignment: .bottom) {
+                                                VStack(alignment: .leading, spacing: 0) {
+                                                    Text("+\(dmg) DMG")
+                                                        .font(.system(size: 9, weight: .bold))
+                                                        .foregroundColor(Theme.textMuted)
+                                                }
+                                                Spacer()
+                                                Text("\(repsNeeded) Reps")
+                                                    .font(.system(size: 13, weight: .black, design: .monospaced))
+                                                    .foregroundColor(isSelected ? cls.themeColor : .white.opacity(0.8))
+                                            }
+                                        }
+                                        .padding(14)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 16)
+                                                .fill(isSelected ? Theme.secondaryCard.opacity(0.8) : Theme.cardBackground.opacity(0.5))
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 16)
+                                                .stroke(isSelected ? cls.themeColor : Color.white.opacity(0.05), lineWidth: isSelected ? 2 : 1)
+                                        )
+                                        .shadow(color: isSelected ? cls.themeColor.opacity(0.2) : .clear, radius: 8, y: 4)
+                                        .scaleEffect(isSelected ? 1.02 : 1.0)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                            
+                            if isCoop {
+                                HStack {
+                                    Spacer()
+                                    Text("🤝 +25% Co-op Damage Buff Active")
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
                                         .foregroundColor(Theme.success)
+                                        .padding(.top, 4)
+                                    Spacer()
                                 }
                             }
                         }
-                        .padding()
-                        .background(isSelected ? Theme.secondaryCard.opacity(0.85) : Theme.cardBackground.opacity(0.6))
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(isSelected ? cls.themeColor : Theme.border, lineWidth: isSelected ? 2 : 1)
-                        )
+                        
+                        Spacer().frame(height: 10)
                     }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-            .padding(.horizontal)
-            
-            Spacer()
-            
-            // Action buttons
-            VStack(spacing: 10) {
-                Button(action: {
-                    startWorkout()
-                }) {
-                    Text("SKIP & START WORKOUT")
-                        .font(.subheadline)
-                        .fontWeight(.bold)
-                        .tracking(1.5)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(eligibleExercises[selectedExerciseIndex].themeColor)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                        .shadow(color: eligibleExercises[selectedExerciseIndex].themeColor.opacity(0.35), radius: 8, y: 4)
                 }
                 
-                Button(action: {
-                    dismiss()
-                }) {
-                    Text("CANCEL EXPEDITION")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Theme.danger)
-                        .padding(.vertical, 8)
+                // Action buttons fixed at bottom
+                VStack(spacing: 12) {
+                    let activeClass = eligibleExercises[selectedExerciseIndex]
+                    
+                    Button(action: {
+                        startWorkout()
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "bolt.fill")
+                            Text("SKIP & START WORKOUT")
+                        }
+                        .font(.system(size: 15, weight: .black, design: .monospaced))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 18)
+                        .background(
+                            LinearGradient(
+                                colors: [activeClass.themeColor, activeClass.themeColor.opacity(0.7)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            )
+                        )
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
+                        .shadow(color: activeClass.themeColor.opacity(0.4), radius: 12, y: 6)
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                    
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Text("CANCEL EXPEDITION")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.textSecondary)
+                            .padding(.vertical, 10)
+                    }
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 32)
+                .padding(.top, 16)
+                .background(
+                    LinearGradient(colors: [Theme.background.opacity(0), Theme.background], startPoint: .top, endPoint: .bottom)
+                        .ignoresSafeArea()
+                )
             }
-            .padding(.horizontal)
-            .padding(.bottom, 24)
         }
-        .background(Theme.background.ignoresSafeArea())
         .onAppear {
+            pulse = true
             startTimeCountdown()
         }
         .onDisappear {

@@ -7,7 +7,12 @@ struct CameraTrackingView: View {
     @State private var isWorkoutStarted: Bool
     @State private var workoutCompletionRewards: (xp: Int, gold: Int)? = nil
     
-    init(selectedClass: CharacterClass, targetReps: Int? = nil, bossMaxHP: Int? = nil, damagePerRep: Int? = nil, onComplete: ((Int) -> Void)? = nil) {
+    let bossName: String?
+    let bossImage: String?
+    
+    init(selectedClass: CharacterClass, targetReps: Int? = nil, bossMaxHP: Int? = nil, damagePerRep: Int? = nil, bossName: String? = nil, bossImage: String? = nil, onComplete: ((Int) -> Void)? = nil) {
+        self.bossName = bossName
+        self.bossImage = bossImage
         let hasFirebaseBattle = FirebaseService.shared.activeBattle != nil
         let hasEngineBattle = BattleEngine.shared.activeBattle != nil
         let isEngineBoss = BattleEngine.shared.activeBoss != nil
@@ -155,127 +160,140 @@ struct CameraTrackingView: View {
                     Spacer()
                 }
             } else {
-                // Active Workout view (uses camera or skeleton simulator)
+                // Active Workout view (uses camera)
                 ZStack {
-                    if !viewModel.isSimulatorMode {
-                        Color.black.opacity(0.6)
-                            .ignoresSafeArea()
-                    }
-                    
-                    // Neon space grid background when simulating
-                    if viewModel.isSimulatorMode {
-                        SimulatedCameraFeed()
-                    } else {
-                        CameraPreview(session: viewModel.cameraManager.session)
-                            .ignoresSafeArea()
+                    CameraPreview(session: viewModel.cameraManager.session)
+                        .ignoresSafeArea()
                         
-                        PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
-                    }
+                    PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
                     
                     // HUD Overlay Controls
-                    VStack {
-                        // Top controls bar
-                        HStack {
-                            Button(action: {
-                                if FirebaseService.shared.activeBattle != nil || BattleEngine.shared.activeBattle != nil || viewModel.bossMaxHP > 0 {
-                                    dismiss()
-                                } else {
-                                    withAnimation {
-                                        isWorkoutStarted = false
+                    VStack(spacing: 0) {
+                        // Unified Top Header Container
+                        VStack(spacing: 16) {
+                            // Top controls bar
+                            HStack {
+                                Button(action: {
+                                    if FirebaseService.shared.activeBattle != nil || BattleEngine.shared.activeBattle != nil || viewModel.bossMaxHP > 0 {
+                                        dismiss()
+                                    } else {
+                                        withAnimation {
+                                            isWorkoutStarted = false
+                                        }
                                     }
-                                }
-                            }) {
-                                Image(systemName: "arrow.left")
-                                    .font(.title3)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.black.opacity(0.4))
-                                    .clipShape(Circle())
-                            }
-                            
-                            Spacer()
-                            
-                            // Exercise indicator
-                            HStack(spacing: 8) {
-                                Image(systemName: "flame.fill")
-                                    .foregroundColor(viewModel.selectedClass.themeColor)
-                                Text(viewModel.selectedClass.primaryExercise.uppercased())
-                                    .font(.system(.subheadline, design: .monospaced))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Theme.textPrimary)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.black.opacity(0.4))
-                            .cornerRadius(20)
-                            
-                            Spacer()
-                            
-                            // Mode Toggle (Simulator vs Camera)
-                            Toggle("Sim", isOn: $viewModel.isSimulatorMode)
-                                .toggleStyle(ButtonToggleStyle(color: viewModel.selectedClass.themeColor))
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 10)
-                        
-                        // Top-anchored Boss HP Bar with shake and burn effects
-                        if viewModel.bossMaxHP > 0 {
-                            VStack(spacing: 4) {
-                                HStack {
-                                    Text("LEVEL BOSS HEALTH BAR")
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .fontWeight(.bold)
-                                        .foregroundColor(viewModel.hpBarBurn ? .orange : Theme.textSecondary)
-                                    
-                                    Spacer()
-                                    
-                                    Text("\(viewModel.bossCurrentHP) / \(viewModel.bossMaxHP) HP")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .fontWeight(.black)
+                                }) {
+                                    Image(systemName: "arrow.left")
+                                        .font(.title3)
                                         .foregroundColor(.white)
+                                        .frame(width: 44, height: 44)
+                                        .background(Color.black.opacity(0.4))
+                                        .clipShape(Circle())
                                 }
-                                .padding(.horizontal, 4)
                                 
-                                GeometryReader { barGeo in
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(Color.black.opacity(0.6))
-                                            .frame(height: 10)
+                                Spacer()
+                                
+                                // Exercise indicator
+                                HStack(spacing: 8) {
+                                    Image(systemName: "flame.fill")
+                                        .foregroundColor(viewModel.selectedClass.themeColor)
+                                    Text(viewModel.selectedClass.primaryExercise.uppercased())
+                                        .font(.system(.subheadline, design: .monospaced))
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Theme.textPrimary)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.4))
+                                .cornerRadius(20)
+                                
+                                Spacer()
+                                
+                                Color.clear.frame(width: 44) // Balance the back button
+                            }
+                            .padding(.horizontal)
+                            
+                            // Boss info section
+                            if viewModel.bossMaxHP > 0 {
+                                VStack(spacing: 8) {
+                                    if let bossImage = bossImage, let bossName = bossName {
+                                        VStack(spacing: 4) {
+                                            Image(bossImage)
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(height: 120)
+                                                .shadow(color: Theme.danger.opacity(0.3), radius: 10)
+                                                
+                                            Text(bossName)
+                                                .font(.system(.subheadline, design: .monospaced))
+                                                .fontWeight(.black)
+                                                .foregroundColor(Theme.danger)
+                                                .shadow(color: .black, radius: 2)
+                                        }
+                                    }
+                                    
+                                    VStack(spacing: 4) {
+                                        HStack {
+                                            Text("LEVEL BOSS HEALTH BAR")
+                                                .font(.system(size: 9, design: .monospaced))
+                                                .fontWeight(.bold)
+                                                .foregroundColor(viewModel.hpBarBurn ? .orange : Theme.textSecondary)
                                         
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(LinearGradient(
-                                                colors: viewModel.hpBarBurn ? [.red, .orange, .yellow] : [Color.red, Color.orange],
-                                                startPoint: .leading,
-                                                endPoint: .trailing
-                                            ))
-                                            .frame(width: CGFloat(viewModel.bossCurrentHP) / CGFloat(viewModel.bossMaxHP) * barGeo.size.width, height: 10)
-                                            .glow(color: viewModel.hpBarBurn ? .orange.opacity(0.8) : .red.opacity(0.4), radius: viewModel.hpBarBurn ? 6 : 3)
+                                        Spacer()
+                                        
+                                        Text("\(viewModel.bossCurrentHP) / \(viewModel.bossMaxHP) HP")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .fontWeight(.black)
+                                            .foregroundColor(.white)
+                                    }
+                                    .padding(.horizontal, 4)
+                                    
+                                    GeometryReader { barGeo in
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(Color.black.opacity(0.6))
+                                                .frame(height: 10)
+                                            
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(LinearGradient(
+                                                    colors: viewModel.hpBarBurn ? [.red, .orange, .yellow] : [Color.red, Color.orange],
+                                                    startPoint: .leading,
+                                                    endPoint: .trailing
+                                                ))
+                                                .frame(width: CGFloat(viewModel.bossCurrentHP) / CGFloat(viewModel.bossMaxHP) * barGeo.size.width, height: 10)
+                                                .glow(color: viewModel.hpBarBurn ? .orange.opacity(0.8) : .red.opacity(0.4), radius: viewModel.hpBarBurn ? 6 : 3)
+                                        }
+                                    }
+                                    .frame(height: 10)
+                                    
+                                    // Speed Cadence Combo badges dropping under the HP Bar
+                                    if let badge = viewModel.floatingComboBadge {
+                                        Text(badge)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .fontWeight(.black)
+                                            .foregroundColor(.yellow)
+                                            .glow(color: .orange.opacity(0.5), radius: 5)
+                                            .transition(.scale.combined(with: .opacity))
+                                            .padding(.top, 4)
+                                    }
                                     }
                                 }
-                                .frame(height: 10)
-                                
-                                // Speed Cadence Combo badges dropping under the HP Bar
-                                if let badge = viewModel.floatingComboBadge {
-                                    Text(badge)
-                                        .font(.system(.caption, design: .monospaced))
-                                        .fontWeight(.black)
-                                        .foregroundColor(.yellow)
-                                        .glow(color: .orange.opacity(0.5), radius: 5)
-                                        .transition(.scale.combined(with: .opacity))
-                                        .padding(.top, 4)
-                                }
+                                .padding(12)
+                                .offset(x: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0, y: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0)
+                                .padding(.horizontal)
                             }
-                            .padding(12)
-                            .background(Color.black.opacity(0.4))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(viewModel.hpBarBurn ? Color.orange.opacity(0.5) : Theme.border, lineWidth: 1)
-                            )
-                            .offset(x: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0, y: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0)
-                            .padding(.horizontal)
-                            .padding(.top, 6)
                         }
+                        .padding(.top, 10)
+                        .padding(.bottom, 20)
+                        .background(
+                            Color.black.opacity(0.85)
+                                .ignoresSafeArea(edges: .top)
+                        )
+                        .overlay(
+                            Rectangle()
+                                .frame(height: 1)
+                                .foregroundColor(viewModel.bossMaxHP > 0 ? (viewModel.hpBarBurn ? Color.orange.opacity(0.5) : Theme.border) : .clear),
+                            alignment: .bottom
+                        )
                         
                         // PVP Matchup and Combat Telemetry Log Overlay
                         if let battle = MultiplayerService.shared.activeBattle ?? BattleEngine.shared.activeBattle {
@@ -465,9 +483,9 @@ struct CameraTrackingView: View {
                         // Live Feedback Prompt
                         HStack(spacing: 12) {
                             Circle()
-                                .fill(viewModel.isPersonDetected || viewModel.isSimulatorMode ? Theme.success : Theme.danger)
+                                .fill(viewModel.isPersonDetected ? Theme.success : Theme.danger)
                                 .frame(width: 10, height: 10)
-                                .glow(color: viewModel.isPersonDetected || viewModel.isSimulatorMode ? Theme.success : Theme.danger)
+                                .glow(color: viewModel.isPersonDetected ? Theme.success : Theme.danger)
                             
                             Text(viewModel.feedbackMessage)
                                 .font(.subheadline)
@@ -544,38 +562,19 @@ struct CameraTrackingView: View {
                         }
                         
                         // Bottom control actions
-                        if viewModel.isSimulatorMode {
-                            Button(action: {
-                                viewModel.simulateRep()
-                            }) {
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                    Text("SIMULATE REPETITION")
-                                        .fontWeight(.bold)
-                                }
-                                .padding(.vertical, 16)
-                                .padding(.horizontal, 32)
-                                .background(viewModel.selectedClass.themeColor)
-                                .foregroundColor(.white)
-                                .cornerRadius(30)
-                                .shadow(color: viewModel.selectedClass.themeColor.opacity(0.5), radius: 10, y: 5)
-                            }
-                            .padding(.bottom, 30)
-                        } else {
-                            // Guidance state info for physical setup
-                            VStack(spacing: 8) {
-                                Text("Ensure whole body is visible")
-                                    .font(.caption)
-                                    .foregroundColor(Theme.textSecondary)
-                                Text("Avoid shadows & backlit environments")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.textMuted)
-                            }
-                            .padding()
-                            .background(Color.black.opacity(0.5))
-                            .cornerRadius(12)
-                            .padding(.bottom, 30)
+                        // Guidance state info for physical setup
+                        VStack(spacing: 8) {
+                            Text("Ensure whole body is visible")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                            Text("Avoid shadows & backlit environments")
+                                .font(.caption2)
+                                .foregroundColor(Theme.textMuted)
                         }
+                        .padding()
+                        .background(Color.black.opacity(0.5))
+                        .cornerRadius(12)
+                        .padding(.bottom, 30)
                     }
                 }
             }

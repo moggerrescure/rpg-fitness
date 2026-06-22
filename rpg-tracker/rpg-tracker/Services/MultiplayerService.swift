@@ -226,7 +226,6 @@ class MultiplayerService: ObservableObject {
                 let snapshot = try? await db.collection("matchmaking")
                     .whereField("status", isEqualTo: MatchmakingStatus.searchingTeammates.rawValue)
                     .whereField("teamType", isEqualTo: type.rawValue)
-                    .order(by: "createdAt", descending: false)
                     .limit(to: 5)
                     .getDocuments()
                 
@@ -245,7 +244,6 @@ class MultiplayerService: ObservableObject {
                 let snapshot = try? await db.collection("matchmaking")
                     .whereField("status", isEqualTo: MatchmakingStatus.searchingOpponent.rawValue)
                     .whereField("teamType", isEqualTo: type.rawValue)
-                    .order(by: "createdAt", descending: false)
                     .limit(to: 5)
                     .getDocuments()
                 
@@ -375,7 +373,34 @@ class MultiplayerService: ObservableObject {
                 print("Successfully filled teammates with bots via server")
             }
         } catch {
-            print("Failed to fill teammates with bots: \(error)")
+            print("Failed to fill teammates with bots on server: \(error). Falling back to local teammates fill.")
+            // Local teammates fill
+            do {
+                let ticketDoc = try await db.collection("matchmaking").document(ticketId).getDocument()
+                guard var ticket = try? ticketDoc.data(as: MatchmakingTicket.self) else { return }
+                
+                var team = ticket.team ?? []
+                while team.count < 3 {
+                    let botClass = CharacterClass.allCases.randomElement() ?? .healer
+                    let botPlayer = BattlePlayer(
+                        id: "bot_\(UUID().uuidString)",
+                        name: "Ally Bot",
+                        characterClass: botClass,
+                        health: 100 + (ticket.playerLevel * 10),
+                        maxHealth: 100 + (ticket.playerLevel * 10),
+                        avatarName: "avatar_archer"
+                    )
+                    team.append(botPlayer)
+                }
+                
+                try await db.collection("matchmaking").document(ticketId).updateData([
+                    "team": try Firestore.Encoder().encode(team),
+                    "status": MatchmakingStatus.searchingOpponent.rawValue
+                ])
+                print("Successfully filled teammates locally.")
+            } catch {
+                print("Failed local teammates fill: \(error)")
+            }
         }
     }
 
@@ -392,7 +417,51 @@ class MultiplayerService: ObservableObject {
                 print("Successfully triggered opponent bot fallback via server")
             }
         } catch {
-            print("Failed to trigger opponent bot fallback: \(error)")
+            print("Failed to trigger opponent bot fallback on server: \(error). Falling back to local bot creation.")
+            
+            // Local bot creation
+            let botClass = CharacterClass.allCases.randomElement() ?? .swordsman
+            let botPlayer = BattlePlayer(
+                id: "bot_\(UUID().uuidString)",
+                name: "AI Challenger",
+                characterClass: botClass,
+                health: 100 + (ticket.playerLevel * 10),
+                maxHealth: 100 + (ticket.playerLevel * 10),
+                avatarName: "avatar_knight"
+            )
+            
+            let battleId = "battle_\(UUID().uuidString)"
+            var myTeam = ticket.team ?? []
+            if myTeam.isEmpty {
+                myTeam.append(BattlePlayer(
+                    id: ticket.uid,
+                    name: ticket.playerName,
+                    characterClass: ticket.playerClass,
+                    health: 100 + (ticket.playerLevel * 10),
+                    maxHealth: 100 + (ticket.playerLevel * 10),
+                    avatarName: ticket.playerAvatar
+                ))
+            }
+            
+            let battle = Battle(
+                id: battleId,
+                type: type,
+                status: .active,
+                localTeam: myTeam,
+                opponentTeam: [botPlayer],
+                secondsRemaining: 60
+            )
+            
+            do {
+                try db.collection("battles").document(battleId).setData(from: battle)
+                try await db.collection("matchmaking").document(ticketId).updateData([
+                    "status": MatchmakingStatus.matched.rawValue,
+                    "battleId": battleId
+                ])
+                print("Local bot fallback succeeded.")
+            } catch {
+                print("Failed local bot fallback: \(error)")
+            }
         }
     }
 

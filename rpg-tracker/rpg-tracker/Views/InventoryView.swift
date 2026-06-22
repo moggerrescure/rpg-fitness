@@ -13,9 +13,9 @@ struct InventoryView: View {
     
     private var ownedWeapons: [EquipmentItem] {
         let items = character.ownedEquipmentIds.compactMap { id -> EquipmentItem? in
-            EquipmentItem.findWeapon(by: id) ?? EquipmentItem.allShopArmors.first(where: { $0.id == id && $0.slot == .weapon })
+            EquipmentItem.findWeapon(by: id)
         }
-        return items.sorted { $0.rarity.rawValue > $1.rarity.rawValue }
+        return items.sorted { $0.combatPowerBonus > $1.combatPowerBonus }
     }
     
     private var ownedArmors: [EquipmentItem] {
