@@ -72,8 +72,9 @@ struct BattleArenaView: View {
                                 CombatArenaView(battle: battle, viewModel: viewModel)
                             }
                         }
+                        .toolbar(.hidden, for: .tabBar)
                     } else if isInLobby {
-                        TeamLobbyView(viewModel: viewModel, backAction: {
+                        BattleArenaTeamLobbyView(viewModel: viewModel, backAction: {
                             isInLobby = false
                             viewModel.selectedPvPType = .duel1v1
                         }, inviteAction: {
@@ -283,21 +284,21 @@ struct BattleArenaView: View {
                 viewModel.startQueue()
             }, accentColor: viewModel.currentClass.themeColor)
         }
-        .onChange(of: viewModel.showCameraTracker) { newValue in
+        .onChange(of: viewModel.showCameraTracker) { _, newValue in
             if newValue {
                 activeSheet = .generalCameraTracker
             } else if activeSheet == .generalCameraTracker {
                 activeSheet = nil
             }
         }
-        .onChange(of: showInviteSheet) { newValue in
+        .onChange(of: showInviteSheet) { _, newValue in
             if newValue {
                 activeSheet = .pvpInviteFriends
             } else if activeSheet == .pvpInviteFriends {
                 activeSheet = nil
             }
         }
-        .onChange(of: activeSheet) { newValue in
+        .onChange(of: activeSheet) { _, newValue in
             if newValue == nil {
                 if showInviteSheet {
                     showInviteSheet = false
@@ -308,7 +309,7 @@ struct BattleArenaView: View {
                 }
             }
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 if viewModel.activeBattle != nil {
                     // Surrender the match if app goes to background
@@ -326,6 +327,8 @@ struct BattleArenaView: View {
                 viewModel.selectedPvPType = type
                 if type == .bossRaid {
                     showBossRaid = true
+                } else if type == .worldBoss {
+                    viewModel.startQueue(type: .worldBoss)
                 } else {
                     viewModel.startQueue()
                 }
@@ -587,7 +590,7 @@ private struct ArenaHeroCard: View {
 }
 
 // 2. 3v3 Party/Lobby screen
-struct TeamLobbyView: View {
+struct BattleArenaTeamLobbyView: View {
     @ObservedObject var viewModel: BattleVM
     let backAction: () -> Void
     let inviteAction: () -> Void
@@ -776,94 +779,133 @@ struct LobbySlotRow: View {
 struct InviteFriendsSheet: View {
     @ObservedObject var viewModel: BattleVM
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var friendsVM = FriendsVM()
+    @State private var showTeamLobby = false
+    @State private var selectedFriendUids: [String] = []
     
     var body: some View {
-        VStack(spacing: 20) {
-            Text("INVITE FRIENDS")
-                .font(.headline)
-                .foregroundColor(Theme.textPrimary)
-                .padding(.top, 20)
+        ZStack {
+            Theme.background.ignoresSafeArea()
             
-            ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(viewModel.friendsList, id: \.self) { friend in
-                        let friendClass: CharacterClass = friend == "AquaHealer" ? .healer : (friend == "FireMage" ? .mage : (friend == "WindArcher" ? .archer : .swordsman))
-                        HStack {
-                            Circle()
-                                .fill(friendClass.themeColor.opacity(0.15))
-                                .frame(width: 38, height: 38)
-                                .overlay(
-                                    Image(systemName: "person.fill")
-                                        .foregroundColor(friendClass.themeColor)
-                                )
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(friend)
-                                    .font(.subheadline)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Theme.textPrimary)
-                                Text("Online • \(friendClass.rawValue)")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.textSecondary)
-                            }
-                            
-                            Spacer()
-                            
-                            if viewModel.invitedFriends.contains(friend) {
-                                Text("INVITED")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Theme.success)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Theme.success.opacity(0.15))
-                                    .cornerRadius(8)
-                            } else {
-                                Button(action: {
-                                    viewModel.inviteFriend(friend)
-                                    if viewModel.invitedFriends.count >= 2 {
-                                        dismiss()
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.body.bold())
+                            .foregroundStyle(Theme.textSecondary)
+                            .padding(10)
+                            .background(Theme.cardBackground)
+                            .clipShape(Circle())
+                    }
+                    Spacer()
+                    Text("INVITE TO 3V3")
+                        .font(.system(.headline, design: .monospaced))
+                        .fontWeight(.black)
+                        .foregroundStyle(Theme.textPrimary)
+                    Spacer()
+                    // Balance
+                    Image(systemName: "xmark").opacity(0).padding(10)
+                }
+                .padding()
+                
+                if friendsVM.isLoading {
+                    Spacer()
+                    ProgressView().tint(Theme.primary)
+                    Spacer()
+                } else if friendsVM.friends.isEmpty {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.2.slash")
+                            .font(.system(size: 44))
+                            .foregroundStyle(Theme.textSecondary.opacity(0.3))
+                        Text("No friends yet.")
+                            .font(.system(.headline, design: .monospaced))
+                            .foregroundStyle(Theme.textSecondary.opacity(0.5))
+                        Text("Add friends first from the Friends tab.")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Theme.textSecondary.opacity(0.4))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 40)
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            ForEach(friendsVM.friends) { friend in
+                                let isSelected = selectedFriendUids.contains(friend.id)
+                                HStack(spacing: 14) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(friend.selectedClass.themeColor.opacity(0.15))
+                                            .frame(width: 46, height: 46)
+                                        Image(systemName: "person.fill")
+                                            .font(.title3)
+                                            .foregroundStyle(friend.selectedClass.themeColor)
                                     }
-                                }) {
-                                    Text("INVITE")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 6)
-                                        .background(Theme.primary)
-                                        .cornerRadius(8)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(friend.username)
+                                            .font(.subheadline.bold())
+                                            .foregroundStyle(Theme.textPrimary)
+                                        Text("Lv.\(friend.level) • \(friend.selectedClass.rawValue)")
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundStyle(friend.selectedClass.themeColor)
+                                    }
+                                    Spacer()
+                                    Button {
+                                        if isSelected {
+                                            selectedFriendUids.removeAll { $0 == friend.id }
+                                        } else if selectedFriendUids.count < 2 {
+                                            selectedFriendUids.append(friend.id)
+                                        }
+                                    } label: {
+                                        Text(isSelected ? "INVITED ✓" : "INVITE")
+                                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                                            .foregroundStyle(isSelected ? .white : Theme.primary)
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 8)
+                                            .background(isSelected ? Theme.primary : Theme.primary.opacity(0.12))
+                                            .clipShape(Capsule())
+                                    }
+                                    .disabled(selectedFriendUids.count >= 2 && !isSelected)
                                 }
-                                .disabled(viewModel.invitedFriends.count >= 2)
+                                .padding(14)
+                                .background(isSelected ? Theme.primary.opacity(0.08) : Theme.cardBackground.opacity(0.6))
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(isSelected ? Theme.primary.opacity(0.5) : Theme.border, lineWidth: isSelected ? 1.5 : 1))
                             }
                         }
-                        .padding()
-                        .background(Theme.cardBackground)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Theme.border, lineWidth: 1)
-                        )
+                        .padding(.horizontal)
+                        .padding(.bottom, 20)
                     }
                 }
-                .padding(.horizontal)
-            }
-            
-            Button(action: { dismiss() }) {
-                Text("DONE")
-                    .fontWeight(.bold)
-                    .padding()
+                
+                // Start button
+                Button {
+                    dismiss()
+                    MultiplayerService.shared.createTeamLobby(invitedFriendUids: selectedFriendUids)
+                } label: {
+                    HStack {
+                        Image(systemName: "person.3.fill")
+                        Text(selectedFriendUids.isEmpty ? "START WITH BOTS" : "CREATE TEAM (\(selectedFriendUids.count + 1)/3)")
+                            .fontWeight(.black)
+                    }
+                    .font(.system(.headline, design: .monospaced))
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .background(Theme.secondaryCard)
-                    .foregroundColor(Theme.textPrimary)
-                    .cornerRadius(12)
+                    .padding(.vertical, 16)
+                    .background(
+                        LinearGradient(colors: [Theme.primary, Theme.mageColor], startPoint: .leading, endPoint: .trailing)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .shadow(color: Theme.primary.opacity(0.35), radius: 10, y: 4)
+                }
+                .padding()
             }
-            .padding(.horizontal)
-            .padding(.bottom, 20)
         }
-        .background(Theme.background.ignoresSafeArea())
     }
 }
+
 
 // 4. Radar matchmaking screen (with .forest background)
 struct MatchmakingQueueView: View {
@@ -874,6 +916,7 @@ struct MatchmakingQueueView: View {
         ZStack {
             // Searching screen uses .arena combat background
             AnimatedBackgroundView(backgroundType: .arena)
+                .ignoresSafeArea()
             
             Color.black.opacity(0.5)
                 .ignoresSafeArea()
@@ -966,6 +1009,15 @@ struct CombatArenaView: View {
     @State private var shakeOffset: CGFloat = 0
     @State private var combatLogCount: Int = 0
     @State private var damageNumbers: [FloatingDamage] = []
+    @State private var arenaGlow = false
+    // Countdown before battle becomes interactive
+    @State private var countdownValue: Int = 3
+    @State private var showCountdown: Bool = true
+    @State private var countdownScale: CGFloat = 1.0
+    @State private var countdownOpacity: Double = 1.0
+    // Local ticking timer so the ring updates every second even without Firestore snapshots
+    @State private var localSecondsRemaining: Int = 60
+    @State private var localTimerTask: Timer? = nil
     
     init(battle: Battle, viewModel: BattleVM) {
         self.battle = battle
@@ -984,211 +1036,352 @@ struct CombatArenaView: View {
         ))
     }
     
+    private var localPlayer: BattlePlayer? { battle.localTeam.first }
+    private var localHPPercent: Double {
+        guard let p = localPlayer, p.maxHealth > 0 else { return 1.0 }
+        return Double(max(0, p.health)) / Double(p.maxHealth)
+    }
+
     var body: some View {
-        ZStack {
-            // Full Screen Camera Background
-            CameraPreview(session: cameraVM.cameraManager.session)
-                .ignoresSafeArea()
-            
-            PoseOverlayView(joints: cameraVM.rawJoints, themeColor: cameraVM.selectedClass.themeColor)
-            
-            Color.black.opacity(0.4)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 16) {
-                Spacer()
-                    .frame(height: 44)
-                
-                // Timer & Status Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(battle.type == .bossRaid ? "BOSS RAID" : (battle.type == .duel1v1 ? "1V1 DUEL" : "TEAM BATTLE"))
-                            .font(.caption)
-                            .foregroundColor(.white)
-                            .fontWeight(.bold)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(12)
-                    }
-                    
-                    Spacer()
-                    
-                    // Active timer
+        GeometryReader { geo in
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+
+                    // ╔══════════════════════════════╗
+                    // ║     BATTLE HUD (top 50%)     ║
+                    // ╚══════════════════════════════╝
                     ZStack {
-                        Circle()
-                            .stroke(Theme.border, lineWidth: 4)
-                            .frame(width: 48, height: 48)
-                        
-                        Circle()
-                            .trim(from: 0.0, to: CGFloat(battle.secondsRemaining) / 60.0)
-                            .stroke(battle.secondsRemaining < 15 ? Theme.danger : Theme.success, lineWidth: 4)
-                            .frame(width: 48, height: 48)
-                            .rotationEffect(Angle(degrees: -90))
-                        
-                        Text("\(battle.secondsRemaining)s")
-                            .font(.system(.caption, design: .monospaced))
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                    }
-                    .background(Color.black.opacity(0.5).clipShape(Circle()))
-                }
-                .padding(.horizontal)
-                .padding(.top, 16)
-                
-                // Fighters Grid Layout
-                if battle.type == .bossRaid {
-                    VStack(spacing: 16) {
-                        if let boss = BattleEngine.shared.activeBoss {
-                            VStack(spacing: 8) {
-                                Text(boss.name)
-                                    .font(.system(.title3, design: .monospaced))
-                                    .fontWeight(.black)
-                                    .foregroundColor(Theme.danger)
-                                    .shadow(color: .black, radius: 2)
-                                
-                                // Big Boss HP Bar
-                                GeometryReader { geo in
-                                    let isEnraged = Double(boss.currentHealth) < Double(boss.maxHealth) * 0.5
-                                    
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(Color.black.opacity(0.7))
-                                        
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(isEnraged ? Color.red : Theme.danger)
-                                            .frame(width: max(0, geo.size.width * CGFloat(boss.currentHealth) / CGFloat(boss.maxHealth)))
-                                            .animation(.spring(), value: boss.currentHealth)
-                                            .shadow(color: isEnraged ? Color.red : Color.clear, radius: isEnraged ? 8 : 0)
+                        // Dark arena background
+                        LinearGradient(
+                            colors: [
+                                Color.black,
+                                Color(red: 0.05, green: 0.04, blue: 0.12),
+                                Color(red: 0.08, green: 0.03, blue: 0.08)
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
+
+                        // Arena atmospheric glow (purple/red combat hue)
+                        RadialGradient(
+                            colors: [Theme.danger.opacity(arenaGlow ? 0.25 : 0.15), Color.clear],
+                            center: UnitPoint(x: 0.5, y: 0.1),
+                            startRadius: 0, endRadius: 250
+                        )
+
+                        VStack(spacing: 0) {
+                            // ── Top nav: Battle type + Timer ─────────────────
+                            HStack(spacing: 12) {
+                                // Battle mode pill
+                                Text(battle.type == .bossRaid ? "⚔️ BOSS RAID" : (battle.type == .duel1v1 ? "⚔️ 1V1 DUEL" : "⚔️ TEAM BATTLE"))
+                                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .background(Color.black.opacity(0.65))
+                                    .cornerRadius(12)
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.danger.opacity(0.4), lineWidth: 1))
+
+                                Spacer()
+
+                                // Countdown timer ring — driven by local timer, syncs from server on snapshots
+                                ZStack {
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 3.5)
+                                        .frame(width: 46, height: 46)
+                                    Circle()
+                                        .trim(from: 0.0, to: CGFloat(localSecondsRemaining) / 60.0)
+                                        .stroke(
+                                            localSecondsRemaining < 15 ? Theme.danger : Theme.success,
+                                            style: StrokeStyle(lineWidth: 3.5, lineCap: .round)
+                                        )
+                                        .frame(width: 46, height: 46)
+                                        .rotationEffect(.degrees(-90))
+                                        .glow(color: (localSecondsRemaining < 15 ? Theme.danger : Theme.success).opacity(0.5), radius: 4)
+                                    Text("\(localSecondsRemaining)")
+                                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            // Push below Dynamic Island / notch — safe area top + 8pt breathing room
+                            .padding(.top, geo.safeAreaInsets.top + 8)
+
+                            Spacer()
+
+                            // ── Central fighters display ──────────────────────
+                            if battle.type == .bossRaid {
+                                // Boss fight layout
+                                if let boss = BattleEngine.shared.activeBoss {
+                                    VStack(spacing: 8) {
+                                        Text(boss.name)
+                                            .font(.system(size: 14, weight: .black, design: .monospaced))
+                                            .foregroundStyle(Theme.danger)
+                                            .glow(color: Theme.danger.opacity(0.5), radius: 6)
+
+                                        Group {
+                                            if boss.name.contains("Gorgon") {
+                                                Image("boss_gorgon_behemoth").resizable().scaledToFit()
+                                            } else if boss.name.contains("Dark Lord") {
+                                                Image("boss_dark_lord").resizable().scaledToFit()
+                                            } else if boss.name.contains("Ice Colossus") {
+                                                Image("boss_ice_colossus").resizable().scaledToFit()
+                                            } else if boss.name.contains("Volcanic") {
+                                                Image("boss_volcanic_peak").resizable().scaledToFit()
+                                            } else {
+                                                Image("boss_gorgon_behemoth").resizable().scaledToFit()
+                                            }
+                                        }
+                                        .frame(height: geo.size.height * 0.20)
+                                        .shadow(color: Theme.danger.opacity(0.4), radius: 16)
+
+                                        // Boss HP bar
+                                        VStack(spacing: 4) {
+                                            HStack {
+                                                Image(systemName: "heart.fill")
+                                                    .font(.system(size: 8))
+                                                    .foregroundStyle(Theme.danger)
+                                                Text("BOSS HP")
+                                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                                    .foregroundStyle(Theme.danger.opacity(0.8))
+                                                Spacer()
+                                                Text("\(boss.currentHealth) / \(boss.maxHealth)")
+                                                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                                                    .foregroundStyle(.white)
+                                            }
+                                            GeometryReader { barGeo in
+                                                let bossHPPct = CGFloat(boss.currentHealth) / CGFloat(boss.maxHealth)
+                                                ZStack(alignment: .leading) {
+                                                    RoundedRectangle(cornerRadius: 5).fill(Color.black.opacity(0.65))
+                                                    RoundedRectangle(cornerRadius: 5)
+                                                        .fill(LinearGradient(
+                                                            colors: bossHPPct < 0.3
+                                                                ? [Color.red, Color.orange, Color.yellow]
+                                                                : [Color.red, Theme.danger.opacity(0.7)],
+                                                            startPoint: .leading, endPoint: .trailing
+                                                        ))
+                                                        .frame(width: max(0, bossHPPct * barGeo.size.width))
+                                                        .animation(.spring(), value: boss.currentHealth)
+                                                        .glow(color: Theme.danger.opacity(0.5), radius: 4)
+                                                }
+                                            }
+                                            .frame(height: 10)
+                                        }
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(Color.black.opacity(0.55))
+                                        .cornerRadius(10)
+                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.danger.opacity(0.3), lineWidth: 1))
                                     }
                                 }
-                                .frame(height: 24)
-                                .overlay(
-                                    Text("\(boss.currentHealth) / \(boss.maxHealth) HP")
-                                        .font(.caption2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.white)
-                                )
-                                .padding(.horizontal, 32)
-                                
-                                // Boss Image Logic
-                                Group {
-                                    if boss.name.contains("Gorgon") {
-                                        Image("boss_gorgon_behemoth")
-                                            .resizable().scaledToFit()
-                                    } else if boss.name.contains("Dark Lord") {
-                                        Image("boss_dark_lord")
-                                            .resizable().scaledToFit()
-                                    } else if boss.name.contains("Ice Colossus") {
-                                        Image("boss_ice_colossus")
-                                            .resizable().scaledToFit()
-                                    } else if boss.name.contains("Volcanic") {
-                                        Image("boss_volcanic_peak")
-                                            .resizable().scaledToFit()
-                                    } else {
-                                        Image("boss_gorgon_behemoth")
-                                            .resizable().scaledToFit()
+                            } else if battle.type == .duel1v1 {
+                                // 1v1 Side-by-side fighters
+                                HStack(spacing: 0) {
+                                    // Local player card
+                                    if let p1 = battle.localTeam.first {
+                                        ArenaFighterCard(player: p1, isLocal: true, side: .left)
+                                    }
+
+                                    // VS lightning bolt
+                                    VStack(spacing: 4) {
+                                        Image(systemName: "bolt.fill")
+                                            .font(.system(size: 22, weight: .black))
+                                            .foregroundStyle(Color.yellow)
+                                            .glow(color: Color.yellow.opacity(0.8), radius: 10)
+                                        Text("VS")
+                                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                                            .foregroundStyle(.white)
+                                    }
+                                    .frame(width: 50)
+
+                                    // Opponent card
+                                    if let p2 = battle.opponentTeam.first {
+                                        ArenaFighterCard(player: p2, isLocal: false, side: .right)
                                     }
                                 }
-                                .frame(height: 250)
-                                .shadow(color: Theme.danger.opacity(0.3), radius: 20)
+                                .padding(.horizontal, 16)
+                            } else {
+                                // 3v3 Team layout
+                                HStack(spacing: 8) {
+                                    // Local team column
+                                    VStack(spacing: 6) {
+                                        ForEach(battle.localTeam) { player in
+                                            ArenaTeamMemberRow(player: player, isLocal: player.id == FirebaseService.shared.currentCharacter?.id, alignment: .leading)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity)
+
+                                    // VS divider
+                                    VStack(spacing: 3) {
+                                        Rectangle()
+                                            .fill(LinearGradient(colors: [.clear, Theme.danger.opacity(0.6), .clear], startPoint: .top, endPoint: .bottom))
+                                            .frame(width: 1.5, height: 60)
+                                        Image(systemName: "bolt.fill")
+                                            .font(.system(size: 14, weight: .black))
+                                            .foregroundStyle(Color.yellow)
+                                            .glow(color: Color.yellow.opacity(0.8), radius: 6)
+                                        Rectangle()
+                                            .fill(LinearGradient(colors: [.clear, Theme.danger.opacity(0.6), .clear], startPoint: .top, endPoint: .bottom))
+                                            .frame(width: 1.5, height: 60)
+                                    }
+                                    .frame(width: 24)
+
+                                    // Opponent team column
+                                    VStack(spacing: 6) {
+                                        ForEach(battle.opponentTeam) { player in
+                                            ArenaTeamMemberRow(player: player, isLocal: false, alignment: .trailing)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .padding(.horizontal, 12)
+                            }
+
+                            Spacer(minLength: 8)
+                        }
+
+                        // Floating damage numbers in top half
+                        ZStack {
+                            ForEach(damageNumbers) { dmg in
+                                DamageNumberView(damage: dmg)
                             }
                         }
-                        
-                        Spacer()
-                        
-                        if let p1 = battle.localTeam.first {
-                            FighterCard(player: p1, isLocal: true)
-                                .padding()
-                                .background(Color.black.opacity(0.6).cornerRadius(12))
-                        }
                     }
-                } else if battle.type == .duel1v1 {
-                    Spacer()
-                    // 1v1 Layout
-                    HStack(spacing: 12) {
-                        if let p1 = battle.localTeam.first {
-                            FighterCard(player: p1, isLocal: true)
-                                .padding()
-                                .background(Color.black.opacity(0.6).cornerRadius(12))
-                        }
-                        
-                        Text("VS")
-                            .font(.system(.title2, design: .monospaced))
-                            .fontWeight(.black)
-                            .foregroundColor(.white)
-                            .shadow(color: Theme.danger, radius: 4)
-                        
-                        if let p2 = battle.opponentTeam.first {
-                            FighterCard(player: p2, isLocal: false)
-                                .padding()
-                                .background(Color.black.opacity(0.6).cornerRadius(12))
-                        }
+                    .frame(height: geo.size.height * 0.5)
+
+                    // ── Glowing split divider ──────────────────────────────────
+                    ZStack {
+                        Rectangle()
+                            .fill(LinearGradient(
+                                colors: [Theme.danger.opacity(0.7), cameraVM.selectedClass.themeColor.opacity(0.7)],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(height: 2)
+                            .blur(radius: 1)
+                        Rectangle()
+                            .fill(LinearGradient(
+                                colors: [Theme.danger, cameraVM.selectedClass.themeColor],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(height: 1.5)
                     }
-                    .padding(.horizontal)
-                    Spacer()
-                } else {
-                    Spacer()
-                    // 3v3 Team Layout
-                    HStack(spacing: 8) {
-                        // Local Team
-                        VStack(spacing: 8) {
-                            ForEach(battle.localTeam) { player in
-                                CompactFighterCard(player: player, isLocal: player.id == FirebaseService.shared.currentCharacter?.id)
-                                    .padding(4)
-                                    .background(Color.black.opacity(0.6).cornerRadius(8))
+
+                    // ╔══════════════════════════════╗
+                    // ║    CAMERA FEED (bottom 50%)  ║
+                    // ╚══════════════════════════════╝
+                    ZStack(alignment: .bottom) {
+                        // Live camera feed
+                        CameraPreview(session: cameraVM.cameraManager.session)
+                            .ignoresSafeArea(edges: .bottom)
+
+                        // Pose skeleton overlay
+                        PoseOverlayView(joints: cameraVM.rawJoints, themeColor: cameraVM.selectedClass.themeColor)
+
+                        // Dark gradient vignette
+                        VStack(spacing: 0) {
+                            LinearGradient(
+                                colors: [.black.opacity(0.50), .clear],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                            .frame(height: 55)
+                            Spacer()
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.90)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                            .frame(height: 100)
+                        }
+
+                        // Rep counter + feedback (floating center)
+                        VStack(spacing: 6) {
+                            // Detection + feedback pill
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(cameraVM.isPersonDetected ? Theme.success : Theme.danger)
+                                    .frame(width: 8, height: 8)
+                                    .glow(color: cameraVM.isPersonDetected ? Theme.success : Theme.danger, radius: 4)
+                                Text(cameraVM.feedbackMessage)
+                                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
                             }
-                        }
-                        .frame(maxWidth: .infinity)
-                        
-                        Text("VS")
-                            .font(.system(.headline, design: .monospaced))
-                            .fontWeight(.black)
-                            .foregroundColor(.white)
-                            .shadow(color: Theme.danger, radius: 4)
-                            .padding(.horizontal, 4)
-                        
-                        // Opponent Team
-                        VStack(spacing: 8) {
-                            ForEach(battle.opponentTeam) { player in
-                                CompactFighterCard(player: player, isLocal: false)
-                                    .padding(4)
-                                    .background(Color.black.opacity(0.6).cornerRadius(8))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.black.opacity(0.65)))
+                            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+
+                            // Big rep counter
+                            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                                Text("\(cameraVM.repCount)")
+                                    .font(.system(size: 64, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .shadow(color: cameraVM.selectedClass.themeColor.opacity(0.9), radius: 18)
+                                Text("REPS")
+                                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.45))
                             }
+
+                            Text("EVERY REP = DAMAGE")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.38))
+                                .tracking(2)
                         }
-                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: .infinity)
+                        .padding(.top, 8)
+
+                        // ── Player HP bar — anchored to very bottom ───────────
+                        VStack(spacing: 5) {
+                            HStack {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "heart.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(localHPPercent < 0.25 ? Color.red : cameraVM.selectedClass.themeColor)
+                                    Text("YOUR HP")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(.white.opacity(0.6))
+                                }
+                                Spacer()
+                                if let p = localPlayer {
+                                    Text("\(max(0, p.health)) / \(p.maxHealth)")
+                                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                }
+                            }
+
+                            GeometryReader { barGeo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.7))
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(LinearGradient(
+                                            colors: localHPPercent < 0.25
+                                                ? [Color.red, Color.orange]
+                                                : [cameraVM.selectedClass.themeColor, cameraVM.selectedClass.themeColor.opacity(0.65)],
+                                            startPoint: .leading, endPoint: .trailing
+                                        ))
+                                        .frame(width: max(0, CGFloat(localHPPercent) * barGeo.size.width))
+                                        .animation(.spring(response: 0.4), value: localPlayer?.health)
+                                        .glow(color: (localHPPercent < 0.25 ? Color.red : cameraVM.selectedClass.themeColor).opacity(0.5), radius: 4)
+                                }
+                            }
+                            .frame(height: 12)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.black.opacity(0.0), Color.black.opacity(0.90)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
                     }
-                    .padding(.horizontal, 8)
-                    Spacer()
+                    .frame(height: geo.size.height * 0.5)
+                    .clipped()
                 }
-                
-                // Repetition Indicator (Bottom HUD)
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(cameraVM.isPersonDetected ? Theme.success : Theme.danger)
-                        .frame(width: 12, height: 12)
-                        .glow(color: cameraVM.isPersonDetected ? Theme.success : Theme.danger)
-                    
-                    Text(cameraVM.feedbackMessage)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    
-                    Spacer()
-                    
-                    Text("\(cameraVM.repCount)")
-                        .font(.system(.title, design: .monospaced))
-                        .fontWeight(.black)
-                        .foregroundColor(cameraVM.selectedClass.themeColor)
-                        .glow(color: cameraVM.selectedClass.themeColor.opacity(0.6), radius: 6)
-                }
-                .padding()
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(16)
-                .padding(.horizontal)
-                .padding(.bottom, 32)
+                .offset(x: shakeOffset)
             }
         }
+        .ignoresSafeArea()
         .overlay(
             ZStack {
                 ForEach(damageNumbers) { dmg in
@@ -1196,15 +1389,13 @@ struct CombatArenaView: View {
                 }
             }
         )
-        .offset(x: shakeOffset)
-        .onChange(of: battle.combatLog.count) { newCount in
+        .onChange(of: battle.combatLog.count) { _, newCount in
             if newCount > combatLogCount {
                 combatLogCount = newCount
                 if let lastEvent = battle.combatLog.last {
                     if lastEvent.actionType == .skill {
                         triggerScreenShake()
                     }
-                    
                     let isPlayerTarget = lastEvent.targetName == FirebaseService.shared.currentCharacter?.username
                     spawnDamageNumber(amount: lastEvent.value, isCritical: lastEvent.isCritical ?? false, isPlayerTarget: isPlayerTarget)
                 }
@@ -1212,15 +1403,119 @@ struct CombatArenaView: View {
         }
         .onAppear {
             combatLogCount = battle.combatLog.count
-            // Ensure camera tracking starts!
             cameraVM.cameraManager.checkPermission()
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                arenaGlow = true
+            }
+            // Seed the local timer from the battle's createdAt timestamp
+            let elapsed = Int(Date().timeIntervalSince(battle.createdAt))
+            localSecondsRemaining = max(0, 60 - elapsed)
+            // Tick every second so the ring animates smoothly without waiting for Firestore snapshots
+            localTimerTask?.invalidate()
+            localTimerTask = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                if localSecondsRemaining > 0 {
+                    localSecondsRemaining -= 1
+                } else {
+                    localTimerTask?.invalidate()
+                    localTimerTask = nil
+                    MultiplayerService.shared.forceEndBattleTimeout()
+                }
+            }
+            // Start the 3-2-1 countdown
+            runCountdown()
+        }
+        .onChange(of: battle.secondsRemaining) { _, newVal in
+            // Sync from server snapshot — but only if the server value is lower (never wind forward)
+            if newVal < localSecondsRemaining {
+                localSecondsRemaining = newVal
+            }
         }
         .onDisappear {
             cameraVM.cameraManager.stopSession()
+            localTimerTask?.invalidate()
+            localTimerTask = nil
+        }
+        // ── 3-2-1 Countdown Overlay ───────────────────────────
+        .overlay {
+            if showCountdown {
+                ZStack {
+                    Color.black.opacity(0.75)
+                        .ignoresSafeArea()
+                    
+                    VStack(spacing: 24) {
+                        Text(countdownValue > 0 ? "\(countdownValue)" : "FIGHT!")
+                            .font(.system(size: countdownValue > 0 ? 120 : 72, weight: .black, design: .rounded))
+                            .foregroundStyle(
+                                countdownValue > 0
+                                    ? LinearGradient(colors: [.white, Theme.primary], startPoint: .top, endPoint: .bottom)
+                                    : LinearGradient(colors: [Theme.danger, .orange], startPoint: .top, endPoint: .bottom)
+                            )
+                            .scaleEffect(countdownScale)
+                            .opacity(countdownOpacity)
+                            .shadow(color: (countdownValue > 0 ? Theme.primary : Theme.danger).opacity(0.8), radius: 20)
+                        
+                        if countdownValue > 0 {
+                            Text("GET READY")
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Theme.textSecondary)
+                                .tracking(4)
+                        }
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+    }
+    
+    private func runCountdown() {
+        // Tick function: animates a number in, then fades it out before the next one
+        func tick(value: Int) {
+            countdownValue = value
+            countdownScale = 0.5
+            countdownOpacity = 0.0
+            
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                countdownScale = 1.0
+                countdownOpacity = 1.0
+            }
+            
+            // Haptic punch on each number
+            let impact = UIImpactFeedbackGenerator(style: value > 0 ? .medium : .heavy)
+            impact.impactOccurred()
+            
+            // Fade out before the next tick
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                withAnimation(.easeIn(duration: 0.2)) {
+                    countdownOpacity = 0.0
+                    countdownScale = 1.4
+                }
+            }
+        }
+        
+        tick(value: 3)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { tick(value: 2) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { tick(value: 1) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            // Show FIGHT!
+            countdownValue = 0
+            countdownScale = 0.6
+            countdownOpacity = 1.0
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) {
+                countdownScale = 1.0
+            }
+            let impact = UIImpactFeedbackGenerator(style: .heavy)
+            impact.impactOccurred()
+            // Dismiss overlay after a brief hold
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                withAnimation(.easeOut(duration: 0.35)) {
+                    showCountdown = false
+                }
+            }
         }
     }
     
     private func triggerScreenShake() {
+
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.error)
         
@@ -1239,7 +1534,7 @@ struct CombatArenaView: View {
     private func spawnDamageNumber(amount: Int, isCritical: Bool, isPlayerTarget: Bool) {
         let screenWidth = UIScreen.main.bounds.width
         let xPos = isPlayerTarget ? screenWidth * 0.25 : screenWidth * 0.75
-        let yPos: CGFloat = isPlayerTarget ? 400 : 250 // Rough estimates
+        let yPos: CGFloat = isPlayerTarget ? 400 : 250
         
         let damage = FloatingDamage(
             amount: amount,
@@ -1255,6 +1550,136 @@ struct CombatArenaView: View {
         }
     }
 }
+
+// MARK: - Arena fighter card (1v1)
+enum CardSide { case left, right }
+
+struct ArenaFighterCard: View {
+    let player: BattlePlayer
+    let isLocal: Bool
+    let side: CardSide
+
+    var body: some View {
+        VStack(spacing: 6) {
+            // Avatar
+            ZStack {
+                Circle()
+                    .fill(player.characterClass.themeColor.opacity(isLocal ? 0.2 : 0.1))
+                    .frame(width: 52, height: 52)
+                    .overlay(Circle().stroke(isLocal ? player.characterClass.themeColor : Color.white.opacity(0.15), lineWidth: isLocal ? 2 : 1))
+                    .glow(color: isLocal ? player.characterClass.themeColor.opacity(0.5) : .clear, radius: 6)
+
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(player.characterClass.themeColor)
+            }
+
+            Text(player.name)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+
+            Text(player.characterClass.rawValue.uppercased())
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(player.characterClass.themeColor)
+
+            // HP bar
+            VStack(spacing: 3) {
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3).fill(Color.black.opacity(0.5))
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(LinearGradient(
+                                colors: player.health < 30
+                                    ? [Color.red, Color.orange]
+                                    : [Theme.success, player.characterClass.themeColor],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(width: CGFloat(player.health) / CGFloat(player.maxHealth) * g.size.width)
+                            .animation(.spring(), value: player.health)
+                    }
+                }
+                .frame(height: 6)
+
+                HStack {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 7))
+                        .foregroundStyle(Theme.danger)
+                    Text("\(player.health)")
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text("⚡\(player.reps)")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(player.characterClass.themeColor)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity)
+        .background(Color.black.opacity(isLocal ? 0.65 : 0.45))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+            isLocal ? player.characterClass.themeColor.opacity(0.5) : Color.white.opacity(0.1),
+            lineWidth: isLocal ? 1.5 : 1
+        ))
+    }
+}
+
+// MARK: - 3v3 team member row
+struct ArenaTeamMemberRow: View {
+    let player: BattlePlayer
+    let isLocal: Bool
+    let alignment: HorizontalAlignment
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if alignment == .trailing {
+                Spacer()
+            }
+
+            // Class color dot
+            Circle()
+                .fill(player.characterClass.themeColor)
+                .frame(width: 8, height: 8)
+                .glow(color: isLocal ? player.characterClass.themeColor.opacity(0.8) : .clear, radius: 3)
+
+            VStack(alignment: alignment == .leading ? .leading : .trailing, spacing: 2) {
+                Text(player.name)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+
+                GeometryReader { g in
+                    ZStack(alignment: alignment == .leading ? .leading : .trailing) {
+                        RoundedRectangle(cornerRadius: 2).fill(Color.black.opacity(0.5))
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(player.isDead ? Color.gray : player.characterClass.themeColor)
+                            .frame(width: CGFloat(player.health) / CGFloat(player.maxHealth) * g.size.width)
+                    }
+                }
+                .frame(height: 4)
+
+                Text("HP:\(player.health) ⚡\(player.reps)")
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(isLocal ? player.characterClass.themeColor : .white.opacity(0.4))
+            }
+
+            if alignment == .leading {
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.black.opacity(isLocal ? 0.65 : 0.35))
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(
+            isLocal ? player.characterClass.themeColor.opacity(0.4) : Color.white.opacity(0.08),
+            lineWidth: 1
+        ))
+    }
+}
+
 
 struct DamageNumberView: View {
     let damage: FloatingDamage
@@ -1629,6 +2054,7 @@ struct BossRaidResultOverlay: View {
 // 7. PvP 1v1 Leaderboards list view (uses .forest background)
 struct PvPLeaderboardView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
+    @State private var isLoading: Bool = false
     
     var body: some View {
         ZStack {
@@ -1650,21 +2076,66 @@ struct PvPLeaderboardView: View {
                 ScrollView {
                     VStack(spacing: 8) {
                         let players = firebaseService.leaderboards["pvp_1v1"] ?? []
-                        if players.isEmpty {
-                            Text("Searching rank updates...")
-                                .font(.caption)
-                                .foregroundColor(Theme.textMuted)
-                                .padding(.top, 40)
+                        if isLoading {
+                            VStack(spacing: 12) {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Theme.primary))
+                                    .scaleEffect(1.3)
+                                Text("Loading PvP rankings...")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textMuted)
+                            }
+                            .padding(.top, 60)
+                        } else if players.isEmpty {
+                            VStack(spacing: 12) {
+                                Image(systemName: "trophy")
+                                    .font(.system(size: 36))
+                                    .foregroundColor(Theme.textMuted.opacity(0.4))
+                                Text("No PvP rankings yet")
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .foregroundColor(Theme.textMuted)
+                                Text("Win 1v1 duels to appear here!")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textMuted.opacity(0.6))
+                                Button(action: {
+                                    isLoading = true
+                                    FirebaseService.shared.fetchLeaderboards(for: ["pvp_1v1"])
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { isLoading = false }
+                                }) {
+                                    Label("Refresh", systemImage: "arrow.clockwise")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundColor(Theme.primary)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(Theme.primary.opacity(0.12))
+                                        .cornerRadius(10)
+                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.primary.opacity(0.3), lineWidth: 1))
+                                }
+                                .buttonStyle(TactileButtonStyle())
+                            }
+                            .padding(.top, 40)
                         } else {
                             ForEach(Array(players.enumerated()), id: \.offset) { index, player in
+                                let isMe = player.id == FirebaseService.shared.currentCharacter?.id
                                 HStack(spacing: 12) {
                                     RankIndicator(rank: index + 1)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(player.username)
-                                            .font(.subheadline)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(Theme.textPrimary)
+                                        HStack(spacing: 5) {
+                                            Text(player.username)
+                                                .font(.subheadline)
+                                                .fontWeight(.bold)
+                                                .foregroundColor(isMe ? Theme.primary : Theme.textPrimary)
+                                            if isMe {
+                                                Text("YOU")
+                                                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 5)
+                                                    .padding(.vertical, 2)
+                                                    .background(Theme.primary)
+                                                    .cornerRadius(4)
+                                            }
+                                        }
                                         Text("Lvl \(player.level) • \(player.selectedClass.rawValue)")
                                             .font(.caption2)
                                             .foregroundColor(player.selectedClass.themeColor)
@@ -1673,22 +2144,22 @@ struct PvPLeaderboardView: View {
                                     Spacer()
                                     
                                     VStack(alignment: .trailing, spacing: 2) {
-                                        Label("\(player.pvpTrophies)", systemImage: "trophy.fill")
+                                        Label("\(player.unwrappedPvPTrophies)", systemImage: "trophy.fill")
                                             .font(.system(.caption, design: .monospaced))
                                             .foregroundColor(Theme.healerColor)
                                             .fontWeight(.bold)
                                         
-                                        Text("\(player.pvpWins) Wins")
+                                        Text("\(player.unwrappedPvPWins) Wins")
                                             .font(.system(size: 10, design: .default))
                                             .foregroundColor(Theme.textSecondary)
                                     }
                                 }
                                 .padding()
-                                .background(Theme.cardBackground.opacity(0.85))
+                                .background(isMe ? Theme.primary.opacity(0.15) : Theme.cardBackground.opacity(0.85))
                                 .cornerRadius(12)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Theme.border, lineWidth: 1)
+                                        .stroke(isMe ? Theme.primary.opacity(0.6) : (index < 3 ? Theme.warning.opacity(0.3) : Theme.border), lineWidth: isMe ? 1.5 : 1)
                                 )
                             }
                         }
@@ -1697,6 +2168,11 @@ struct PvPLeaderboardView: View {
                     .padding(.bottom, 60)
                 }
             }
+        }
+        .onAppear {
+            isLoading = true
+            FirebaseService.shared.fetchLeaderboards(for: ["pvp_1v1"])
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { isLoading = false }
         }
     }
 }
@@ -1997,8 +2473,20 @@ struct StoryMapView: View {
             // Scrollable Adventure Map
             ScrollViewReader { scrollProxy in
                 ScrollView(.vertical, showsIndicators: false) {
-                    ZStack {
-                        // 1. Winding Road Path connecting coordinates (Zigzag 40 nodes)
+                    ZStack(alignment: .top) {
+                        // 1. Invisible anchor layer for ScrollViewReader (must be inside ZStack, not overlay)
+                        VStack(spacing: 0) {
+                            Spacer().frame(height: 55) // offset for the first element
+                            ForEach(0..<40, id: \.self) { index in
+                                let stage = 40 - index
+                                Color.clear
+                                    .frame(width: 10, height: 110)
+                                    .id(stage)
+                            }
+                            Spacer().frame(height: 55)
+                        }
+                        
+                        // 2. Winding Road Path connecting coordinates (Zigzag 40 nodes)
                         Path { path in
                             let coords = coordinatesList
                             if !coords.isEmpty {
@@ -2036,18 +2524,16 @@ struct StoryMapView: View {
                                     onSelectStage(stage)
                                 }
                             )
+                            // ID removed from here because absolute positioned views confuse ScrollViewReader
                             .position(x: coord.x, y: coord.y)
-                            .id(stage)
                         }
                     }
                     .frame(width: 360, height: 4510) // 40 stages * 110 spacing + margins
-                    .padding(.top, 100)
-                    .padding(.bottom, 100)
                     .onAppear {
-                        // Scroll to active stage on load
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            withAnimation(.easeOut(duration: 1.2)) {
-                                scrollProxy.scrollTo(activeStage, anchor: .center)
+                        // Scroll to the very beginning (Stage 1) as requested
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            withAnimation(.easeOut(duration: 1.0)) {
+                                scrollProxy.scrollTo(1, anchor: .bottom)
                             }
                         }
                     }
@@ -2161,9 +2647,15 @@ struct StoryStageTile: View {
                     // Emblems / Indicators inside Platform Face
                     VStack {
                         if isBoss {
-                            Image(systemName: "skull.fill")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(isUnlocked ? Theme.danger : .white.opacity(0.7))
+                            VStack(spacing: 2) {
+                                Image(systemName: "skull.fill")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(isUnlocked ? Theme.danger : .white.opacity(0.7))
+                                Text("\(stage)")
+                                    .font(.system(size: 13, weight: .black, design: .monospaced))
+                                    .foregroundColor(.white)
+                                    .shadow(color: .black, radius: 3)
+                            }
                         } else if isCompleted {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 14, weight: .bold))
@@ -2177,7 +2669,7 @@ struct StoryStageTile: View {
                     }
                 }
                 
-                Text(isBoss ? "BOSS" : "STAGE \(stage)")
+                Text(isBoss ? "BOSS \(stage)" : "STAGE \(stage)")
                     .font(.system(size: 8, design: .monospaced))
                     .fontWeight(.bold)
                     .foregroundColor(isUnlocked ? Theme.textPrimary : Theme.textMuted)

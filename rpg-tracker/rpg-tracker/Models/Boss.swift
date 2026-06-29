@@ -58,7 +58,7 @@ extension Boss {
             maxHealth: 500,
             currentHealth: 500,
             attackPower: 15,
-            avatarName: "avatar_goblin", // placeholder
+            avatarName: "boss_goblin_brute",
             attackInterval: 4.0,
             skills: [
                 BossSkill(name: "Smash", damageMultiplier: 1.5, cooldown: 12.0, isUnblockable: false)
@@ -76,7 +76,7 @@ extension Boss {
             maxHealth: 1500,
             currentHealth: 1500,
             attackPower: 25,
-            avatarName: "avatar_orc", // placeholder
+            avatarName: "boss_gorgon_behemoth",
             attackInterval: 3.5,
             skills: [
                 BossSkill(name: "Savage Cleave", damageMultiplier: 2.0, cooldown: 15.0, isUnblockable: false),
@@ -95,7 +95,7 @@ extension Boss {
             maxHealth: 5000,
             currentHealth: 5000,
             attackPower: 60,
-            avatarName: "avatar_dragon",
+            avatarName: "boss_ancient_dragon",
             attackInterval: 3.0,
             skills: [
                 BossSkill(name: "Hellfire Breath", damageMultiplier: 2.5, cooldown: 20.0, isUnblockable: true),
@@ -105,6 +105,25 @@ extension Boss {
             goldReward: 1000,
             lootDropChance: 1.0,
             possibleLootRarity: [.epic, .legendary]
+        ),
+        Boss(
+            id: "boss_abyssal",
+            name: "Abyssal World-Eater",
+            description: "A cosmic demon dragon that consumes worlds.",
+            difficulty: .epic,
+            maxHealth: 15000,
+            currentHealth: 15000,
+            attackPower: 120,
+            avatarName: "boss_abyssal_world_eater",
+            attackInterval: 2.5,
+            skills: [
+                BossSkill(name: "Cosmic Annihilation", damageMultiplier: 3.0, cooldown: 25.0, isUnblockable: true),
+                BossSkill(name: "Abyssal Roar", damageMultiplier: 1.5, cooldown: 12.0, isUnblockable: false)
+            ],
+            xpReward: 10000,
+            goldReward: 5000,
+            lootDropChance: 1.0,
+            possibleLootRarity: [.legendary]
         )
     ]
 }

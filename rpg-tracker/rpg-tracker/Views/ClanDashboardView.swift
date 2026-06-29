@@ -80,7 +80,7 @@ struct NoClanView: View {
                     showCreateClanSheet = true
                 }) {
                     HStack(spacing: 8) {
-                        Image(systemName: "plus.shield.fill")
+                        Image(systemName: "shield.fill")
                         Text("CREATE A NEW CLAN")
                             .font(.system(.subheadline, design: .monospaced))
                             .fontWeight(.black)
@@ -330,6 +330,7 @@ struct ActiveClanView: View {
     @State private var isEditingDescription: Bool = false
     @State private var editedDescription: String = ""
     @State private var showWarBattle: Bool = false
+    @State private var showSettings: Bool = false
     
     var body: some View {
         VStack(spacing: 20) {
@@ -479,22 +480,40 @@ struct ActiveClanView: View {
                 
                 HStack {
                     Spacer()
-                    // Leave / Disband Clan button
-                    Button(action: {
-                        viewModel.leaveClan()
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                            Text(clan.leaderId == FirebaseService.shared.currentCharacter?.id ? "DISBAND CLAN" : "LEAVE CLAN")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    // Leave / Clan Settings button
+                    if clan.leaderId == FirebaseService.shared.currentCharacter?.id {
+                        Button(action: {
+                            showSettings = true
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "gearshape.fill")
+                                Text("CLAN SETTINGS")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Theme.accent.opacity(0.85))
+                            .cornerRadius(8)
                         }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Theme.danger.opacity(0.85))
-                        .cornerRadius(8)
+                        .buttonStyle(TactileButtonStyle())
+                    } else {
+                        Button(action: {
+                            viewModel.leaveClan()
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                Text("LEAVE CLAN")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Theme.danger.opacity(0.85))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(TactileButtonStyle())
                     }
-                    .buttonStyle(TactileButtonStyle())
                 }
                 
                 Divider()
@@ -786,20 +805,30 @@ struct ActiveClanView: View {
                     }
             }
         }
+        .sheet(isPresented: $showSettings) {
+            ClanSettingsView(viewModel: viewModel, clan: clan)
+        }
     }
 }
 
 // 3. Leaderboards View list
 struct LeaderboardListView: View {
     @ObservedObject var viewModel: ClanVM
+    @State private var isLoading: Bool = false
     
     var body: some View {
         VStack(spacing: 14) {
-            // Horizontal Class Picker
+            // Horizontal Category Picker
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    LeaderboardTabBtn(title: "GLOBAL STANDINGS", id: "global", activeId: viewModel.leaderboardType) {
+                    LeaderboardTabBtn(title: "GLOBAL", id: "global", activeId: viewModel.leaderboardType) {
                         viewModel.leaderboardType = "global"
+                    }
+                    LeaderboardTabBtn(title: "PVP 1V1", id: "pvp_1v1", activeId: viewModel.leaderboardType) {
+                        viewModel.leaderboardType = "pvp_1v1"
+                    }
+                    LeaderboardTabBtn(title: "CLANS", id: "clans", activeId: viewModel.leaderboardType) {
+                        viewModel.leaderboardType = "clans"
                     }
                     
                     ForEach(CharacterClass.allCases) { cls in
@@ -815,22 +844,78 @@ struct LeaderboardListView: View {
             // List of Players
             ScrollView {
                 VStack(spacing: 10) {
-                    if viewModel.leaderboardPlayers.isEmpty {
-                        Text("Searching rank updates...")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(Theme.textMuted)
-                            .padding(.top, 40)
+                    if isLoading {
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Theme.primary))
+                                .scaleEffect(1.3)
+                            Text("Loading rankings...")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(Theme.textMuted)
+                        }
+                        .padding(.top, 60)
+                    } else if viewModel.leaderboardPlayers.isEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: "trophy")
+                                .font(.system(size: 40))
+                                .foregroundColor(Theme.textMuted.opacity(0.4))
+                            Text("No rankings yet")
+                                .font(.system(.subheadline, design: .monospaced))
+                                .fontWeight(.bold)
+                                .foregroundColor(Theme.textMuted)
+                            Text("Be the first to compete!")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(Theme.textMuted.opacity(0.6))
+                            Button(action: {
+                                isLoading = true
+                                FirebaseService.shared.fetchLeaderboards(for: [viewModel.leaderboardType])
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { isLoading = false }
+                            }) {
+                                Label("Refresh", systemImage: "arrow.clockwise")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(Theme.primary)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 10)
+                                    .background(Theme.primary.opacity(0.12))
+                                    .cornerRadius(10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.primary.opacity(0.3), lineWidth: 1))
+                            }
+                            .buttonStyle(TactileButtonStyle())
+                        }
+                        .padding(.top, 40)
                     } else {
                         ForEach(Array(viewModel.leaderboardPlayers.enumerated()), id: \.offset) { index, player in
+                            let isMe = player.id == FirebaseService.shared.currentCharacter?.id
+                            let allowedClasses = ["Archer", "Mage", "Swordsman", "Healer"]
+                            let isClassTab = allowedClasses.contains(viewModel.leaderboardType)
+                            let classTrophyCount: Int = {
+                                if let cls = CharacterClass(rawValue: viewModel.leaderboardType),
+                                   let dict = player.classTrophies,
+                                   let val = dict[cls.rawValue] {
+                                    return val
+                                }
+                                return 0
+                            }()
                             HStack(spacing: 14) {
                                 // Rank Badge
                                 RankIndicator(rank: index + 1)
                                 
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(player.username)
-                                        .font(.system(.subheadline, design: .default))
-                                        .fontWeight(.black)
-                                        .foregroundColor(Theme.textPrimary)
+                                    HStack(spacing: 6) {
+                                        Text(player.username)
+                                            .font(.system(.subheadline, design: .default))
+                                            .fontWeight(.black)
+                                            .foregroundColor(isMe ? Theme.primary : Theme.textPrimary)
+                                        if isMe {
+                                            Text("YOU")
+                                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 2)
+                                                .background(Theme.primary)
+                                                .cornerRadius(4)
+                                        }
+                                    }
                                     Text(player.selectedClass.rawValue.uppercased())
                                         .font(.system(size: 8, weight: .bold, design: .monospaced))
                                         .foregroundColor(player.selectedClass.themeColor)
@@ -844,17 +929,27 @@ struct LeaderboardListView: View {
                                         .fontWeight(.bold)
                                         .foregroundColor(Theme.textPrimary)
                                     
-                                    Text("\(player.stats.totalReps) total reps")
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .foregroundColor(Theme.textSecondary)
+                                    if viewModel.leaderboardType == "pvp_1v1" {
+                                        Label("\(player.unwrappedPvPTrophies)", systemImage: "trophy.fill")
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .foregroundColor(Theme.warning)
+                                    } else if isClassTab {
+                                        Label("\(classTrophyCount)", systemImage: "trophy.fill")
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .foregroundColor(player.selectedClass.themeColor)
+                                    } else {
+                                        Text("\(player.stats.totalReps) reps")
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .foregroundColor(Theme.textSecondary)
+                                    }
                                 }
                             }
                             .padding()
-                            .background(Theme.cardBackground.opacity(0.8))
+                            .background(isMe ? Theme.primary.opacity(0.15) : Theme.cardBackground.opacity(0.8))
                             .cornerRadius(16)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Theme.border, lineWidth: 1)
+                                    .stroke(isMe ? Theme.primary.opacity(0.6) : (index < 3 ? Theme.warning.opacity(0.3) : Theme.border), lineWidth: isMe ? 1.5 : 1)
                             )
                         }
                     }
@@ -864,6 +959,11 @@ struct LeaderboardListView: View {
                 }
                 .padding(.horizontal)
             }
+        }
+        .onAppear {
+            isLoading = true
+            FirebaseService.shared.fetchLeaderboards()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { isLoading = false }
         }
     }
 }

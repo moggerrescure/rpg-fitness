@@ -53,7 +53,13 @@ struct WorldBossDashboardView: View {
             }
         }
         .fullScreenCover(isPresented: $showingBattleArena) {
-            BattleArenaView(initialPvPType: .bossRaid)
+            if let boss = firebaseService.activeWorldBoss {
+                let template = Boss.templates.first { $0.id == boss.bossTemplateId } ?? Boss.templates.last!
+                WorldBossBattleView(worldBoss: boss, template: template)
+            } else {
+                Text("Summoning Boss...")
+                    .onTapGesture { showingBattleArena = false }
+            }
         }
     }
     
@@ -123,10 +129,9 @@ struct WorldBossDashboardView: View {
             .padding(.horizontal, 24)
             
             Button(action: {
-                // Cost 15 energy
-                if firebaseService.consumeEnergy(amount: 15) {
-                    showingBattleArena = true
-                }
+                // Consume as much energy as available (don't block if low)
+                _ = firebaseService.consumeEnergy(amount: min(15, firebaseService.currentCharacter?.energy ?? 0))
+                showingBattleArena = true
             }) {
                 HStack {
                     Image(systemName: "bolt.fill")

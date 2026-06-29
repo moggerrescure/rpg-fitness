@@ -295,7 +295,7 @@ struct BossSelectionScreen: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(height: 300)
-                .onChange(of: scrollPage) { newVal in
+                .onChange(of: scrollPage) { _, newVal in
                     withAnimation(.spring()) {
                         selectedBoss = RaidBoss.all[newVal]
                     }
@@ -522,6 +522,10 @@ struct BossRaidCameraView: View {
     @State private var playerDamageFlash: Bool = false
     @State private var bossDefeated: Bool = false
     @State private var playerDefeated: Bool = false
+    @State private var bossAttackFlash: Bool = false
+    @State private var floatingHits: [BossHitNumber] = []
+    @State private var bossPulse: Bool = false
+    @State private var lastRepCount: Int = 0
 
     private let playerMaxHP: Int
 
@@ -552,287 +556,435 @@ struct BossRaidCameraView: View {
         return Double(vm.bossCurrentHP) / Double(vm.bossMaxHP)
     }
 
+    var playerHPFraction: Double {
+        guard playerMaxHP > 0 else { return 1.0 }
+        return Double(max(0, playerHP)) / Double(playerMaxHP)
+    }
+
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // ── Full-screen camera ────────────────────────────────────────
-                CameraPreview(session: vm.cameraManager.session)
-                    .ignoresSafeArea()
+                Color.black.ignoresSafeArea()
 
-                PoseOverlayView(joints: vm.rawJoints, themeColor: characterClass.themeColor)
-
-                // Player damage red flash
-                if playerDamageFlash {
-                    Color.red.opacity(0.3)
-                        .ignoresSafeArea()
-                        .transition(.opacity)
-                }
-
-                // ── VERTICAL SPLIT LAYOUT ─────────────────────────────────────
+                // ── VERTICAL SPLIT LAYOUT ──────────────────────────────────────
                 VStack(spacing: 0) {
 
                     // ╔══════════════════════════════╗
-                    // ║        BOSS HALF (top)       ║
+                    // ║       BOSS HALF (top 50%)    ║
                     // ╚══════════════════════════════╝
-                    ZStack(alignment: .bottom) {
-                        // Dark gradient overlay for boss half
+                    ZStack {
+                        // Deep dark background
                         LinearGradient(
-                            colors: [Color.black.opacity(0.92), Color.black.opacity(0.5), Color.clear],
+                            colors: [
+                                Color.black,
+                                boss.element.color.opacity(0.12),
+                                Color(red: 0.06, green: 0.04, blue: 0.10)
+                            ],
                             startPoint: .top, endPoint: .bottom
                         )
-                        .ignoresSafeArea(edges: .top)
 
-                        // Element-coloured glow at the top
-                        LinearGradient(
-                            colors: [boss.element.color.opacity(0.3), Color.clear],
-                            startPoint: .top, endPoint: .center
+                        // Element atmospheric glow
+                        RadialGradient(
+                            colors: [boss.element.color.opacity(0.35), Color.clear],
+                            center: UnitPoint(x: 0.5, y: 0.0),
+                            startRadius: 0, endRadius: 300
                         )
-                        .ignoresSafeArea(edges: .top)
+
+                        // Boss attack flash
+                        if bossAttackFlash {
+                            boss.element.color.opacity(0.22).transition(.opacity)
+                        }
 
                         VStack(spacing: 0) {
-                            // ── Nav bar ───────────────────────────────────────
+                            // ── Nav bar ──────────────────────────────────────
                             HStack {
                                 Button(action: {
                                     bossAttackTimer?.invalidate()
                                     onExit()
                                 }) {
                                     Image(systemName: "arrow.left")
-                                        .font(.system(size: 16, weight: .bold))
-                                        .foregroundColor(.white)
-                                        .frame(width: 40, height: 40)
-                                        .background(Color.black.opacity(0.5))
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 38, height: 38)
+                                        .background(.black.opacity(0.55))
                                         .clipShape(Circle())
+                                        .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
                                 }
 
                                 Spacer()
 
-                                HStack(spacing: 6) {
-                                    Image(systemName: "flame.fill")
-                                        .foregroundColor(characterClass.themeColor)
-                                        .font(.caption)
-                                    Text(characterClass.primaryExercise.uppercased())
-                                        .font(.system(size: 12, weight: .black, design: .monospaced))
-                                        .foregroundColor(.white)
+                                VStack(spacing: 2) {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: boss.element.icon)
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundStyle(boss.element.color)
+                                        Text(boss.element.rawValue.uppercased())
+                                            .font(.system(size: 8, weight: .black, design: .monospaced))
+                                            .foregroundStyle(boss.element.color)
+                                            .tracking(1.5)
+                                    }
+                                    Text("BOSS RAID")
+                                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                                        .foregroundStyle(.white.opacity(0.55))
+                                        .tracking(2)
                                 }
-                                .padding(.horizontal, 12)
+                                .padding(.horizontal, 14)
                                 .padding(.vertical, 7)
-                                .background(Color.black.opacity(0.55))
+                                .background(.black.opacity(0.5))
                                 .cornerRadius(18)
+                                .overlay(RoundedRectangle(cornerRadius: 18).stroke(boss.element.color.opacity(0.3), lineWidth: 1))
 
                                 Spacer()
-                                Color.clear.frame(width: 40)
+
+                                HStack(spacing: 5) {
+                                    Image(systemName: "flame.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(characterClass.themeColor)
+                                    Text(characterClass.primaryExercise.uppercased())
+                                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                                        .foregroundStyle(.white)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(.black.opacity(0.5))
+                                .cornerRadius(14)
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(characterClass.themeColor.opacity(0.3), lineWidth: 1))
                             }
                             .padding(.horizontal, 16)
-                            .padding(.top, 8)
+                            .padding(.top, max(geo.safeAreaInsets.top + 16, 60)) // Safe top padding
 
                             Spacer()
 
-                            // ── Big boss image ────────────────────────────────
-                            Image(boss.imageName)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(height: geo.size.height * 0.28)
-                                .shadow(color: boss.element.color.opacity(vm.hpBarBurn ? 0.8 : 0.5), radius: vm.hpBarBurn ? 24 : 14)
-                                .offset(x: vm.hpBarShake ? CGFloat.random(in: -6...6) : 0,
-                                        y: vm.hpBarShake ? CGFloat.random(in: -4...4) : 0)
+                            // ── Boss image ────────────────────────────────
+                            ZStack {
+                                Ellipse()
+                                    .fill(RadialGradient(
+                                        colors: [boss.element.color.opacity(bossPulse ? 0.45 : 0.25), .clear],
+                                        center: .center, startRadius: 0, endRadius: 90
+                                    ))
+                                    .frame(width: 180, height: 60)
+                                    .offset(y: geo.size.height * 0.115)
+                                    .blur(radius: 18)
 
-                            // ── Boss name + HP ────────────────────────────────
-                            VStack(spacing: 8) {
-                                // Element badge + name
-                                HStack(spacing: 6) {
-                                    Image(systemName: boss.element.icon)
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(boss.element.color)
+                                Image(boss.imageName)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(height: geo.size.height * 0.28) // Reduced from 0.40 to prevent layout overflow
+                                    .shadow(color: boss.element.color.opacity(vm.hpBarBurn ? 0.9 : 0.55), radius: vm.hpBarBurn ? 28 : 16)
+                                    .offset(
+                                        x: vm.hpBarShake ? CGFloat.random(in: -7...7) : 0,
+                                        y: vm.hpBarShake ? CGFloat.random(in: -5...5) : 0
+                                    )
+                                    .scaleEffect(bossPulse ? 1.02 : 1.0)
+                                    .animation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true), value: bossPulse)
+
+                                ForEach(floatingHits) { hit in
+                                    Text("-\(hit.value)")
+                                        .font(.system(size: hit.isCrit ? 26 : 18, weight: .black, design: .monospaced))
+                                        .foregroundStyle(hit.isCrit ? Color.yellow : characterClass.themeColor)
+                                        .shadow(color: .black, radius: 2)
+                                        .offset(x: hit.xOffset, y: hit.yOffset)
+                                        .opacity(hit.opacity)
+                                }
+                            }
+
+                            // ── Boss name + HP bar ────────────────────────
+                            VStack(spacing: 10) {
+                                HStack(spacing: 8) {
                                     Text(boss.name.uppercased())
-                                        .font(.system(size: 16, weight: .black, design: .monospaced))
-                                        .foregroundColor(.white)
+                                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                                        .foregroundStyle(.white)
                                         .tracking(1)
                                     if let badge = vm.floatingComboBadge {
                                         Text(badge)
                                             .font(.system(size: 10, weight: .black, design: .monospaced))
-                                            .foregroundColor(.yellow)
-                                            .glow(color: .orange.opacity(0.7), radius: 5)
+                                            .foregroundStyle(.yellow)
+                                            .glow(color: .orange.opacity(0.8), radius: 6)
                                             .transition(.scale.combined(with: .opacity))
                                     }
                                 }
 
-                                // HP bar
-                                VStack(spacing: 4) {
+                                VStack(spacing: 5) {
                                     HStack {
-                                        Text("BOSS HP")
-                                            .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                            .foregroundColor(vm.hpBarBurn ? .orange : boss.element.color.opacity(0.8))
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "heart.fill")
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(vm.hpBarBurn ? Color.orange : boss.element.color)
+                                            Text("BOSS HP")
+                                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                                .foregroundStyle(vm.hpBarBurn ? Color.orange : boss.element.color.opacity(0.8))
+                                        }
                                         Spacer()
                                         Text("\(vm.bossCurrentHP) / \(vm.bossMaxHP)")
                                             .font(.system(size: 11, weight: .black, design: .monospaced))
-                                            .foregroundColor(.white)
+                                            .foregroundStyle(.white)
                                     }
 
                                     GeometryReader { barGeo in
                                         ZStack(alignment: .leading) {
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .fill(Color.black.opacity(0.6))
-                                                .frame(height: 12)
-                                            RoundedRectangle(cornerRadius: 6)
+                                            RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.65))
+                                            RoundedRectangle(cornerRadius: 7)
                                                 .fill(LinearGradient(
                                                     colors: vm.hpBarBurn
                                                         ? [Color.red, Color.orange, Color.yellow]
-                                                        : [boss.element.color, boss.element.color.opacity(0.65)],
+                                                        : [boss.element.color, boss.element.color.opacity(0.6)],
                                                     startPoint: .leading, endPoint: .trailing
                                                 ))
-                                                .frame(width: max(0, CGFloat(bossHPFraction) * barGeo.size.width), height: 12)
-                                                .animation(.spring(response: 0.35), value: vm.bossCurrentHP)
-                                                .glow(color: boss.element.color.opacity(0.5), radius: 4)
+                                                .frame(width: max(0, CGFloat(bossHPFraction) * barGeo.size.width))
+                                                .animation(.spring(response: 0.38), value: vm.bossCurrentHP)
+                                                .glow(color: boss.element.color.opacity(vm.hpBarBurn ? 0.9 : 0.5), radius: vm.hpBarBurn ? 8 : 4)
                                         }
                                     }
-                                    .frame(height: 12)
+                                    .frame(height: 14)
                                 }
-                                .padding(12)
-                                .background(Color.black.opacity(0.55))
-                                .cornerRadius(12)
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(boss.element.color.opacity(0.3), lineWidth: 1))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .background(Color.black.opacity(0.6))
+                                .cornerRadius(14)
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(boss.element.color.opacity(0.35), lineWidth: 1))
                             }
                             .padding(.horizontal, 20)
-                            .padding(.bottom, 16)
+                            .padding(.bottom, 14)
                         }
                     }
                     .frame(height: geo.size.height * 0.5)
 
-                    // Divider line
-                    Rectangle()
-                        .fill(LinearGradient(
-                            colors: [boss.element.color.opacity(0.6), characterClass.themeColor.opacity(0.6)],
-                            startPoint: .leading, endPoint: .trailing
-                        ))
-                        .frame(height: 1.5)
+                    // ── Glowing divider ──────────────────────────────────────
+                    ZStack {
+                        Rectangle()
+                            .fill(LinearGradient(
+                                colors: [boss.element.color.opacity(0.7), characterClass.themeColor.opacity(0.7)],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(height: 2).blur(radius: 1)
+                        Rectangle()
+                            .fill(LinearGradient(
+                                colors: [boss.element.color, characterClass.themeColor],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(height: 1.5)
+                    }
 
                     // ╔══════════════════════════════╗
-                    // ║      PLAYER HALF (bottom)    ║
+                    // ║    CAMERA HALF (bottom 50%)  ║
                     // ╚══════════════════════════════╝
-                    ZStack(alignment: .top) {
-                        // Dark gradient for bottom half
-                        LinearGradient(
-                            colors: [Color.clear, Color.black.opacity(0.55), Color.black.opacity(0.88)],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                        .ignoresSafeArea(edges: .bottom)
+                    ZStack(alignment: .bottom) {
+                        CameraPreview(session: vm.cameraManager.session)
+                            .ignoresSafeArea(edges: .bottom)
 
-                        // Element glow at bottom
-                        LinearGradient(
-                            colors: [Color.clear, characterClass.themeColor.opacity(0.15)],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                        .ignoresSafeArea(edges: .bottom)
+                        PoseOverlayView(joints: vm.rawJoints, themeColor: characterClass.themeColor)
 
-                        VStack(spacing: 8) {
-                            // Form feedback pill
+                        if playerDamageFlash {
+                            Color.red.opacity(0.35).transition(.opacity)
+                        }
+
+                        // Vignette gradients
+                        VStack(spacing: 0) {
+                            LinearGradient(colors: [.black.opacity(0.55), .clear], startPoint: .top, endPoint: .bottom)
+                                .frame(height: 60)
+                            Spacer()
+                            LinearGradient(colors: [.clear, .black.opacity(0.88)], startPoint: .top, endPoint: .bottom)
+                                .frame(height: 90)
+                        }
+
+                        // Rep counter + feedback (floating center)
+                        VStack(spacing: 6) {
                             HStack(spacing: 8) {
                                 Circle()
                                     .fill(vm.isPersonDetected ? Theme.success : Theme.danger)
                                     .frame(width: 8, height: 8)
                                     .glow(color: vm.isPersonDetected ? Theme.success : Theme.danger, radius: 4)
                                 Text(vm.feedbackMessage)
-                                    .font(.system(.subheadline, design: .monospaced).weight(.semibold))
-                                    .foregroundColor(.white)
+                                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                                    .foregroundStyle(.white)
                                     .lineLimit(1)
-                                if showDamageFlash {
-                                    Text(damageFlashText)
-                                        .font(.system(size: 13, weight: .black, design: .monospaced))
-                                        .foregroundColor(.red)
-                                        .shadow(color: .black, radius: 2)
-                                        .transition(.scale.combined(with: .opacity))
-                                }
+                                    .fixedSize()
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 9)
-                            .background(
-                                Capsule()
-                                    .fill(vm.isCorrectForm ? Color.black.opacity(0.6) : Theme.danger.opacity(0.75))
-                            )
-                            .overlay(Capsule().stroke(vm.isCorrectForm ? Color.white.opacity(0.1) : Theme.danger, lineWidth: 1))
-                            .padding(.top, 16)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(vm.isCorrectForm ? Color.black.opacity(0.65) : Theme.danger.opacity(0.8)))
+                            .overlay(Capsule().stroke(vm.isCorrectForm ? Color.white.opacity(0.12) : Theme.danger, lineWidth: 1))
 
-                            // Big reps counter
+                            // Damage taken — always shown separately so it never gets truncated
+                            if showDamageFlash {
+                                Text(damageFlashText)
+                                    .font(.system(size: 24, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.red)
+                                    .shadow(color: .black.opacity(0.8), radius: 4)
+                                    .shadow(color: .red.opacity(0.6), radius: 8)
+                                    .transition(.asymmetric(
+                                        insertion: .scale(scale: 1.4).combined(with: .opacity),
+                                        removal: .opacity
+                                    ))
+                                    .animation(.spring(response: 0.3), value: showDamageFlash)
+                            }
+
                             HStack(alignment: .lastTextBaseline, spacing: 4) {
                                 Text("\(vm.repCount)")
-                                    .font(.system(size: 72, weight: .black, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .shadow(color: characterClass.themeColor.opacity(0.8), radius: 18)
-                                if let target = vm.targetReps {
-                                    Text("/ \(target)")
-                                        .font(.system(size: 24, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.white.opacity(0.4))
-                                }
+                                    .font(.system(size: 68, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .shadow(color: characterClass.themeColor.opacity(0.9), radius: 20)
+                                Text("REPS")
+                                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.5))
                             }
 
-                            Text("REPS = DAMAGE")
+                            Text("EVERY REP = DAMAGE")
                                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.45))
-                                .tracking(3)
+                                .foregroundStyle(.white.opacity(0.4))
+                                .tracking(2.5)
+                        }
+                        .frame(maxHeight: .infinity)
+                        .padding(.top, 10)
 
-                            Spacer(minLength: 0)
-
-                            // Player HP bar
-                            VStack(spacing: 5) {
-                                HStack {
+                        // ── Player HP bar — anchored to very bottom ───────────
+                        VStack(spacing: 6) {
+                            HStack {
+                                HStack(spacing: 5) {
                                     Image(systemName: "heart.fill")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(characterClass.themeColor)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(playerHPFraction < 0.25 ? Color.red : characterClass.themeColor)
                                     Text("YOUR HP")
                                         .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.white.opacity(0.55))
-                                    Spacer()
-                                    Text("\(max(0, playerHP)) / \(playerMaxHP)")
-                                        .font(.system(size: 11, weight: .black, design: .monospaced))
-                                        .foregroundColor(.white.opacity(0.9))
+                                        .foregroundStyle(.white.opacity(0.6))
                                 }
-
-                                GeometryReader { barGeo in
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 5)
-                                            .fill(Color.black.opacity(0.6))
-                                            .frame(height: 10)
-                                        RoundedRectangle(cornerRadius: 5)
-                                            .fill(LinearGradient(
-                                                colors: playerHP < playerMaxHP / 4
-                                                    ? [Color.red, Color.orange]
-                                                    : [characterClass.themeColor, characterClass.themeColor.opacity(0.7)],
-                                                startPoint: .leading, endPoint: .trailing
-                                            ))
-                                            .frame(width: max(0, CGFloat(playerHP) / CGFloat(playerMaxHP) * barGeo.size.width), height: 10)
-                                            .animation(.spring(response: 0.4), value: playerHP)
-                                    }
-                                }
-                                .frame(height: 10)
+                                Spacer()
+                                Text("\(max(0, playerHP)) / \(playerMaxHP)")
+                                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.9))
                             }
-                            .padding(14)
-                            .background(Color.black.opacity(0.55))
-                            .cornerRadius(14)
-                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(characterClass.themeColor.opacity(0.3), lineWidth: 1))
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 28)
+
+                            GeometryReader { barGeo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.7))
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(LinearGradient(
+                                            colors: playerHPFraction < 0.25
+                                                ? [Color.red, Color.orange]
+                                                : [characterClass.themeColor, characterClass.themeColor.opacity(0.7)],
+                                            startPoint: .leading, endPoint: .trailing
+                                        ))
+                                        .frame(width: max(0, CGFloat(playerHPFraction) * barGeo.size.width))
+                                        .animation(.spring(response: 0.4), value: playerHP)
+                                        .glow(color: (playerHPFraction < 0.25 ? Color.red : characterClass.themeColor).opacity(0.5), radius: 4)
+                                }
+                            }
+                            .frame(height: 12)
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.black.opacity(0.0), Color.black.opacity(0.85)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
                     }
                     .frame(height: geo.size.height * 0.5)
+                    .clipped()
+                }
+                // Full-screen transition overlay — covers gray camera freeze between battle end and result screen
+                if playerDefeated {
+                    LinearGradient(
+                        colors: [Color.red.opacity(0.7), Color.black],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+
+                    VStack(spacing: 20) {
+                        Image(systemName: "heart.slash.fill")
+                            .font(.system(size: 60, weight: .bold))
+                            .foregroundStyle(.white)
+                            .shadow(color: .red, radius: 20)
+                        Text("DEFEATED")
+                            .font(.system(size: 36, weight: .black, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .tracking(4)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+                }
+
+                if bossDefeated {
+                    LinearGradient(
+                        colors: [boss.element.color.opacity(0.6), Color.black],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+
+                    VStack(spacing: 20) {
+                        Image(systemName: "trophy.fill")
+                            .font(.system(size: 60, weight: .bold))
+                            .foregroundStyle(.yellow)
+                            .shadow(color: .yellow, radius: 20)
+                        Text("VICTORY!")
+                            .font(.system(size: 36, weight: .black, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .tracking(4)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
                 }
             }
         }
         .ignoresSafeArea()
-        .onAppear { startBossAttackTimer() }
-        .onDisappear { bossAttackTimer?.invalidate() }
-        .onChange(of: vm.bossCurrentHP) { hp in
+        .onAppear {
+            startBossAttackTimer()
+            withAnimation { bossPulse = true }
+            vm.cameraManager.checkPermission()
+        }
+        .onDisappear {
+            bossAttackTimer?.invalidate()
+            vm.cameraManager.stopSession()
+        }
+        .onChange(of: vm.bossCurrentHP) { _, hp in
             if hp <= 0 && !bossDefeated && !playerDefeated {
                 bossDefeated = true
                 bossAttackTimer?.invalidate()
                 triggerVictory()
             }
         }
-        .onChange(of: playerHP) { hp in
+        .onChange(of: playerHP) { _, hp in
             if hp <= 0 && !playerDefeated && !bossDefeated {
                 playerDefeated = true
                 bossAttackTimer?.invalidate()
                 triggerDefeat()
             }
+        }
+        .onChange(of: vm.repCount) { _, newCount in
+            if newCount > lastRepCount {
+                lastRepCount = newCount
+                spawnHitNumber()
+            }
+        }
+    }
+
+
+
+    private func spawnHitNumber() {
+        let power = FirebaseService.shared.currentCharacter?.combatPower ?? 100
+        let dmg = max(10, Int(Double(power) * 0.18))
+        let isCrit = Int.random(in: 1...5) == 1
+        let xOff = CGFloat.random(in: -50...50)
+        let hit = BossHitNumber(
+            value: isCrit ? dmg * 2 : dmg,
+            isCrit: isCrit,
+            xOffset: xOff,
+            yOffset: 0,
+            opacity: 1.0
+        )
+        floatingHits.append(hit)
+        let id = hit.id
+        withAnimation(.easeOut(duration: 1.0)) {
+            if let idx = floatingHits.firstIndex(where: { $0.id == id }) {
+                floatingHits[idx].yOffset = -70
+                floatingHits[idx].opacity = 0
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            floatingHits.removeAll { $0.id == id }
         }
     }
 
@@ -846,8 +998,10 @@ struct BossRaidCameraView: View {
                 // Flash red
                 withAnimation(.easeOut(duration: 0.15)) {
                     playerDamageFlash = true
-                    showDamageFlash = true
-                    damageFlashText = "-\(dmg) HP"
+                    if dmg > 0 {
+                        damageFlashText = "-\(dmg)"
+                        showDamageFlash = true
+                    }
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                     withAnimation { playerDamageFlash = false }
@@ -918,14 +1072,14 @@ struct BossRaidResultScreen: View {
 
             if result.victory {
                 LinearGradient(
-                    colors: [boss.element.color.opacity(0.3), Color.black],
-                    startPoint: .top, endPoint: .center
+                    colors: [boss.element.color.opacity(0.4), Color(red: 0.1, green: 0.1, blue: 0.15)],
+                    startPoint: .top, endPoint: .bottom
                 )
                 .ignoresSafeArea()
             } else {
                 LinearGradient(
-                    colors: [Color.red.opacity(0.25), Color.black],
-                    startPoint: .top, endPoint: .center
+                    colors: [Color.red.opacity(0.4), Color(red: 0.15, green: 0.05, blue: 0.05)],
+                    startPoint: .top, endPoint: .bottom
                 )
                 .ignoresSafeArea()
             }
@@ -1021,7 +1175,8 @@ struct BossRaidResultScreen: View {
                 .animation(.easeOut(duration: 0.5).delay(0.6), value: appear)
             }
         }
-        .onAppear {
+        .task {
+            try? await Task.sleep(nanoseconds: 100_000_000)
             withAnimation { appear = true }
         }
     }
@@ -1064,4 +1219,14 @@ struct ResultStatCard: View {
         .cornerRadius(16)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(color.opacity(0.25), lineWidth: 1))
     }
+}
+
+// Helper model for floating hit numbers on boss
+struct BossHitNumber: Identifiable {
+    let id = UUID()
+    let value: Int
+    let isCrit: Bool
+    let xOffset: CGFloat
+    var yOffset: CGFloat
+    var opacity: Double
 }

@@ -226,85 +226,81 @@ struct PlayerProfileView: View {
                             .fontWeight(.bold)
                             .foregroundColor(Theme.textSecondary)
                             .tracking(1.2)
-                        
-                        HStack(spacing: 16) {
-                            // Armor Icon
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill((equippedArmor?.rarity.color ?? Color.gray).opacity(0.12))
-                                    .frame(width: 50, height: 50)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke((equippedArmor?.rarity.color ?? Color.gray).opacity(0.3), lineWidth: 1.2)
-                                    )
-                                
-                                Image(systemName: "shield.fill")
-                                    .font(.title3)
-                                    .foregroundColor(equippedArmor?.rarity.color ?? Color.gray)
-                            }
-                            .glow(color: (equippedArmor?.rarity.color ?? Color.clear).opacity(0.35), radius: 6)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                if let armor = equippedArmor {
-                                    HStack(spacing: 6) {
-                                        Text(armor.name)
-                                            .font(.subheadline)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(Theme.textPrimary)
-                                        
-                                        Text(armor.rarity.rawValue.uppercased())
-                                            .font(.system(size: 8, design: .monospaced))
-                                            .fontWeight(.bold)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(armor.rarity.color.opacity(0.2))
-                                            .foregroundColor(armor.rarity.color)
-                                            .cornerRadius(4)
-                                    }
-                                    
-                                    Text("+\(armor.defense) DEFENSE • Reduces battle damage")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(Theme.success)
-                                } else {
-                                    Text("NO ARMOR EQUIPPED")
-                                        .font(.subheadline)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Theme.textSecondary)
-                                    
-                                    Text("Defense stats are minimized")
-                                        .font(.caption2)
-                                        .foregroundColor(Theme.textMuted)
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                showArmoryShop = true
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "cart.fill")
-                                    Text("SHOP")
-                                }
-                                .font(.system(size: 11, design: .monospaced))
-                                .fontWeight(.black)
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Theme.warning)
-                                .cornerRadius(8)
-                                .shadow(color: Theme.warning.opacity(0.3), radius: 4)
-                            }
+
+                        let equippedRing = character.equippedRing
+                        let equippedAmulet = character.equippedAmulet
+
+                        VStack(spacing: 10) {
+                            // Armor row
+                            ProfileGearRow(
+                                icon: equippedArmor?.getIconName() ?? "tshirt",
+                                label: "ARMOR",
+                                item: equippedArmor,
+                                emptyText: "No Armor Equipped",
+                                emptySubtext: "Defense stats minimized",
+                                accentColor: equippedArmor?.rarity.color ?? .gray
+                            )
+
+                            Divider().background(Theme.border)
+
+                            // Weapon row (read from character computed prop)
+                            let equippedWeaponDirect = character.equippedWeapon
+                            ProfileGearRow(
+                                icon: equippedWeaponDirect?.getIconName() ?? "bolt.slash",
+                                label: "WEAPON",
+                                item: equippedWeaponDirect,
+                                emptyText: "No Weapon Equipped",
+                                emptySubtext: "Combat Power not boosted",
+                                accentColor: equippedWeaponDirect?.rarity.color ?? .gray
+                            )
+
+                            Divider().background(Theme.border)
+
+                            // Ring row
+                            ProfileGearRow(
+                                icon: equippedRing?.getIconName() ?? "circle.dotted",
+                                label: "RING",
+                                item: equippedRing,
+                                emptyText: "No Ring Equipped",
+                                emptySubtext: "Visit shop to boost power",
+                                accentColor: equippedRing?.rarity.color ?? .gray
+                            )
+
+                            Divider().background(Theme.border)
+
+                            // Amulet row
+                            ProfileGearRow(
+                                icon: equippedAmulet?.getIconName() ?? "sparkles",
+                                label: "AMULET",
+                                item: equippedAmulet,
+                                emptyText: "No Amulet Equipped",
+                                emptySubtext: "Visit shop to boost power",
+                                accentColor: equippedAmulet?.rarity.color ?? .gray
+                            )
                         }
                         .padding()
                         .background(Theme.cardBackground.opacity(0.85))
                         .cornerRadius(14)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(Theme.border, lineWidth: 0.8)
-                        )
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border, lineWidth: 0.8))
+
+                        Button(action: { showArmoryShop = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "cart.fill")
+                                Text("OPEN ARMORY SHOP")
+                            }
+                            .font(.system(size: 12, design: .monospaced))
+                            .fontWeight(.black)
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Theme.warning)
+                            .cornerRadius(12)
+                            .shadow(color: Theme.warning.opacity(0.4), radius: 6)
+                        }
+                        .buttonStyle(TactileButtonStyle())
                     }
                     .padding(.horizontal)
+
                     
                     // 2x2 Class Grid Selector
                     VStack(alignment: .leading, spacing: 12) {
@@ -704,5 +700,69 @@ struct AchievementBadge: View {
                 .stroke(unlocked ? Theme.warning.opacity(0.2) : Color.clear, lineWidth: 1)
         )
         .shadow(color: unlocked ? Theme.warning.opacity(0.08) : Color.clear, radius: 6, x: 0, y: 3)
+    }
+}
+
+// MARK: - Profile Gear Row
+struct ProfileGearRow: View {
+    let icon: String
+    let label: String
+    let item: EquipmentItem?
+    let emptyText: String
+    let emptySubtext: String
+    let accentColor: Color
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(accentColor.opacity(0.12))
+                    .frame(width: 50, height: 50)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(accentColor.opacity(0.3), lineWidth: 1.2)
+                    )
+                
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundColor(accentColor)
+            }
+            .glow(color: accentColor.opacity(0.35), radius: 6)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                if let item = item {
+                    HStack(spacing: 6) {
+                        Text(item.name)
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                            .foregroundColor(Theme.textPrimary)
+                            .lineLimit(1)
+                        
+                        Text(item.rarity.rawValue.uppercased())
+                            .font(.system(size: 8, design: .monospaced))
+                            .fontWeight(.bold)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(item.rarity.color.opacity(0.2))
+                            .foregroundColor(item.rarity.color)
+                            .cornerRadius(4)
+                    }
+                    
+                    Text("+\(item.defense > 0 ? item.defense : item.combatPowerBonus) STATS • Boosts combat power")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Theme.success)
+                } else {
+                    Text(emptyText)
+                        .font(.subheadline)
+                        .fontWeight(.bold)
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    Text(emptySubtext)
+                        .font(.caption2)
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+            Spacer()
+        }
     }
 }

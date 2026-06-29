@@ -48,8 +48,12 @@ class ClanVM: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] lType in
                 guard let self = self else { return }
+                // Show cached data immediately if available
                 self.leaderboardPlayers = self.firebaseService.leaderboards[lType] ?? []
+                // Fetch fresh data from server for this type
+                self.firebaseService.fetchLeaderboards(for: [lType])
             }
+            .store(in: &cancellables)
         fetchClans()
     }
     
@@ -68,6 +72,13 @@ class ClanVM: ObservableObject {
     
     func joinClan(_ clan: Clan) {
         firebaseService.joinClan(clan)
+    }
+    func kickMember(memberId: String) {
+        firebaseService.kickMember(memberId: memberId)
+    }
+    
+    func disbandClan() {
+        firebaseService.disbandClan()
     }
     
     func leaveClan() {

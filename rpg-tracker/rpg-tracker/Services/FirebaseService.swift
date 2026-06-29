@@ -18,40 +18,61 @@ class FirebaseService: ObservableObject {
     static let shared = FirebaseService()
     
     init() {
-        // Load persisted character if it exists
-        if let data = UserDefaults.standard.data(forKey: "saved_character"),
-           let savedChar = try? JSONDecoder().decode(Character.self, from: data) {
-            self.currentCharacter = savedChar
-        } else {
-            // Setup initial mock character for testing
-            self.currentCharacter = Character(
-                id: "local_mock_user",
-                username: "FitnessHero",
-                selectedClass: .archer,
-                level: 1,
-                xp: 0,
-                gold: 2400,
-                energy: 100,
-                maxEnergy: 100,
-                basePower: 100,
-                equippedArmorId: "a_arch_1"
-            )
-            saveCharacterToDisk()
-        }
-        
         // Load persisted friends list if it exists
         if let savedFriends = UserDefaults.standard.stringArray(forKey: "saved_friends") {
             self.friends = savedFriends
         }
-        
+
         fetchLeaderboards()
-        
+        listenToWorldBoss()
+
         AuthManager.shared.$currentUser
             .compactMap { $0 }
             .sink { [weak self] user in
                 self?.startListeningToCharacter(uid: user.uid)
             }
             .store(in: &cancellables)
+    }
+    
+    // MARK: - World Boss listener
+    private var worldBossListener: ListenerRegistration?
+    
+    private func listenToWorldBoss() {
+        worldBossListener?.remove()
+        worldBossListener = Firestore.firestore().collection("world_bosses")
+            .whereField("isActive", isEqualTo: true)
+            .limit(to: 1)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                if let doc = snapshot?.documents.first,
+                   let boss = try? doc.data(as: WorldBoss.self) {
+                    DispatchQueue.main.async { self.activeWorldBoss = boss }
+                } else {
+                    // No active world boss – create one locally so raids still work
+                    DispatchQueue.main.async { self.ensureWorldBossExists() }
+                }
+            }
+    }
+    
+    private func ensureWorldBossExists() {
+        if activeWorldBoss == nil {
+            let template = Boss.templates.last! // Use strongest boss (dragon)
+            let newBoss = WorldBoss(
+                id: "current",
+                bossTemplateId: template.id,
+                maxHealth: template.maxHealth,
+                currentHealth: template.maxHealth,
+                isActive: true,
+                startedAt: Date(),
+                topAttackers: [:]
+            )
+            // Store locally so raids work immediately
+            self.activeWorldBoss = newBoss
+            // Try to persist to Firestore in background
+            Task {
+                try? Firestore.firestore().collection("world_bosses").document(newBoss.id).setData(from: newBoss)
+            }
+        }
     }
     
     private var characterListener: ListenerRegistration?
@@ -61,26 +82,48 @@ class FirebaseService: ObservableObject {
         characterListener = Firestore.firestore().collection("users").document(uid)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self = self, let snapshot = snapshot else { return }
-                
+
                 if snapshot.exists {
                     do {
                         let char = try snapshot.data(as: Character.self)
-                        // Only update if not currently fighting to avoid UI jumps, or just update directly
                         DispatchQueue.main.async {
                             self.currentCharacter = char
-                            // Backup to disk
-                            if let data = try? JSONEncoder().encode(char) {
-                                UserDefaults.standard.set(data, forKey: "saved_character")
+                            
+                            // Migration: ensure all required fields exist in Firestore
+                            let rawData = snapshot.data() ?? [:]
+                            let needsMigration = char.pvpTrophies == nil
+                                || char.currentLevel != char.level
+                                || char.classTrophies == nil
+                                || rawData["usernameLower"] == nil
+                            if needsMigration {
+                                var updated = char
+                                // Ensure pvpTrophies exists
+                                if updated.pvpTrophies == nil {
+                                    updated.pvpTrophies = 0
+                                }
+                                // Keep currentLevel in sync for server-side leaderboard sort
+                                updated.currentLevel = updated.level
+                                // Initialize per-class trophies if missing
+                                if updated.classTrophies == nil {
+                                    var dict = Dictionary(
+                                        uniqueKeysWithValues: CharacterClass.allCases.map { ($0.rawValue, 0) }
+                                    )
+                                    // Carry over existing pvpTrophies to the current class
+                                    dict[updated.selectedClass.rawValue] = updated.pvpTrophies ?? 0
+                                    updated.classTrophies = dict
+                                }
+                                self.syncCharacter(updated)
                             }
                         }
                     } catch {
-                        print("Error decoding character: \(error)")
+                        print("Error decoding character from Firestore: \(error)")
                     }
-                } else if let char = self.currentCharacter {
-                    // Upload local character to Firestore
-                    var newChar = char
-                    newChar.id = uid
-                    try? Firestore.firestore().collection("users").document(uid).setData(from: newChar)
+                } else {
+                    // New user — no character in Firestore yet.
+                    // Set to nil so MainHubView shows ClassSelectionView for class setup.
+                    DispatchQueue.main.async {
+                        self.currentCharacter = nil
+                    }
                 }
             }
     }
@@ -114,22 +157,44 @@ class FirebaseService: ObservableObject {
     
     // MARK: - Character Sync
     func syncCharacter(_ character: Character) {
-        self.currentCharacter = character
-        saveCharacterToDisk()
-        
-        // Write to Firestore!
-        if character.id != "local_mock_user" {
-            try? Firestore.firestore().collection("users").document(character.id).setData(from: character)
+        var updated = character
+        updated.currentLevel = updated.level
+        self.currentCharacter = updated
+        // Write to Firestore — the snapshot listener will update currentCharacter reactively
+        // Also write usernameLower for server-side prefix search
+        if var data = try? Firestore.Encoder().encode(updated) as? [String: Any] {
+            data["usernameLower"] = updated.username.lowercased()
+            Firestore.firestore().collection("users").document(updated.id).setData(data)
+        } else {
+            try? Firestore.firestore().collection("users").document(updated.id).setData(from: updated)
         }
     }
     
-    func awardBattleRewards(xp: Int, gold: Int, isPvP: Bool = false) {
+    func awardBattleRewards(xp: Int, gold: Int, isPvP: Bool = false, isPvPWinner: Bool? = nil) {
         guard var char = currentCharacter else { return }
         let leveledUp = char.addXP(xp)
+        if leveledUp {
+            // Level up handled by UI observers via currentCharacter change
+        }
         char.gold += gold
         if isPvP {
-            char.pvpWins += 1
-            char.pvpTrophies += 25
+            if let isWinner = isPvPWinner {
+                // Update per-class trophies for the currently active class
+                let cls = char.selectedClass.rawValue
+                var dict = char.classTrophies ?? Dictionary(
+                    uniqueKeysWithValues: CharacterClass.allCases.map { ($0.rawValue, 0) }
+                )
+                let current = dict[cls] ?? 0
+                if isWinner {
+                    char.pvpWins = char.unwrappedPvPWins + 1
+                    dict[cls] = current + 50
+                } else {
+                    dict[cls] = max(0, current - 50)
+                }
+                char.classTrophies = dict
+                // Also keep pvpTrophies as the current-class value (for legacy 1v1 leaderboard)
+                char.pvpTrophies = dict[cls]
+            }
         }
         self.currentCharacter = char
         syncCharacter(char)
@@ -220,10 +285,20 @@ class FirebaseService: ObservableObject {
     }
     
     func attackWorldBoss(damage: Int) {
+        guard damage > 0 else { return }
         let functions = Functions.functions()
-        functions.httpsCallable("attackWorldBoss").call(["damage": damage]) { result, error in
-            if let error = error {
-                print("Error attacking world boss: \(error)")
+        // Server limit is 5000 per call — split large values into sequential chunks
+        let chunkSize = 5000
+        let chunks = stride(from: 0, to: damage, by: chunkSize).map {
+            min(chunkSize, damage - $0)
+        }
+        Task {
+            for chunk in chunks {
+                do {
+                    _ = try await functions.httpsCallable("attackWorldBoss").call(["damage": chunk])
+                } catch {
+                    print("Error attacking world boss (chunk \(chunk)): \(error)")
+                }
             }
         }
     }
@@ -263,6 +338,59 @@ class FirebaseService: ObservableObject {
         } catch {
             print("Failed to send friend request: \(error)")
         }
+    }
+    
+    /// Search players by username prefix or UID. Uses native Firestore queries to ensure Timestamps decode properly.
+    func searchPlayers(query: String) async -> [Character] {
+        guard query.count >= 2 else { return [] }
+        
+        let lowerQuery = query.lowercased()
+        let db = Firestore.firestore()
+        var results: [Character] = []
+        
+        do {
+            // 1. Prefix search using usernameLower
+            let snap = try await db.collection("users")
+                .whereField("usernameLower", isGreaterThanOrEqualTo: lowerQuery)
+                .whereField("usernameLower", isLessThan: lowerQuery + "\u{f8ff}")
+                .limit(to: 20)
+                .getDocuments()
+            
+            results = snap.documents.compactMap { try? $0.data(as: Character.self) }
+            
+            // 2. Fallback: exact username match
+            if results.isEmpty {
+                let exactSnap = try await db.collection("users")
+                    .whereField("username", isEqualTo: query)
+                    .limit(to: 5)
+                    .getDocuments()
+                results = exactSnap.documents.compactMap { try? $0.data(as: Character.self) }
+            }
+            
+            // 3. Fallback: direct UID lookup if it looks like a UID
+            if results.isEmpty && query.count >= 20 {
+                let doc = try await db.collection("users").document(query).getDocument()
+                if let char = try? doc.data(as: Character.self) {
+                    results.append(char)
+                }
+            }
+            
+            return results.filter { $0.id != self.currentCharacter?.id }
+        } catch {
+            print("searchPlayers failed: \(error)")
+            return []
+        }
+    }
+    
+    /// Remove a friend by UID from both users
+    func removeFriendByUid(_ uid: String) async {
+        guard var char = currentCharacter else { return }
+        char.friends = char.unwrappedFriends.filter { $0 != uid }
+        syncCharacter(char)
+        // Also remove ourselves from their friends list via Firestore
+        try? await Firestore.firestore().collection("users").document(uid).updateData([
+            "friends": FieldValue.arrayRemove([char.id])
+        ])
     }
     
     func fetchCharacters(byUids uids: [String]) async -> [Character] {
@@ -306,9 +434,36 @@ class FirebaseService: ObservableObject {
     }
     
     func startFriendDuel(playerClass: CharacterClass, friendName: String, friendClass: CharacterClass, completion: @escaping (Bool) -> Void) {
-        // Mock duel start. Real logic would go through MultiplayerService.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            completion(true)
+        // Look up friend's UID in Firestore by username, then challenge them
+        Task {
+            let db = Firestore.firestore()
+            do {
+                let snapshot = try await db.collection("users")
+                    .whereField("username", isEqualTo: friendName)
+                    .limit(to: 1)
+                    .getDocuments()
+                
+                if let friendDoc = snapshot.documents.first {
+                    let friendUid = friendDoc.documentID
+                    await MainActor.run {
+                        MultiplayerService.shared.challengeFriend(friendUid: friendUid)
+                        completion(true)
+                    }
+                } else {
+                    // Friend not found in Firestore — fall back to local bot duel with friend's stats
+                    await MainActor.run {
+                        // Start a regular 1v1 with bot using friend class
+                        MultiplayerService.shared.startMatchmaking(for: playerClass, type: .duel1v1)
+                        completion(true)
+                    }
+                }
+            } catch {
+                print("startFriendDuel error: \(error)")
+                await MainActor.run {
+                    MultiplayerService.shared.startMatchmaking(for: playerClass, type: .duel1v1)
+                    completion(true)
+                }
+            }
         }
     }
     
@@ -410,6 +565,21 @@ class FirebaseService: ObservableObject {
         
         self.userClan = clan
     }
+    func kickMember(memberId: String) {
+        guard var clan = userClan else { return }
+        clan.members.removeAll(where: { $0.id == memberId })
+        self.userClan = clan
+    }
+    
+    func disbandClan() {
+        guard let char = currentCharacter, let clan = userClan else { return }
+        if clan.leaderId == char.id {
+            self.userClan = nil
+            var updatedChar = char
+            updatedChar.clanId = nil
+            syncCharacter(updatedChar)
+        }
+    }
     
     func leaveClan() {
         guard let char = currentCharacter, var clan = userClan else { return }
@@ -463,26 +633,69 @@ class FirebaseService: ObservableObject {
     }
     
     // MARK: - Leaderboard Fetch
-    // MARK: - Leaderboard Fetch
     func fetchLeaderboards() {
-        Firestore.firestore().collection("users")
-            .order(by: "level", descending: true)
-            .limit(to: 20)
+        fetchLeaderboards(for: ["global", "pvp_1v1", "Archer", "Mage", "Swordsman", "Healer"])
+    }
+
+    func fetchLeaderboards(for types: [String]) {
+        // Run native Firestore query for accurate timestamp decoding and real-time reflection
+        fetchLeaderboardsFallback(for: types)
+    }
+
+    private func fetchLeaderboardsFallback(for types: [String]) {
+        // Direct Firestore fallback (no server-side sort guarantee for composite queries)
+        let db = Firestore.firestore()
+
+        // Always fetch global — order by currentLevel (stored field, updated on every login)
+        db.collection("users")
+            .order(by: "currentLevel", descending: true)
+            .limit(to: 50)
             .getDocuments { [weak self] snapshot, error in
                 guard let self = self, let docs = snapshot?.documents else { return }
-                
-                var players: [Character] = []
-                for doc in docs {
-                    if let char = try? doc.data(as: Character.self) {
-                        players.append(char)
-                    }
-                }
-                
+                let players = docs.compactMap { try? $0.data(as: Character.self) }
                 DispatchQueue.main.async {
                     self.leaderboards["global"] = players
                     self.leaderboards["friends"] = players.filter { self.friends.contains($0.username) }
                 }
             }
+
+        // Fetch pvp_1v1 sorted by pvpTrophies
+        if types.contains("pvp_1v1") {
+            db.collection("users")
+                .order(by: "pvpTrophies", descending: true)
+                .limit(to: 50)
+                .getDocuments { [weak self] snapshot, error in
+                    guard let self = self, let docs = snapshot?.documents else { return }
+                    let players = docs.compactMap { try? $0.data(as: Character.self) }
+                    DispatchQueue.main.async { self.leaderboards["pvp_1v1"] = players }
+                }
+        }
+        
+        // Fetch per-class boards — order by currentLevel, filter + sort by classTrophies in memory
+        let classTypes = types.filter { CharacterClass.allCases.map { $0.rawValue }.contains($0) }
+        if !classTypes.isEmpty {
+            db.collection("users")
+                .order(by: "currentLevel", descending: true)
+                .limit(to: 200)
+                .getDocuments { [weak self] snapshot, error in
+                    guard let self = self, let docs = snapshot?.documents else { return }
+                    let allPlayers = docs.compactMap { try? $0.data(as: Character.self) }
+                    DispatchQueue.main.async {
+                        for classType in classTypes {
+                            guard let cls = CharacterClass(rawValue: classType) else { continue }
+                            // Filter: players who have interacted with this class
+                            let filtered = allPlayers.filter { player in
+                                let classLevel = player.progressions[cls.rawValue]?.level ?? 1
+                                let trophies = player.trophies(for: cls)
+                                return classLevel > 1 || trophies > 0 || player.selectedClass == cls
+                            }
+                            // Sort by per-class trophies descending
+                            let sorted = filtered.sorted { $0.trophies(for: cls) > $1.trophies(for: cls) }
+                            self.leaderboards[classType] = Array(sorted.prefix(30))
+                        }
+                    }
+                }
+        }
     }
     
     func equipItem(itemId: String, slot: EquipmentSlot) {

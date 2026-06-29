@@ -52,10 +52,10 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
             case .none:
                 // Generic weapon icon by rarity
                 switch rarity {
-                case .mythical:   return "bolt.trianglebadge.exclamationmark.fill"
+                case .mythical:   return "bolt.fill"
                 case .legendary:  return "flame.fill"
-                case .epic:       return "bolt.fill"
-                default:          return "knife.fill"
+                case .epic:       return "star.fill"
+                default:          return "bolt.slash.fill"
                 }
             }
         }
@@ -67,18 +67,13 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
         }
         // Armor: by rarity or class
         guard let classRestriction = self.classRestriction else {
-            switch self.rarity {
-            case .mythical:  return "shield.lefthalf.filled.triangles"
-            case .legendary: return "shield.righthalf.filled.triangles"
-            case .epic:      return "shield.checkerboard"
-            default:         return "shield.fill"
-            }
+            return "shield.fill"
         }
         switch classRestriction {
         case .archer:    return "figure.run"
         case .mage:      return "bolt.shield.fill"
         case .swordsman: return "shield.fill"
-        case .healer:    return "heart.text.square.fill"
+        case .healer:    return "heart.square.fill"
         }
     }
     
@@ -345,18 +340,45 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
     ]
     
     static let allShopRings: [EquipmentItem] = [
-        EquipmentItem(id: "rng_com_1", name: "Copper Band", slot: .ring, rarity: .common, combatPowerBonus: 5, defense: 1, cost: 0, classRestriction: nil, description: "A simple copper ring."),
-        EquipmentItem(id: "rng_rar_1", name: "Silver Signet", slot: .ring, rarity: .rare, combatPowerBonus: 10, defense: 3, cost: 0, classRestriction: nil, description: "A silver ring bearing an unknown crest."),
-        EquipmentItem(id: "rng_epi_1", name: "Obsidian Loop", slot: .ring, rarity: .epic, combatPowerBonus: 20, defense: 5, cost: 0, classRestriction: nil, description: "Carved from dark volcanic glass."),
-        EquipmentItem(id: "rng_leg_1", name: "Dragon's Eye Ring", slot: .ring, rarity: .legendary, combatPowerBonus: 35, defense: 10, cost: 0, classRestriction: nil, description: "A ring with a fiery red gemstone."),
-        EquipmentItem(id: "rng_myt_1", name: "Band of the Void", slot: .ring, rarity: .mythical, combatPowerBonus: 50, defense: 15, cost: 0, classRestriction: nil, description: "It feels completely weightless.")
+        EquipmentItem(id: "rng_com_1", name: "Copper Band", slot: .ring, rarity: .common, combatPowerBonus: 5, defense: 1, cost: 80, classRestriction: nil,
+                      description: "A simple copper ring that channels minor combat energy."),
+        EquipmentItem(id: "rng_com_2", name: "Iron Loop", slot: .ring, rarity: .common, combatPowerBonus: 8, defense: 2, cost: 120, classRestriction: nil,
+                      description: "A plain iron ring worn by city guards for basic protection."),
+        EquipmentItem(id: "rng_rar_1", name: "Silver Signet", slot: .ring, rarity: .rare, combatPowerBonus: 15, defense: 4, cost: 280, classRestriction: nil,
+                      description: "A silver ring bearing an unknown crest, resonating with arcane energy."),
+        EquipmentItem(id: "rng_rar_2", name: "Moonstone Ring", slot: .ring, rarity: .rare, combatPowerBonus: 18, defense: 5, cost: 320, classRestriction: nil,
+                      description: "Carved from moonstone, it amplifies reflexes under the night sky."),
+        EquipmentItem(id: "rng_epi_1", name: "Obsidian Loop", slot: .ring, rarity: .epic, combatPowerBonus: 28, defense: 8, cost: 650, classRestriction: nil,
+                      description: "Carved from dark volcanic glass, it channels raw elemental power."),
+        EquipmentItem(id: "rng_epi_2", name: "Stormseal Ring", slot: .ring, rarity: .epic, combatPowerBonus: 32, defense: 10, cost: 750, classRestriction: nil,
+                      description: "A ring crackling with trapped lightning, boosting strike speed."),
+        EquipmentItem(id: "rng_leg_1", name: "Dragon's Eye Ring", slot: .ring, rarity: .legendary, combatPowerBonus: 50, defense: 14, cost: 1400, classRestriction: nil,
+                      description: "A ring with a fiery red gemstone that burns with dragonflame energy."),
+        EquipmentItem(id: "rng_leg_2", name: "Ring of the Ancients", slot: .ring, rarity: .legendary, combatPowerBonus: 55, defense: 16, cost: 1600, classRestriction: nil,
+                      description: "An ancient ring rumored to grant the strength of fallen warriors."),
+        EquipmentItem(id: "rng_myt_1", name: "Band of the Void", slot: .ring, rarity: .mythical, combatPowerBonus: 80, defense: 22, cost: 3200, classRestriction: nil,
+                      description: "It feels completely weightless. Reality bends around the wearer's fists."),
     ]
     
     static let allShopAmulets: [EquipmentItem] = [
-        EquipmentItem(id: "amu_com_1", name: "String Necklace", slot: .amulet, rarity: .common, combatPowerBonus: 3, defense: 3, cost: 0, classRestriction: nil, description: "A simple string with a wooden bead."),
-        EquipmentItem(id: "amu_rar_1", name: "Sapphire Pendant", slot: .amulet, rarity: .rare, combatPowerBonus: 8, defense: 6, cost: 0, classRestriction: nil, description: "A glowing blue sapphire pendant."),
-        EquipmentItem(id: "amu_epi_1", name: "Ruby Heart", slot: .amulet, rarity: .epic, combatPowerBonus: 15, defense: 12, cost: 0, classRestriction: nil, description: "A red ruby that pulses faintly."),
-        EquipmentItem(id: "amu_leg_1", name: "Talisman of the Ancients", slot: .amulet, rarity: .legendary, combatPowerBonus: 25, defense: 20, cost: 0, classRestriction: nil, description: "An ancient golden talisman."),
-        EquipmentItem(id: "amu_myt_1", name: "Amulet of Antigravity", slot: .amulet, rarity: .mythical, combatPowerBonus: 40, defense: 30, cost: 0, classRestriction: nil, description: "A mysterious artifact that defies gravity.")
+        EquipmentItem(id: "amu_com_1", name: "String Necklace", slot: .amulet, rarity: .common, combatPowerBonus: 4, defense: 2, cost: 70, classRestriction: nil,
+                      description: "A simple string with a carved wooden bead. Surprisingly durable."),
+        EquipmentItem(id: "amu_com_2", name: "Bone Charm", slot: .amulet, rarity: .common, combatPowerBonus: 6, defense: 3, cost: 100, classRestriction: nil,
+                      description: "A carved bone charm worn by tribal warriors for courage in battle."),
+        EquipmentItem(id: "amu_rar_1", name: "Sapphire Pendant", slot: .amulet, rarity: .rare, combatPowerBonus: 12, defense: 6, cost: 260, classRestriction: nil,
+                      description: "A glowing blue sapphire pendant that sharpens mental focus."),
+        EquipmentItem(id: "amu_rar_2", name: "Ember Amulet", slot: .amulet, rarity: .rare, combatPowerBonus: 14, defense: 7, cost: 300, classRestriction: nil,
+                      description: "A fire opal amulet that keeps the wearer warm and energized."),
+        EquipmentItem(id: "amu_epi_1", name: "Ruby Heart", slot: .amulet, rarity: .epic, combatPowerBonus: 22, defense: 12, cost: 620, classRestriction: nil,
+                      description: "A red ruby that pulses faintly with each heartbeat, boosting vitality."),
+        EquipmentItem(id: "amu_epi_2", name: "Stormcaller Pendant", slot: .amulet, rarity: .epic, combatPowerBonus: 26, defense: 14, cost: 720, classRestriction: nil,
+                      description: "A charged crystal that crackles with electrical energy in combat."),
+        EquipmentItem(id: "amu_leg_1", name: "Talisman of the Ancients", slot: .amulet, rarity: .legendary, combatPowerBonus: 38, defense: 20, cost: 1350, classRestriction: nil,
+                      description: "An ancient golden talisman with a forgotten language etched inside."),
+        EquipmentItem(id: "amu_leg_2", name: "Phoenix Feather Locket", slot: .amulet, rarity: .legendary, combatPowerBonus: 42, defense: 22, cost: 1550, classRestriction: nil,
+                      description: "Contains a single phoenix feather that grants resilience in defeat."),
+        EquipmentItem(id: "amu_myt_1", name: "Amulet of Antigravity", slot: .amulet, rarity: .mythical, combatPowerBonus: 65, defense: 30, cost: 3000, classRestriction: nil,
+                      description: "A mysterious artifact that defies gravity. Every punch feels weightless."),
     ]
 }
+

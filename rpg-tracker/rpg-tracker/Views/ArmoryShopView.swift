@@ -373,6 +373,30 @@ private struct ShopItemList: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 10) {
+                // Empty state hint for ring/amulet if nothing bought yet
+                if displayItems.isEmpty {
+                    let slotColor = character.selectedClass.themeColor
+                    VStack(spacing: 16) {
+                        Image(systemName: slot == .ring ? "circle.dotted" : "sparkles")
+                            .font(.system(size: 48, weight: .ultraLight))
+                            .foregroundColor(slotColor.opacity(0.4))
+                        Text("No \(slot.rawValue)s Yet")
+                            .font(.system(.headline, design: .monospaced))
+                            .fontWeight(.black)
+                            .foregroundColor(Theme.textSecondary)
+                        Text("Purchase a \(slot.rawValue.lowercased()) below to boost your Combat Power")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(Theme.textMuted)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(30)
+                    .background(slotColor.opacity(0.06))
+                    .cornerRadius(18)
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(slotColor.opacity(0.15), lineWidth: 1))
+                    .padding(.top, 10)
+                }
+
                 ForEach(displayItems) { item in
                     let isOwned    = character.ownedEquipmentIds.contains(item.id)
                     let isEquipped = equippedId(for: slot) == item.id
@@ -402,6 +426,7 @@ private struct ShopItemList: View {
         }
     }
 }
+
 
 // MARK: – Individual shop row
 

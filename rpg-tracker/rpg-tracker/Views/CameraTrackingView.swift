@@ -161,424 +161,185 @@ struct CameraTrackingView: View {
                 }
             } else {
                 // Active Workout view (uses camera)
-                ZStack {
-                    CameraPreview(session: viewModel.cameraManager.session)
-                        .ignoresSafeArea()
-                        
-                    PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
+                GeometryReader { geo in
+                    let isBattle = (viewModel.bossMaxHP > 0) || (FirebaseService.shared.activeBattle != nil) || (BattleEngine.shared.activeBattle != nil)
                     
-                    // HUD Overlay Controls
-                    VStack(spacing: 0) {
-                        // Unified Top Header Container
-                        VStack(spacing: 16) {
-                            // Top controls bar
-                            HStack {
-                                Button(action: {
-                                    if FirebaseService.shared.activeBattle != nil || BattleEngine.shared.activeBattle != nil || viewModel.bossMaxHP > 0 {
-                                        dismiss()
-                                    } else {
-                                        withAnimation {
-                                            isWorkoutStarted = false
-                                        }
-                                    }
-                                }) {
-                                    Image(systemName: "arrow.left")
-                                        .font(.title3)
-                                        .foregroundColor(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(Color.black.opacity(0.4))
-                                        .clipShape(Circle())
-                                }
-                                
-                                Spacer()
-                                
-                                // Exercise indicator
-                                HStack(spacing: 8) {
-                                    Image(systemName: "flame.fill")
-                                        .foregroundColor(viewModel.selectedClass.themeColor)
-                                    Text(viewModel.selectedClass.primaryExercise.uppercased())
-                                        .font(.system(.subheadline, design: .monospaced))
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Theme.textPrimary)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.black.opacity(0.4))
-                                .cornerRadius(20)
-                                
-                                Spacer()
-                                
-                                Color.clear.frame(width: 44) // Balance the back button
-                            }
-                            .padding(.horizontal)
-                            
-                            // Boss info section
-                            if viewModel.bossMaxHP > 0 {
+                    if isBattle {
+                        VStack(spacing: 0) {
+                            // ╔══════════════════════════════╗
+                            // ║   BATTLE UI (top 40%)        ║
+                            // ╚══════════════════════════════╝
+                            ZStack {
                                 VStack(spacing: 8) {
-                                    if let bossImage = bossImage, let bossName = bossName {
-                                        VStack(spacing: 4) {
-                                            Image(bossImage)
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(height: 120)
-                                                .shadow(color: Theme.danger.opacity(0.3), radius: 10)
-                                                
-                                            Text(bossName)
-                                                .font(.system(.subheadline, design: .monospaced))
-                                                .fontWeight(.black)
-                                                .foregroundColor(Theme.danger)
-                                                .shadow(color: .black, radius: 2)
-                                        }
+                                    topControlsBar
+                                        .padding(.top, 10)
+                                        
+                                    if viewModel.bossMaxHP > 0 {
+                                        bossInfoSection
+                                            .frame(maxHeight: .infinity) // Fill all remaining space
                                     }
                                     
-                                    VStack(spacing: 4) {
-                                        HStack {
-                                            Text("LEVEL BOSS HEALTH BAR")
-                                                .font(.system(size: 9, design: .monospaced))
-                                                .fontWeight(.bold)
-                                                .foregroundColor(viewModel.hpBarBurn ? .orange : Theme.textSecondary)
+                                    pvpMatchupSection
+                                }
+                                .frame(maxHeight: .infinity) // Force VStack to fill the ZStack
+                                .padding(.bottom, 10)
+                            }
+                            .frame(height: geo.size.height * 0.4) // 40% height for Boss UI
+                            .background(Color.black.ignoresSafeArea(edges: .top))
+                            
+                            // ── Glowing split divider ──────────────────────────────────
+                            ZStack {
+                                Rectangle()
+                                    .fill(LinearGradient(
+                                        colors: [Theme.danger.opacity(0.7), viewModel.selectedClass.themeColor.opacity(0.7)],
+                                        startPoint: .leading, endPoint: .trailing
+                                    ))
+                                    .frame(height: 2)
+                                    .blur(radius: 1)
+                                Rectangle()
+                                    .fill(LinearGradient(
+                                        colors: [Theme.danger, viewModel.selectedClass.themeColor],
+                                        startPoint: .leading, endPoint: .trailing
+                                    ))
+                                    .frame(height: 1.5)
+                            }
+                            
+                            // ╔══════════════════════════════╗
+                            // ║   CAMERA FEED (bottom 50%)   ║
+                            // ╚══════════════════════════════╝
+                            ZStack(alignment: .bottom) {
+                                CameraPreview(session: viewModel.cameraManager.session)
+                                    .ignoresSafeArea(edges: .bottom)
+                                    
+                                PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
+                                
+                                // Gradient vignette for legibility (removed bottom black stripes per request)
+                                
+                                VStack(spacing: 0) {
+                                    Spacer()
+                                    liveFeedbackPrompt
+                                    Spacer()
+                                    repsDisplay
+                                    Spacer()
+                                }
+                            }
+                            .frame(height: geo.size.height * 0.6) // 60% height for Camera feed
+                        }
+                    } else {
+                        // Normal Training Layout
+                        ZStack {
+                            CameraPreview(session: viewModel.cameraManager.session)
+                                .ignoresSafeArea()
+                                
+                            PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
+                            
+                            VStack(spacing: 0) {
+                                // Top 20% - Status and Reps
+                                VStack(spacing: 16) {
+                                    // Back button and Live Rewards
+                                    HStack {
+                                        Button(action: {
+                                            withAnimation { isWorkoutStarted = false }
+                                        }) {
+                                            Image(systemName: "arrow.left")
+                                                .font(.title3)
+                                                .foregroundColor(.white)
+                                                .frame(width: 44, height: 44)
+                                                .background(Color.black.opacity(0.4))
+                                                .clipShape(Circle())
+                                        }
                                         
                                         Spacer()
                                         
-                                        Text("\(viewModel.bossCurrentHP) / \(viewModel.bossMaxHP) HP")
-                                            .font(.system(.caption, design: .monospaced))
-                                            .fontWeight(.black)
-                                            .foregroundColor(.white)
-                                    }
-                                    .padding(.horizontal, 4)
-                                    
-                                    GeometryReader { barGeo in
-                                        ZStack(alignment: .leading) {
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .fill(Color.black.opacity(0.6))
-                                                .frame(height: 10)
-                                            
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .fill(LinearGradient(
-                                                    colors: viewModel.hpBarBurn ? [.red, .orange, .yellow] : [Color.red, Color.orange],
-                                                    startPoint: .leading,
-                                                    endPoint: .trailing
-                                                ))
-                                                .frame(width: CGFloat(viewModel.bossCurrentHP) / CGFloat(viewModel.bossMaxHP) * barGeo.size.width, height: 10)
-                                                .glow(color: viewModel.hpBarBurn ? .orange.opacity(0.8) : .red.opacity(0.4), radius: viewModel.hpBarBurn ? 6 : 3)
-                                        }
-                                    }
-                                    .frame(height: 10)
-                                    
-                                    // Speed Cadence Combo badges dropping under the HP Bar
-                                    if let badge = viewModel.floatingComboBadge {
-                                        Text(badge)
-                                            .font(.system(.caption, design: .monospaced))
-                                            .fontWeight(.black)
-                                            .foregroundColor(.yellow)
-                                            .glow(color: .orange.opacity(0.5), radius: 5)
-                                            .transition(.scale.combined(with: .opacity))
-                                            .padding(.top, 4)
-                                    }
-                                    }
-                                }
-                                .padding(12)
-                                .offset(x: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0, y: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0)
-                                .padding(.horizontal)
-                            }
-                        }
-                        .padding(.top, 10)
-                        .padding(.bottom, 20)
-                        .background(
-                            Color.black.opacity(0.85)
-                                .ignoresSafeArea(edges: .top)
-                        )
-                        .overlay(
-                            Rectangle()
-                                .frame(height: 1)
-                                .foregroundColor(viewModel.bossMaxHP > 0 ? (viewModel.hpBarBurn ? Color.orange.opacity(0.5) : Theme.border) : .clear),
-                            alignment: .bottom
-                        )
-                        
-                        // PVP Matchup and Combat Telemetry Log Overlay
-                        if let battle = MultiplayerService.shared.activeBattle ?? BattleEngine.shared.activeBattle {
-                            VStack(spacing: 8) {
-                                // 1. Matchup header
-                                HStack(alignment: .top, spacing: 12) {
-                                    // Player side
-                                    if let player = battle.localTeam.first {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            HStack(spacing: 6) {
-                                                if let avatar = player.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                                                    Image(platformImage: uiImage)
-                                                        .resizable()
-                                                        .aspectRatio(contentMode: .fill)
-                                                        .frame(width: 32, height: 32)
-                                                        .clipShape(Circle())
-                                                }
-                                                VStack(alignment: .leading) {
-                                                    Text(player.name)
-                                                        .font(.system(size: 10, weight: .bold))
+                                        // Live Rewards Preview
+                                        if viewModel.repCount > 0 {
+                                            HStack(spacing: 14) {
+                                                // XP
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: "star.fill")
+                                                        .foregroundColor(Color.yellow)
+                                                        .font(.system(size: 12))
+                                                    Text("+\(10 + viewModel.repCount * 6)")
                                                         .foregroundColor(.white)
-                                                    Text(player.characterClass.rawValue.uppercased())
-                                                        .font(.system(size: 7, weight: .bold, design: .monospaced))
-                                                        .foregroundColor(player.characterClass.themeColor)
+                                                        .fontWeight(.black)
+                                                }
+                                                
+                                                // Gold
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: "centsign.circle.fill")
+                                                        .foregroundColor(Theme.warning)
+                                                        .font(.system(size: 12))
+                                                    Text("+\(3 + Int(Double(viewModel.repCount) * 1.5))")
+                                                        .foregroundColor(.white)
+                                                        .fontWeight(.black)
                                                 }
                                             }
-                                            // Health bar
-                                            GeometryReader { geo in
-                                                ZStack(alignment: .leading) {
-                                                    RoundedRectangle(cornerRadius: 3)
-                                                        .fill(Color.black.opacity(0.6))
-                                                    RoundedRectangle(cornerRadius: 3)
-                                                        .fill(player.characterClass.themeColor)
-                                                        .frame(width: CGFloat(player.health) / CGFloat(player.maxHealth) * geo.size.width)
-                                                }
-                                            }
-                                            .frame(height: 5)
-                                            Text("HP: \(player.health)/\(player.maxHealth)")
-                                                .font(.system(size: 8, design: .monospaced))
-                                                .foregroundColor(.white.opacity(0.8))
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                    
-                                    // VS & Timer
-                                    VStack(spacing: 2) {
-                                        Text("VS")
-                                            .font(.system(size: 11, weight: .black, design: .monospaced))
-                                            .foregroundColor(Theme.warning)
-                                        
-                                        Text("\(battle.secondsRemaining)s")
-                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 3)
+                                            .font(.system(size: 14, design: .monospaced))
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 8)
                                             .background(Color.black.opacity(0.5))
-                                            .cornerRadius(8)
+                                            .cornerRadius(20)
+                                            .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.15), lineWidth: 1))
+                                            .transition(.opacity)
+                                            .animation(.easeInOut, value: viewModel.repCount)
+                                        }
                                     }
+                                    .padding(.horizontal)
+                                    .padding(.top, 10)
                                     
-                                    // Opponent side
-                                    if let opponent = battle.opponentTeam.first {
-                                        VStack(alignment: .trailing, spacing: 4) {
-                                            HStack(spacing: 6) {
-                                                VStack(alignment: .trailing) {
-                                                    Text(opponent.name)
-                                                        .font(.system(size: 10, weight: .bold))
-                                                        .foregroundColor(.white)
-                                                    Text(opponent.characterClass.rawValue.uppercased())
-                                                        .font(.system(size: 7, weight: .bold, design: .monospaced))
-                                                        .foregroundColor(opponent.characterClass.themeColor)
-                                                }
-                                                if let avatar = opponent.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                                                    Image(platformImage: uiImage)
-                                                        .resizable()
-                                                        .aspectRatio(contentMode: .fill)
-                                                        .frame(width: 32, height: 32)
-                                                        .clipShape(Circle())
-                                                }
-                                            }
-                                            // Health bar
-                                            GeometryReader { geo in
-                                                ZStack(alignment: .trailing) {
-                                                    RoundedRectangle(cornerRadius: 3)
-                                                        .fill(Color.black.opacity(0.6))
-                                                    RoundedRectangle(cornerRadius: 3)
-                                                        .fill(opponent.characterClass.themeColor)
-                                                        .frame(width: CGFloat(opponent.health) / CGFloat(opponent.maxHealth) * geo.size.width)
-                                                }
-                                            }
-                                            .frame(height: 5)
-                                            Text("HP: \(opponent.health)/\(opponent.maxHealth)")
-                                                .font(.system(size: 8, design: .monospaced))
-                                                .foregroundColor(.white.opacity(0.8))
+                                    // Exercise Name and Big Number
+                                    HStack(alignment: .center) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("CURRENT EXERCISE")
+                                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                                .foregroundColor(Theme.textSecondary)
+                                                
+                                            Text(viewModel.selectedClass.primaryExercise.uppercased())
+                                                .font(.system(size: 32, weight: .black, design: .monospaced))
+                                                .foregroundColor(viewModel.selectedClass.themeColor)
+                                                .shadow(color: viewModel.selectedClass.themeColor.opacity(0.5), radius: 5)
                                         }
-                                        .frame(maxWidth: .infinity, alignment: .trailing)
-                                    }
-                                }
-                                .padding(8)
-                                .background(Color.black.opacity(0.5))
-                                .cornerRadius(12)
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.15), lineWidth: 1))
-                                
-                                // 3v3 party members list (compact status indicators)
-                                if battle.type == .team3v3 {
-                                    HStack(spacing: 8) {
-                                        // Team allies health summary
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            ForEach(battle.localTeam.dropFirst()) { ally in
-                                                HStack(spacing: 4) {
-                                                    Circle()
-                                                        .fill(ally.characterClass.themeColor)
-                                                        .frame(width: 5, height: 5)
-                                                    Text(ally.name)
-                                                        .font(.system(size: 8, weight: .semibold))
-                                                        .foregroundColor(.white)
-                                                    Spacer()
-                                                    Text("\(ally.health) HP")
-                                                        .font(.system(size: 8, design: .monospaced))
-                                                        .foregroundColor(ally.health == 0 ? .red : .white.opacity(0.8))
-                                                }
-                                            }
-                                        }
-                                        .padding(5)
-                                        .background(Color.black.opacity(0.4))
-                                        .cornerRadius(6)
-                                        .frame(maxWidth: .infinity)
                                         
-                                        // Opponents health summary
-                                        VStack(alignment: .trailing, spacing: 3) {
-                                            ForEach(battle.opponentTeam.dropFirst()) { opp in
-                                                HStack(spacing: 4) {
-                                                    Text(opp.name)
-                                                        .font(.system(size: 8, weight: .semibold))
-                                                        .foregroundColor(.white)
-                                                    Spacer()
-                                                    Circle()
-                                                        .fill(opp.characterClass.themeColor)
-                                                        .frame(width: 5, height: 5)
-                                                    Text("\(opp.health) HP")
-                                                        .font(.system(size: 8, design: .monospaced))
-                                                        .foregroundColor(opp.health == 0 ? .red : .white.opacity(0.8))
-                                                }
-                                            }
-                                        }
-                                        .padding(5)
-                                        .background(Color.black.opacity(0.4))
-                                        .cornerRadius(6)
-                                        .frame(maxWidth: .infinity)
+                                        Spacer()
+                                        
+                                        Text("\(viewModel.repCount)")
+                                            .font(.system(size: 80, weight: .black, design: .monospaced))
+                                            .foregroundColor(.white)
+                                            .shadow(color: viewModel.selectedClass.themeColor.opacity(0.8), radius: 15)
                                     }
+                                    .padding(.horizontal, 24)
+                                    .padding(.bottom, 20)
                                 }
-                                
-                                // 2. Real-time scrolling combat log
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("PVP COMBAT EVENTS")
-                                        .font(.system(size: 7, weight: .bold, design: .monospaced))
-                                        .foregroundColor(Theme.textSecondary)
-                                        .padding(.horizontal, 4)
-                                    
-                                    ScrollView {
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            ForEach(battle.combatLog) { log in
-                                                HStack(alignment: .top, spacing: 3) {
-                                                    Text(">")
-                                                        .font(.system(size: 7, design: .monospaced))
-                                                        .foregroundColor(.gray)
-                                                    Text(log.actorName)
-                                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                                        .foregroundColor(.white)
-                                                    Text(log.detailText)
-                                                        .font(.system(size: 8, design: .monospaced))
-                                                        .foregroundColor(.white.opacity(0.85))
-                                                }
-                                                .padding(.horizontal, 4)
-                                            }
-                                        }
-                                    }
-                                }
-                                .frame(height: 55)
-                                .padding(.vertical, 4)
-                                .background(Color.black.opacity(0.45))
-                                .cornerRadius(8)
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                            }
-                            .padding(.horizontal)
-                        }
-                        
-                        // Live Feedback Prompt
-                        HStack(spacing: 12) {
-                            Circle()
-                                .fill(viewModel.isPersonDetected ? Theme.success : Theme.danger)
-                                .frame(width: 10, height: 10)
-                                .glow(color: viewModel.isPersonDetected ? Theme.success : Theme.danger)
-                            
-                            Text(viewModel.feedbackMessage)
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(Theme.textPrimary)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 30)
-                                .fill(viewModel.isCorrectForm ? Color.black.opacity(0.6) : Theme.danger.opacity(0.8))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 30)
-                                .stroke(viewModel.isCorrectForm ? Theme.border : Theme.danger, lineWidth: 1)
-                        )
-                        .padding(.top, 16)
-                        
-                        Spacer()
-                        
-                        // Huge reps display
-                        VStack(spacing: 0) {
-                            HStack(alignment: .lastTextBaseline, spacing: 4) {
-                                Text("\(viewModel.repCount)")
-                                    .font(.system(size: 96, weight: .black, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .shadow(color: viewModel.selectedClass.themeColor.opacity(0.6), radius: 15)
-                                
-                                if let target = viewModel.targetReps {
-                                    Text("/ \(target)")
-                                        .font(.system(size: 32, weight: .bold, design: .monospaced))
-                                        .foregroundColor(Theme.textSecondary)
-                                }
-                            }
-                            
-                            Text("REPS COMPLETED")
-                                .font(.system(.caption, design: .monospaced))
-                                .fontWeight(.bold)
-                                .foregroundColor(Theme.textSecondary)
-                                .tracking(3)
-                        }
-                        
-                        Spacer()
-                        
-                        // Finish Workout CTA (only in general solo training)
-                        if viewModel.bossMaxHP == 0 && FirebaseService.shared.activeBattle == nil {
-                            Button(action: {
-                                let earned = FirebaseService.shared.awardWorkoutRewards(reps: viewModel.repCount)
-                                withAnimation {
-                                    workoutCompletionRewards = earned
-                                }
-                            }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                    Text("FINISH WORKOUT")
-                                        .fontWeight(.black)
-                                        .tracking(1)
-                                }
-                                .font(.system(.subheadline, design: .monospaced))
-                                .padding(.vertical, 14)
-                                .padding(.horizontal, 32)
-                                .background(Theme.success)
-                                .foregroundColor(.white)
-                                .cornerRadius(20)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color.black.opacity(0.9), Color.black.opacity(0.7), .clear],
+                                        startPoint: .top, endPoint: .bottom
+                                    )
+                                    .ignoresSafeArea(edges: .top)
                                 )
-                                .glow(color: Theme.success.opacity(0.4), radius: 8)
+                                
+                                Spacer()
+                                
+                                // Bottom HUD
+                                VStack(spacing: 16) {
+                                    liveFeedbackPrompt
+                                    finishWorkoutCTA
+                                    guidanceStateInfo
+                                }
+                                .padding(.bottom, 30)
+                                .frame(maxWidth: .infinity)
+                                .background(
+                                    LinearGradient(
+                                        colors: [.clear, Color.black.opacity(0.8)],
+                                        startPoint: .top, endPoint: .bottom
+                                    )
+                                    .ignoresSafeArea(edges: .bottom)
+                                )
                             }
-                            .buttonStyle(TactileButtonStyle())
-                            .padding(.bottom, 20)
                         }
-                        
-                        // Bottom control actions
-                        // Guidance state info for physical setup
-                        VStack(spacing: 8) {
-                            Text("Ensure whole body is visible")
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
-                            Text("Avoid shadows & backlit environments")
-                                .font(.caption2)
-                                .foregroundColor(Theme.textMuted)
-                        }
-                        .padding()
-                        .background(Color.black.opacity(0.5))
-                        .cornerRadius(12)
-                        .padding(.bottom, 30)
                     }
                 }
             }
-            
             // Workout Completion / Rewards Overlay (visual match to StageWinOverlay)
             if let rewards = workoutCompletionRewards {
                 ZStack {
@@ -743,6 +504,10 @@ struct CameraTrackingView: View {
             if FirebaseService.shared.activeBattle != nil || viewModel.bossMaxHP > 0 {
                 isWorkoutStarted = true
             }
+            viewModel.cameraManager.checkPermission()
+        }
+        .onDisappear {
+            viewModel.cameraManager.stopSession()
         }
     }
     
@@ -754,6 +519,395 @@ struct CameraTrackingView: View {
         case .healer: return "cross.case.fill"
         }
     }
+
+    // MARK: - Extracted HUD Components
+    
+    private var topControlsBar: some View {
+        HStack {
+            Button(action: {
+                if FirebaseService.shared.activeBattle != nil || BattleEngine.shared.activeBattle != nil || viewModel.bossMaxHP > 0 {
+                    dismiss()
+                } else {
+                    withAnimation {
+                        isWorkoutStarted = false
+                    }
+                }
+            }) {
+                Image(systemName: "arrow.left")
+                    .font(.title3)
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Color.black.opacity(0.4))
+                    .clipShape(Circle())
+            }
+            
+            Spacer()
+            
+            // Exercise indicator
+            HStack(spacing: 8) {
+                Image(systemName: "flame.fill")
+                    .foregroundColor(viewModel.selectedClass.themeColor)
+                Text(viewModel.selectedClass.primaryExercise.uppercased())
+                    .font(.system(.subheadline, design: .monospaced))
+                    .fontWeight(.bold)
+                    .foregroundColor(Theme.textPrimary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.4))
+            .cornerRadius(20)
+            
+            Spacer()
+            
+            Color.clear.frame(width: 44) // Balance the back button
+        }
+        .padding(.horizontal)
+    }
+    
+    private var bossInfoSection: some View {
+        VStack(spacing: 8) {
+            if let bossImage = bossImage, let bossName = bossName {
+                // Boss image takes up most of the available space
+                Image(bossImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 180, height: 180) // ABSOLUTE FORCE it to be large
+                    .shadow(color: Theme.danger.opacity(0.5), radius: 12)
+                    
+                Text(bossName)
+                    .font(.system(.title3, design: .monospaced)) // Made text larger too
+                    .fontWeight(.black)
+                    .foregroundColor(Theme.danger)
+                    .shadow(color: .black, radius: 2)
+            }
+            
+            // HP bar — compact, at the bottom
+            VStack(spacing: 3) {
+                HStack {
+                    Text("BOSS HP")
+                        .font(.system(size: 10, design: .monospaced))
+                        .fontWeight(.bold)
+                        .foregroundColor(viewModel.hpBarBurn ? .orange : Theme.textSecondary)
+                
+                    Spacer()
+                
+                    Text("\(viewModel.bossCurrentHP) / \(viewModel.bossMaxHP) HP")
+                        .font(.system(size: 11, design: .monospaced))
+                        .fontWeight(.black)
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 4)
+                
+                GeometryReader { barGeo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color.black.opacity(0.6))
+                            .frame(height: 10)
+                        
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(LinearGradient(
+                                colors: viewModel.hpBarBurn ? [.red, .orange, .yellow] : [Color.red, Color.orange],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ))
+                            .frame(width: CGFloat(viewModel.bossCurrentHP) / CGFloat(max(1, viewModel.bossMaxHP)) * barGeo.size.width, height: 10)
+                            .glow(color: viewModel.hpBarBurn ? .orange.opacity(0.8) : .red.opacity(0.4), radius: viewModel.hpBarBurn ? 6 : 3)
+                    }
+                }
+                .frame(height: 10)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.55))
+            .cornerRadius(10)
+        }
+        .offset(x: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0, y: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0)
+        .padding(.horizontal, 12)
+    }
+    
+    @ViewBuilder
+    private var pvpMatchupSection: some View {
+        if let battle = MultiplayerService.shared.activeBattle ?? BattleEngine.shared.activeBattle {
+            VStack(spacing: 8) {
+                // 1. Matchup header
+                HStack(alignment: .top, spacing: 12) {
+                    // Player side
+                    if let player = battle.localTeam.first {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                if let avatar = player.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                    Image(platformImage: uiImage)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 32, height: 32)
+                                        .clipShape(Circle())
+                                }
+                                VStack(alignment: .leading) {
+                                    Text(player.name)
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.white)
+                                    Text(player.characterClass.rawValue.uppercased())
+                                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                        .foregroundColor(player.characterClass.themeColor)
+                                }
+                            }
+                            // Health bar
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Color.black.opacity(0.6))
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(player.characterClass.themeColor)
+                                        .frame(width: CGFloat(player.health) / CGFloat(player.maxHealth) * geo.size.width)
+                                }
+                            }
+                            .frame(height: 5)
+                            Text("HP: \(player.health)/\(player.maxHealth)")
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    
+                    // VS & Timer
+                    VStack(spacing: 2) {
+                        Text("VS")
+                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                            .foregroundColor(Theme.warning)
+                        
+                        Text("\(battle.secondsRemaining)s")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.black.opacity(0.5))
+                            .cornerRadius(8)
+                    }
+                    
+                    // Opponent side
+                    if let opponent = battle.opponentTeam.first {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            HStack(spacing: 6) {
+                                VStack(alignment: .trailing) {
+                                    Text(opponent.name)
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.white)
+                                    Text(opponent.characterClass.rawValue.uppercased())
+                                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                        .foregroundColor(opponent.characterClass.themeColor)
+                                }
+                                if let avatar = opponent.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                    Image(platformImage: uiImage)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 32, height: 32)
+                                        .clipShape(Circle())
+                                }
+                            }
+                            // Health bar
+                            GeometryReader { geo in
+                                ZStack(alignment: .trailing) {
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Color.black.opacity(0.6))
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(opponent.characterClass.themeColor)
+                                        .frame(width: CGFloat(opponent.health) / CGFloat(opponent.maxHealth) * geo.size.width)
+                                }
+                            }
+                            .frame(height: 5)
+                            Text("HP: \(opponent.health)/\(opponent.maxHealth)")
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
+                .padding(8)
+                .background(Color.black.opacity(0.5))
+                .cornerRadius(12)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.15), lineWidth: 1))
+                
+                // 3v3 party members list (compact status indicators)
+                if battle.type == .team3v3 {
+                    HStack(spacing: 8) {
+                        // Team allies health summary
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(battle.localTeam.dropFirst()) { ally in
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(ally.characterClass.themeColor)
+                                        .frame(width: 5, height: 5)
+                                    Text(ally.name)
+                                        .font(.system(size: 8, weight: .semibold))
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Text("\(ally.health) HP")
+                                        .font(.system(size: 8, design: .monospaced))
+                                        .foregroundColor(ally.health == 0 ? .red : .white.opacity(0.8))
+                                }
+                            }
+                        }
+                        .padding(5)
+                        .background(Color.black.opacity(0.4))
+                        .cornerRadius(6)
+                        .frame(maxWidth: .infinity)
+                        
+                        // Opponents health summary
+                        VStack(alignment: .trailing, spacing: 3) {
+                            ForEach(battle.opponentTeam.dropFirst()) { opp in
+                                HStack(spacing: 4) {
+                                    Text(opp.name)
+                                        .font(.system(size: 8, weight: .semibold))
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Circle()
+                                        .fill(opp.characterClass.themeColor)
+                                        .frame(width: 5, height: 5)
+                                    Text("\(opp.health) HP")
+                                        .font(.system(size: 8, design: .monospaced))
+                                        .foregroundColor(opp.health == 0 ? .red : .white.opacity(0.8))
+                                }
+                            }
+                        }
+                        .padding(5)
+                        .background(Color.black.opacity(0.4))
+                        .cornerRadius(6)
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                
+                // 2. Real-time scrolling combat log
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("PVP COMBAT EVENTS")
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                        .padding(.horizontal, 4)
+                    
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(battle.combatLog) { log in
+                                HStack(alignment: .top, spacing: 3) {
+                                    Text(">")
+                                        .font(.system(size: 7, design: .monospaced))
+                                        .foregroundColor(.gray)
+                                    Text(log.actorName)
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.white)
+                                    Text(log.detailText)
+                                        .font(.system(size: 8, design: .monospaced))
+                                        .foregroundColor(.white.opacity(0.85))
+                                }
+                                .padding(.horizontal, 4)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 55)
+                .padding(.vertical, 4)
+                .background(Color.black.opacity(0.45))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1))
+            }
+            .padding(.horizontal)
+        }
+    }
+    
+    private var liveFeedbackPrompt: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(viewModel.isPersonDetected ? Theme.success : Theme.danger)
+                .frame(width: 10, height: 10)
+                .glow(color: viewModel.isPersonDetected ? Theme.success : Theme.danger)
+            
+            Text(viewModel.feedbackMessage)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.textPrimary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 30)
+                .fill(viewModel.isCorrectForm ? Color.black.opacity(0.6) : Theme.danger.opacity(0.8))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 30)
+                .stroke(viewModel.isCorrectForm ? Theme.border : Theme.danger, lineWidth: 1)
+        )
+    }
+    
+    private var repsDisplay: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                Text("\(viewModel.repCount)")
+                    .font(.system(size: 96, weight: .black, design: .monospaced))
+                    .foregroundColor(.white)
+                    .shadow(color: viewModel.selectedClass.themeColor.opacity(0.6), radius: 15)
+                
+                if let target = viewModel.targetReps {
+                    Text("/ \(target)")
+                        .font(.system(size: 32, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                }
+            }
+            
+            Text("REPS COMPLETED")
+                .font(.system(.caption, design: .monospaced))
+                .fontWeight(.bold)
+                .foregroundColor(Theme.textSecondary)
+                .tracking(3)
+        }
+    }
+    
+    @ViewBuilder
+    private var finishWorkoutCTA: some View {
+        if viewModel.bossMaxHP == 0 && FirebaseService.shared.activeBattle == nil {
+            Button(action: {
+                let earned = FirebaseService.shared.awardWorkoutRewards(reps: viewModel.repCount)
+                withAnimation {
+                    workoutCompletionRewards = earned
+                }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("FINISH WORKOUT")
+                        .fontWeight(.black)
+                        .tracking(1)
+                }
+                .font(.system(.subheadline, design: .monospaced))
+                .padding(.vertical, 14)
+                .padding(.horizontal, 32)
+                .background(Theme.success)
+                .foregroundColor(.white)
+                .cornerRadius(20)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                )
+                .glow(color: Theme.success.opacity(0.4), radius: 8)
+            }
+            .buttonStyle(TactileButtonStyle())
+            .padding(.bottom, 20)
+        }
+    }
+    
+    private var guidanceStateInfo: some View {
+        VStack(spacing: 8) {
+            Text("Ensure whole body is visible")
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+            Text("Avoid shadows & backlit environments")
+                .font(.caption2)
+                .foregroundColor(Theme.textMuted)
+        }
+        .padding()
+        .background(Color.black.opacity(0.5))
+        .cornerRadius(12)
+        .padding(.bottom, 30)
+    }
+
+
 }
 
 // Simulated skeletal line drawer
@@ -818,4 +972,5 @@ struct ButtonToggleStyle: ToggleStyle {
             )
         }
     }
+
 }

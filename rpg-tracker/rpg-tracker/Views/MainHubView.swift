@@ -2,13 +2,15 @@ import SwiftUI
 
 struct MainHubView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
+    @ObservedObject var multiplayerService = MultiplayerService.shared
     @State private var currentTab: Int = 0
     @State private var showClassSelection: Bool = false
     @State private var showProfile: Bool = false
     @State private var toastMessage: String? = nil
     @State private var showDungeonRun: Bool = false
     @State private var showNotifications: Bool = false
-    
+    @State private var showTeamLobby: Bool = false
+
     var body: some View {
         NavigationView {
             ZStack {
@@ -126,6 +128,74 @@ struct MainHubView: View {
                     .zIndex(201)
                     .transition(.scale.combined(with: .opacity))
                 }
+                
+                // Incoming 3v3 Team Invite Overlay
+                if let teamTicket = multiplayerService.incomingTeamInvite {
+                    Color.black.opacity(0.85).ignoresSafeArea()
+                        .zIndex(202)
+                    
+                    VStack(spacing: 20) {
+                        ZStack {
+                            Circle()
+                                .fill(teamTicket.playerClass.themeColor.opacity(0.2))
+                                .frame(width: 80, height: 80)
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(teamTicket.playerClass.themeColor)
+                        }
+                        .shadow(color: teamTicket.playerClass.themeColor.opacity(0.5), radius: 15)
+                        
+                        VStack(spacing: 6) {
+                            Text("3V3 TEAM INVITE")
+                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .foregroundColor(Theme.warning)
+                                .tracking(3)
+                            Text("\(teamTicket.playerName) wants you\non their team!")
+                                .font(.title3.bold())
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.center)
+                            Text("\(teamTicket.playerClass.rawValue) • Level \(teamTicket.playerLevel)")
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        
+                        HStack(spacing: 16) {
+                            Button("Decline") {
+                                withAnimation(.spring) {
+                                    multiplayerService.declineTeamInvite(teamTicket)
+                                }
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 28)
+                            .background(Color.red.opacity(0.75))
+                            .cornerRadius(14)
+                            
+                            Button("Join Team!") {
+                                multiplayerService.acceptTeamInvite(teamTicket)
+                                currentTab = 1
+                            }
+                            .font(.headline.bold())
+                            .foregroundColor(.black)
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 28)
+                            .background(Color.green)
+                            .cornerRadius(14)
+                            .shadow(color: Color.green.opacity(0.4), radius: 10)
+                        }
+                    }
+                    .padding(28)
+                    .background(Theme.cardBackground)
+                    .cornerRadius(24)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(teamTicket.playerClass.themeColor, lineWidth: 2)
+                    )
+                    .padding(.horizontal, 20)
+                    .zIndex(203)
+                    .transition(.scale.combined(with: .opacity))
+                }
             }
             .hideNavigationBar()
             .sheet(isPresented: $showClassSelection) {
@@ -199,6 +269,7 @@ struct HomeDashboardView: View {
     @State private var showArmoryShop: Bool = false
     @State private var armoryInitialSlot: EquipmentSlot = .weapon
     @State private var questsAnimated: Bool = false
+    @State private var showFriends: Bool = false
 
     private var character: Character? { firebaseService.currentCharacter }
 
@@ -214,6 +285,16 @@ struct HomeDashboardView: View {
         return EquipmentItem.starterArmors[char.selectedClass]
     }
 
+    private var equippedRing: EquipmentItem? {
+        guard let char = character, let id = char.equippedRingId else { return nil }
+        return EquipmentItem.findRing(by: id)
+    }
+
+    private var equippedAmulet: EquipmentItem? {
+        guard let char = character, let id = char.equippedAmuletId else { return nil }
+        return EquipmentItem.findAmulet(by: id)
+    }
+
     private var dailyQuests: [DailyQuest] {
         DailyQuestEngine.dailyQuests()
     }
@@ -227,15 +308,20 @@ struct HomeDashboardView: View {
                         showProfile: $showProfile,
                         showNotifications: $showNotifications,
                         onShop: { showArmoryShop = true },
-                        onSwitchClass: { showClassSelection = true }
+                        onSwitchClass: { showClassSelection = true },
+                        onFriends: { showFriends = true }
                     )
 
                     HeroCard(
                         char: char,
                         equippedWeapon: equippedWeapon,
                         equippedArmor: equippedArmor,
-                        onWeaponTap: { armoryInitialSlot = .weapon; showArmoryShop = true },
-                        onArmorTap:  { armoryInitialSlot = .armor;  showArmoryShop = true }
+                        equippedRing: equippedRing,
+                        equippedAmulet: equippedAmulet,
+                        onWeaponTap:  { armoryInitialSlot = .weapon;  showArmoryShop = true },
+                        onArmorTap:   { armoryInitialSlot = .armor;   showArmoryShop = true },
+                        onRingTap:    { armoryInitialSlot = .ring;    showArmoryShop = true },
+                        onAmuletTap:  { armoryInitialSlot = .amulet;  showArmoryShop = true }
                     )
                     .padding(.horizontal)
                     .padding(.top, 14)
@@ -266,6 +352,11 @@ struct HomeDashboardView: View {
         .sheet(isPresented: $showArmoryShop) {
             ArmoryShopView(initialSlot: armoryInitialSlot)
         }
+        .sheet(isPresented: $showFriends) {
+            FriendsView()
+                .environmentObject(FirebaseService.shared)
+                .environmentObject(MultiplayerService.shared)
+        }
     }
 }
 
@@ -276,6 +367,7 @@ struct DashboardNavBar: View {
     @Binding var showNotifications: Bool
     let onShop: () -> Void
     let onSwitchClass: () -> Void
+    let onFriends: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -325,6 +417,7 @@ struct DashboardNavBar: View {
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.healerColor.opacity(0.25), lineWidth: 1))
 
             navIconButton(systemName: "bell.fill", color: Theme.textPrimary, action: { showNotifications = true })
+            navIconButton(systemName: "person.2.fill", color: Theme.primary, action: { onFriends() })
             navIconButton(systemName: "cart.fill", color: Theme.warning, action: { onShop() })
         }
         .padding(.horizontal)
@@ -351,8 +444,12 @@ struct HeroCard: View {
     let char: Character
     let equippedWeapon: EquipmentItem?
     let equippedArmor: EquipmentItem?
+    let equippedRing: EquipmentItem?
+    let equippedAmulet: EquipmentItem?
     let onWeaponTap: () -> Void
     let onArmorTap: () -> Void
+    let onRingTap: () -> Void
+    let onAmuletTap: () -> Void
 
     private var xpProgress: CGFloat {
         let cap = max(1, char.xpForNextLevel)
@@ -462,14 +559,16 @@ struct HeroCard: View {
 
                 Rectangle().fill(Theme.border).frame(width: 1, height: 52)
 
-                GearSlotStrip(slot: "RING", item: nil, fallbackIcon: "circle.dotted",
-                              accentColor: Theme.textMuted, action: {})
+                GearSlotStrip(slot: "RING", item: equippedRing, fallbackIcon: "circle.dotted",
+                              accentColor: equippedRing != nil ? equippedRing!.rarity.color : Theme.textMuted,
+                              action: onRingTap)
                     .frame(maxWidth: .infinity)
 
                 Rectangle().fill(Theme.border).frame(width: 1, height: 52)
 
-                GearSlotStrip(slot: "AMULET", item: nil, fallbackIcon: "sparkles",
-                              accentColor: Theme.textMuted, action: {})
+                GearSlotStrip(slot: "AMULET", item: equippedAmulet, fallbackIcon: "sparkles",
+                              accentColor: equippedAmulet != nil ? equippedAmulet!.rarity.color : Theme.textMuted,
+                              action: onAmuletTap)
                     .frame(maxWidth: .infinity)
             }
             .padding(.vertical, 12)
@@ -503,23 +602,45 @@ struct GearSlotStrip: View {
     let accentColor: Color
     let action: () -> Void
 
+    @State private var isPulsing = false
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 5) {
                 ZStack {
+                    // Pulsing ring for empty slot
+                    if item == nil {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(accentColor.opacity(isPulsing ? 0.5 : 0.15), lineWidth: isPulsing ? 2 : 1)
+                            .frame(width: 40, height: 40)
+                            .scaleEffect(isPulsing ? 1.08 : 1.0)
+                            .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: isPulsing)
+                    }
+
                     RoundedRectangle(cornerRadius: 10)
-                        .fill((item?.rarity.color ?? accentColor).opacity(item != nil ? 0.14 : 0.06))
+                        .fill((item?.rarity.color ?? accentColor).opacity(item != nil ? 0.18 : 0.07))
                         .frame(width: 40, height: 40)
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(item?.rarity.color ?? accentColor, lineWidth: 1)
-                                .opacity(item != nil ? 0.5 : 0.2)
+                                .stroke(
+                                    item?.rarity.color ?? accentColor,
+                                    lineWidth: item != nil ? 1.5 : 0.5
+                                )
+                                .opacity(item != nil ? 0.6 : 0)
                         )
-                    Image(systemName: item?.getIconName() ?? fallbackIcon)
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(item?.rarity.color ?? accentColor)
+
+                    if item != nil {
+                        Image(systemName: item!.getIconName())
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(item!.rarity.color)
+                    } else {
+                        // "+" icon for empty slots
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .light))
+                            .foregroundColor(accentColor.opacity(0.4))
+                    }
                 }
-                .glow(color: (item?.rarity.color ?? Color.clear).opacity(0.3), radius: 4)
+                .glow(color: (item?.rarity.color ?? Color.clear).opacity(0.35), radius: 5)
 
                 Text(slot)
                     .font(.system(size: 7, weight: .black, design: .monospaced))
@@ -530,15 +651,24 @@ struct GearSlotStrip: View {
                         .font(.system(size: 8, weight: .bold))
                         .foregroundColor(item.rarity.color)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 } else {
                     Text("EMPTY")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundColor(Theme.textMuted)
+                        .foregroundColor(accentColor.opacity(0.4))
                 }
             }
             .padding(.horizontal, 4)
         }
         .buttonStyle(TactileButtonStyle())
+        .onAppear {
+            if item == nil {
+                isPulsing = true
+            }
+        }
+        .onChange(of: item?.id) { _, _ in
+            isPulsing = (item == nil)
+        }
     }
 }
 

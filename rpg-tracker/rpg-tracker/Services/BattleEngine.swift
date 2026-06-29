@@ -125,13 +125,13 @@ class BattleEngine: ObservableObject {
                 battle.status = .completed
                 battle.winnerId = battle.opponentTeam.first?.id
                 battleTimer?.invalidate()
-                FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true)
+                FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true, isPvPWinner: false)
                 FirebaseService.shared.activeBattle = nil
             } else if oppDead {
                 battle.status = .completed
                 battle.winnerId = battle.localTeam.first?.id
                 battleTimer?.invalidate()
-                FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true)
+                FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true, isPvPWinner: true)
                 FirebaseService.shared.activeBattle = nil
             } else if battle.secondsRemaining <= 0 {
                 battle.status = .completed
@@ -140,13 +140,13 @@ class BattleEngine: ObservableObject {
                 
                 if myReps > oppReps {
                     battle.winnerId = battle.localTeam.first?.id
-                    FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true)
+                    FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true, isPvPWinner: true)
                 } else if oppReps > myReps {
                     battle.winnerId = battle.opponentTeam.first?.id
-                    FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true)
+                    FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true, isPvPWinner: false)
                 } else {
                     battle.winnerId = "draw"
-                    FirebaseService.shared.awardBattleRewards(xp: 100, gold: 30, isPvP: true)
+                    FirebaseService.shared.awardBattleRewards(xp: 100, gold: 30, isPvP: true, isPvPWinner: nil)
                 }
                 
                 battleTimer?.invalidate()

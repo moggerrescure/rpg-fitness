@@ -1,19 +1,20 @@
 import Foundation
 
-enum BattleType: String, Codable {
+enum BattleType: String, Codable, Equatable {
     case duel1v1 = "1v1 Duel"
     case team3v3 = "3v3 Team Battle"
     case bossRaid = "Boss Raid"
     case clanWar = "Clan War Battle"
+    case worldBoss = "World Boss"
 }
 
-enum BattleStatus: String, Codable {
+enum BattleStatus: String, Codable, Equatable {
     case searching = "Searching..."
     case active = "Active Combat"
     case completed = "Finished"
 }
 
-struct BattlePlayer: Codable, Identifiable {
+struct BattlePlayer: Codable, Identifiable, Equatable {
     var id: String
     var name: String
     var characterClass: CharacterClass
@@ -47,7 +48,7 @@ struct CombatEvent: Codable, Identifiable {
     var isCritical: Bool?
 }
 
-struct Battle: Codable, Identifiable {
+struct Battle: Codable, Identifiable, Equatable {
     var id: String
     var type: BattleType
     var status: BattleStatus
@@ -57,4 +58,8 @@ struct Battle: Codable, Identifiable {
     var createdAt: Date = Date()
     var secondsRemaining: Int = 60
     var combatLog: [CombatEvent] = []
+    
+    static func == (lhs: Battle, rhs: Battle) -> Bool {
+        lhs.id == rhs.id && lhs.status == rhs.status && lhs.winnerId == rhs.winnerId
+    }
 }

@@ -60,23 +60,44 @@ class BattleVM: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] battle in
                 guard let self = self else { return }
-                if battle?.type == .duel1v1 || battle?.type == .clanWar || battle?.type == .team3v3 || battle?.type == .bossRaid {
+                
+                // CRITICAL: when leaveMatch()/endMatch() clears the battle, battle == nil.
+                // nil?.type matches nothing in the type-check below, so BattleVM.activeBattle
+                // would never be cleared → battle screen would stay visible forever.
+                // Handle nil explicitly first.
+                if battle == nil {
+                    self.activeBattle = nil
+                    self.duelFinished = false
+                    self.showCameraTracker = false
+                    return
+                }
+                
+                // Only process if it's a known battle type
+                if battle?.type == .bossRaid || battle?.type == .worldBoss || battle?.type == .duel1v1 || battle?.type == .clanWar || battle?.type == .team3v3 {
                     let oldBattle = self.activeBattle
                     self.activeBattle = battle
                     
-                    if oldBattle == nil && battle != nil && battle?.status == .active {
+                    // showCameraTracker opens CameraTrackingView as a fullScreenCover.
+                    // For PvP (duel1v1, team3v3, clanWar) the camera is embedded inside
+                    // CombatArenaView — do NOT set this flag or a duplicate "ARCHER CAMP"
+                    // screen opens on top of the arena UI.
+                    let isPvP = battle?.type == .duel1v1 || battle?.type == .team3v3 || battle?.type == .clanWar
+                    if oldBattle == nil && battle != nil && battle?.status == .active && !isPvP {
                         self.showCameraTracker = true
                     }
+
                     
                     if let battle = battle, battle.status == .completed {
                         self.duelFinished = true
                         
-                        if battle.type == .bossRaid {
+                        if battle.type == .bossRaid || battle.type == .worldBoss {
                             // Calculate total damage dealt to the boss
                             if let bossPlayer = battle.opponentTeam.first {
                                 let damageDealt = bossPlayer.maxHealth - bossPlayer.health
                                 self.winnerName = "\(damageDealt) DMG!"
-                                self.firebaseService.attackWorldBoss(damage: damageDealt)
+                                if battle.type == .worldBoss {
+                                    self.firebaseService.attackWorldBoss(damage: damageDealt)
+                                }
                             }
                         } else {
                             if let winnerId = battle.winnerId {
@@ -105,9 +126,10 @@ class BattleVM: ObservableObject {
         MultiplayerService.shared.$isSearching
             .receive(on: DispatchQueue.main)
             .sink { [weak self] searching in
-                if self?.selectedPvPType == .duel1v1 || self?.selectedPvPType == .clanWar || self?.selectedPvPType == .team3v3 {
-                    self?.isSearching = searching
-                }
+                // Always forward isSearching state — the old guard on selectedPvPType
+                // caused the matchmaking queue view to never appear if the type
+                // hadn't been set yet when the update arrived.
+                self?.isSearching = searching
             }
             .store(in: &cancellables)
     }
@@ -116,12 +138,13 @@ class BattleVM: ObservableObject {
         firebaseService.currentCharacter?.selectedClass ?? .swordsman
     }
     
-    func startQueue() {
-        if selectedPvPType == .bossRaid {
-            // Wait, does MultiplayerService handle bossRaid? Yes.
-            MultiplayerService.shared.startMatchmaking(for: currentClass, type: selectedPvPType, invitedFriends: invitedFriends)
+    func startQueue(type: BattleType? = nil) {
+        let queueType = type ?? selectedPvPType
+        if queueType == .bossRaid {
+            // Boss raids usually start their own queue through BossRaidView
+            MultiplayerService.shared.startMatchmaking(for: currentClass, type: queueType, invitedFriends: invitedFriends)
         } else {
-            MultiplayerService.shared.startMatchmaking(for: currentClass, type: selectedPvPType, invitedFriends: invitedFriends)
+            MultiplayerService.shared.startMatchmaking(for: currentClass, type: queueType, invitedFriends: invitedFriends)
         }
     }
     

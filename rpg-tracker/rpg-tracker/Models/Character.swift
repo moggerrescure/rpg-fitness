@@ -91,15 +91,42 @@ struct Character: Codable, Identifiable {
     var equippedAmuletId: String? = nil
     var ownedEquipmentIds: [String] = ["w_arch_1", "a_arch_1", "w_mage_1", "a_mage_1", "w_swor_1", "a_swor_1", "w_heal_1", "a_heal_1"]
     var clanId: String? = nil
-    var pvpWins: Int = 0
-    var pvpTrophies: Int = 1000
+    var pvpWins: Int? = 0
+    var pvpTrophies: Int? = 0
     
-    var friends: [String] = []
-    var friendRequests: [String] = []
+    var friends: [String]? = []
+    var friendRequests: [String]? = []
+    
+    var currentLevel: Int? = 1
+    
+    /// Per-class trophies: key = CharacterClass.rawValue, value = trophy count
+    /// Archer earns trophies from squats PvP, Mage from push-ups PvP, etc.
+    var classTrophies: [String: Int]? = nil
     
     var fcmToken: String? = nil
     var lastActive: Date? = nil
     var lastHealthSyncDate: Date? = nil
+    
+    var unwrappedPvPWins: Int { pvpWins ?? 0 }
+    var unwrappedPvPTrophies: Int { pvpTrophies ?? 0 }
+    var unwrappedFriends: [String] { friends ?? [] }
+    var unwrappedFriendRequests: [String] { friendRequests ?? [] }
+    
+    /// Returns trophies for the specified class. Falls back to the single pvpTrophies
+    /// value if the per-class dict hasn't been populated yet (migration).
+    func trophies(for cls: CharacterClass) -> Int {
+        if let dict = classTrophies, let val = dict[cls.rawValue] {
+            return val
+        }
+        // Fallback: only return the old pvpTrophies value for the currently selected class
+        if cls == selectedClass {
+            return pvpTrophies ?? 0
+        }
+        return 0
+    }
+    
+    /// Returns trophies for the currently selected class.
+    var currentClassTrophies: Int { trophies(for: selectedClass) }
     
     var isOnline: Bool {
         guard let lastActive = lastActive else { return false }
@@ -139,7 +166,7 @@ struct Character: Codable, Identifiable {
         ownedEquipmentIds: [String]? = nil,
         clanId: String? = nil,
         pvpWins: Int = 0,
-        pvpTrophies: Int = 1000,
+        pvpTrophies: Int = 0,
         friends: [String] = [],
         friendRequests: [String] = [],
         fcmToken: String? = nil,

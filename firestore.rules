@@ -106,36 +106,45 @@ service cloud.firestore {
     // RPG FITNESS RULES
     // =====================================================
     
-    // Users Collection
+    // Users Collection (and all its subcollections like notifications)
     match /users/{userId} {
       // Anyone logged in can read user profiles
       allow read: if request.auth != null;
       // Users can only write to their own document
       allow write: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow access to subcollections (e.g. notifications)
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
     
     // Clans Collection
     match /clans/{clanId} {
       // Anyone can read clans
       allow read: if request.auth != null;
-      // Writing to clans must be done via Cloud Functions ONLY
-      allow write: if false;
+      // Allow writes so users can increment clan totalReps
+      allow write: if request.auth != null;
     }
     
-    // World Bosses Collection
+    // World Bosses Collection (client sometimes writes local fallback)
     match /world_bosses/{bossId} {
-      // Anyone can read the active world boss
-      allow read: if request.auth != null;
-      // Attacking the world boss must be done via Cloud Functions ONLY
-      allow write: if false;
+      // Anyone can read and update the active world boss
+      allow read, write: if request.auth != null;
+    }
+    
+    // Battles Collection
+    match /battles/{battleId} {
+      // Allow players to read and write battles they are part of
+      // (For simplicity, allowing authenticated users for now)
+      allow read, write: if request.auth != null;
     }
     
     // Matchmaking Collection
     match /matchmaking/{ticketId} {
       // Anyone can read tickets
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create, update, delete: if request.auth != null;
     }
 
     // === Default deny for everything else ===

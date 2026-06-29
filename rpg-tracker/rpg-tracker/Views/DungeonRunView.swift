@@ -59,7 +59,7 @@ struct DungeonRunView: View {
             }
         }
         .hideNavigationBar()
-        .onChange(of: cameraVM.repCount) { newCount in
+        .onChange(of: cameraVM.repCount) { _, newCount in
             // Bridge: every new rep → dungeon VM registers it
             let combo = cameraVM.activeCombo
             vm.onRepPerformed(combo: combo)
@@ -291,189 +291,357 @@ private struct DungeonCombatView: View {
     let onExit: () -> Void
 
     @State private var showExitAlert = false
+    @State private var bossPulse = false
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                Color(hex: "080B12").ignoresSafeArea()
+                Color.black.ignoresSafeArea()
 
                 VStack(spacing: 0) {
+
+                    // ╔══════════════════════════════╗
+                    // ║      BOSS ARENA (top 50%)    ║
+                    // ╚══════════════════════════════╝
                     ZStack {
-                        Color.black.ignoresSafeArea()
+                        // Dark arena background with boss element tint
+                        let bossColor = vm.boss?.color ?? Theme.danger
+                        LinearGradient(
+                            colors: [
+                                Color.black,
+                                bossColor.opacity(0.15),
+                                Color(red: 0.06, green: 0.03, blue: 0.10)
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
 
-                        // 1. Full screen camera feed
-                        CameraPreview(session: cameraVM.cameraManager.session)
-                            .ignoresSafeArea()
+                        // Boss element atmospheric glow
+                        RadialGradient(
+                            colors: [bossColor.opacity(0.30), Color.clear],
+                            center: UnitPoint(x: 0.5, y: 0.0),
+                            startRadius: 0, endRadius: 280
+                        )
 
-                        // Pose skeleton overlay
-                        PoseOverlayView(joints: cameraVM.rawJoints, themeColor: selectedClass.themeColor)
-
-                        // 2. Boss Image & Effects Overlay (Top half)
-                        VStack {
-                            if let boss = vm.boss {
-                                Spacer().frame(height: geo.size.height * 0.15)
-                                Image(boss.imageName)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(height: geo.size.height * 0.35)
-                                    .offset(x: vm.bossShake ? CGFloat.random(in: -10...10) : 0, y: vm.bossShake ? CGFloat.random(in: -5...5) : 0)
-                                    .animation(.spring(response: 0.1, dampingFraction: 0.3), value: vm.bossShake)
-                                    // Subtle glow and dimming effect
-                                    .glow(color: vm.bossHPPercent < 0.25 ? Theme.danger.opacity(0.8) : .clear, radius: 15)
-                                    .colorMultiply(vm.bossHPPercent < 0.25 ? Color(hex: "FF6B6B").opacity(0.8) : .white)
-                                    // Add shadow for better contrast against camera
-                                    .shadow(color: .black.opacity(0.6), radius: 20, x: 0, y: 10)
-                            }
-                            Spacer()
-                        }
-
-                        // IDLE WARNING: boss glows red when about to attack
+                        // Red flash when player is idle / boss warns
                         if vm.idleWarning {
-                            Color.red.opacity(0.2).ignoresSafeArea()
-                                .transition(.opacity)
-                        }
-
-                        // Red flash overlay when player takes damage
-                        if vm.playerFlash {
-                            Color.red.opacity(0.4)
+                            Color.red.opacity(0.18)
                                 .ignoresSafeArea()
                                 .transition(.opacity)
                         }
 
-                        // Damage numbers floating
-                        ForEach(vm.damageNumbers) { dmg in
-                            if dmg.isBossDamage {
-                                // Boss damage spawns slightly higher up
-                                VStack {
-                                    Spacer().frame(height: geo.size.height * 0.25)
-                                    DamageFloater(value: dmg.value, color: Color(hex: "34D399"))
-                                    Spacer()
-                                }
-                            } else {
-                                // Player damage spawns lower
-                                VStack {
-                                    Spacer().frame(height: geo.size.height * 0.6)
-                                    DamageFloater(value: dmg.value, color: Theme.danger)
-                                    Spacer()
-                                }
-                            }
+                        // Red flash when player takes damage
+                        if vm.playerFlash {
+                            Color.red.opacity(0.25)
+                                .ignoresSafeArea()
+                                .transition(.opacity)
                         }
 
-                        // 3. UI Overlays (Top and Bottom HUDs)
                         VStack(spacing: 0) {
-                            // --- TOP HUD ---
-                            VStack(spacing: 0) {
-                                // Dark gradient backdrop for top HUD readability
-                                LinearGradient(
-                                    colors: [Color.black.opacity(0.8), Color.black.opacity(0.0)],
-                                    startPoint: .top, endPoint: .bottom
-                                )
-                                .frame(height: 120)
-                                .ignoresSafeArea(edges: .top)
-                                .overlay(
-                                    VStack(spacing: 8) {
-                                        DungeonTopBar(vm: vm, wave: wave, onExit: { showExitAlert = true })
-                                            .padding(.top, -30) // Adjust safe area spacing
-                                        
-                                        if let boss = vm.boss {
-                                            BossHPBar(boss: boss, percent: vm.bossHPPercent)
-                                                .padding(.horizontal, 16)
+                            // ── Top navigation bar ──────────────────────────
+                            HStack {
+                                Button(action: { showExitAlert = true }) {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 36, height: 36)
+                                        .background(.black.opacity(0.55))
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+                                }
+                                .buttonStyle(TactileButtonStyle())
+
+                                Spacer()
+
+                                // Boss name + wave bar
+                                VStack(spacing: 3) {
+                                    if let boss = vm.boss {
+                                        HStack(spacing: 5) {
+                                            Image(systemName: "flame.fill")
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(boss.color)
+                                            Text(boss.name.uppercased())
+                                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                                .foregroundStyle(boss.color)
+                                            Text("·")
+                                                .foregroundStyle(.white.opacity(0.3))
+                                            Text(boss.subtitle)
+                                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                                .foregroundStyle(.white.opacity(0.5))
                                         }
                                     }
-                                    , alignment: .top
-                                )
+                                    // Wave dots
+                                    HStack(spacing: 4) {
+                                        ForEach(1...3, id: \.self) { w in
+                                            RoundedRectangle(cornerRadius: 2)
+                                                .fill(w <= wave ? Theme.danger : Color.white.opacity(0.15))
+                                                .frame(width: 22, height: 5)
+                                                .glow(color: w == wave ? Theme.danger.opacity(0.6) : .clear, radius: 3)
+                                        }
+                                    }
+                                }
+
+                                Spacer()
+
+                                // Idle warning pill
+                                if vm.idleWarning {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .font(.system(size: 10))
+                                        Text("STOP!")
+                                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                                    }
+                                    .foregroundStyle(Theme.danger)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(Theme.danger.opacity(0.2))
+                                    .cornerRadius(8)
+                                    .transition(.scale.combined(with: .opacity))
+                                } else {
+                                    Color.clear.frame(width: 36)
+                                }
                             }
+                            .padding(.horizontal, 14)
+                            .padding(.top, 8)
 
                             Spacer()
 
-                            // --- BOTTOM HUD ---
-                            VStack(spacing: 12) {
-                                // DIVIDER: exercise label (floating above bottom bar)
-                                HStack(spacing: 10) {
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(selectedClass.themeColor)
-                                    Text(selectedClass.primaryExercise.uppercased())
-                                        .font(.system(size: 11, weight: .black, design: .monospaced))
-                                        .foregroundColor(selectedClass.themeColor)
-                                    Text("= ATTACK")
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                        .foregroundColor(Theme.textMuted)
-                                    
-                                    Spacer()
-                                    
-                                    // Rep counter inline
-                                    HStack(spacing: 4) {
-                                        Text("\(vm.repCount)")
-                                            .font(.system(size: 20, weight: .black, design: .monospaced))
-                                            .foregroundColor(.white)
-                                        Text("REPS")
-                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                            .foregroundColor(Theme.textMuted)
-                                    }
+                            // ── Boss image ───────────────────────────────────
+                            if let boss = vm.boss {
+                                ZStack {
+                                    // Ground glow
+                                    Ellipse()
+                                        .fill(
+                                            RadialGradient(
+                                                colors: [boss.color.opacity(bossPulse ? 0.40 : 0.22), .clear],
+                                                center: .center,
+                                                startRadius: 0,
+                                                endRadius: 80
+                                            )
+                                        )
+                                        .frame(width: 160, height: 50)
+                                        .offset(y: geo.size.height * 0.105)
+                                        .blur(radius: 16)
 
-                                    // Idle warning pill
-                                    if vm.idleWarning {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "exclamationmark.triangle.fill")
-                                                .font(.system(size: 10))
-                                            Text("KEEP GOING!")
-                                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                    Image(boss.imageName)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(height: geo.size.height * 0.40)
+                                        .shadow(color: boss.color.opacity(vm.bossHPPercent < 0.25 ? 0.9 : 0.5), radius: vm.bossHPPercent < 0.25 ? 24 : 14)
+                                        .offset(
+                                            x: vm.bossShake ? CGFloat.random(in: -8...8) : 0,
+                                            y: vm.bossShake ? CGFloat.random(in: -5...5) : 0
+                                        )
+                                        .scaleEffect(bossPulse ? 1.015 : 1.0)
+                                        .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true), value: bossPulse)
+
+                                    // Floating damage numbers on boss
+                                    ForEach(vm.damageNumbers) { dmg in
+                                        if dmg.isBossDamage {
+                                            DamageFloater(value: dmg.value, color: Color(hex: "34D399"))
+                                                .offset(x: CGFloat.random(in: -40...40))
                                         }
-                                        .foregroundColor(Theme.danger)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Theme.danger.opacity(0.2))
-                                        .cornerRadius(8)
-                                        .transition(.scale.combined(with: .opacity))
                                     }
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                                .background(Color(hex: "111520").opacity(0.85))
-                                .cornerRadius(12)
-                                .padding(.horizontal, 16)
-                                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-
-                                // Player HP & Tracking status
-                                ZStack(alignment: .bottomTrailing) {
-                                    PlayerHPBar(hp: vm.playerHP, maxHP: vm.playerMaxHP, percent: vm.playerHPPercent, characterClass: selectedClass)
-                                        .padding(.horizontal, 16)
-                                        .padding(.bottom, 32)
-                                    
-                                    // Detection feedback (floating on the right)
-                                    HStack(spacing: 6) {
-                                        Circle()
-                                            .fill(cameraVM.isPersonDetected ? Theme.success : Theme.danger)
-                                            .frame(width: 8, height: 8)
-                                            .glow(color: cameraVM.isPersonDetected ? Theme.success : Theme.danger, radius: 3)
-                                        Text(cameraVM.isPersonDetected ? "TRACKING" : "SEARCHING...")
-                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                            .foregroundColor(cameraVM.isPersonDetected ? Theme.success : Theme.danger)
-                                    }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.black.opacity(0.6))
-                                    .cornerRadius(8)
-                                    .padding(.trailing, 16)
-                                    .padding(.bottom, 72) // Positioned just above HP bar
                                 }
                             }
-                            // Subtle gradient behind bottom HUD for legibility
-                            .background(
-                                LinearGradient(
-                                    colors: [Color.black.opacity(0.0), Color.black.opacity(0.9)],
-                                    startPoint: .top, endPoint: .bottom
-                                )
-                                .padding(.top, -40)
-                                .ignoresSafeArea(edges: .bottom)
-                            )
+
+                            // ── Boss HP bar ───────────────────────────────────
+                            if let boss = vm.boss {
+                                VStack(spacing: 5) {
+                                    HStack {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "heart.fill")
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(boss.color)
+                                            Text("BOSS HP")
+                                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                                .foregroundStyle(boss.color.opacity(0.8))
+                                        }
+                                        Spacer()
+                                        Text("\(boss.currentHP) / \(boss.maxHP)")
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                                            .foregroundStyle(.white)
+                                    }
+
+                                    GeometryReader { barGeo in
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(Color.black.opacity(0.65))
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(LinearGradient(
+                                                    colors: vm.bossHPPercent < 0.25
+                                                        ? [Color.red, Color.orange, Color.yellow]
+                                                        : [boss.color, boss.color.opacity(0.6)],
+                                                    startPoint: .leading, endPoint: .trailing
+                                                ))
+                                                .frame(width: max(0, CGFloat(vm.bossHPPercent) * barGeo.size.width))
+                                                .animation(.spring(response: 0.38), value: vm.bossHPPercent)
+                                                .glow(color: boss.color.opacity(vm.bossHPPercent < 0.25 ? 0.9 : 0.5), radius: vm.bossHPPercent < 0.25 ? 8 : 4)
+                                        }
+                                    }
+                                    .frame(height: 12)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(Color.black.opacity(0.55))
+                                .cornerRadius(12)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(boss.color.opacity(0.3), lineWidth: 1))
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 12)
+                            }
                         }
                     }
+                    .frame(height: geo.size.height * 0.5)
+
+                    // ── Glowing split divider ──────────────────────────────────
+                    ZStack {
+                        Rectangle()
+                            .fill(LinearGradient(
+                                colors: [Theme.danger.opacity(0.7), selectedClass.themeColor.opacity(0.7)],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(height: 2)
+                            .blur(radius: 1)
+                        Rectangle()
+                            .fill(LinearGradient(
+                                colors: [Theme.danger, selectedClass.themeColor],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(height: 1.5)
+                    }
+
+                    // ╔══════════════════════════════╗
+                    // ║   CAMERA FEED (bottom 50%)   ║
+                    // ╚══════════════════════════════╝
+                    ZStack(alignment: .bottom) {
+                        // Live camera feed
+                        CameraPreview(session: cameraVM.cameraManager.session)
+                            .ignoresSafeArea(edges: .bottom)
+
+                        // Pose skeleton overlay
+                        PoseOverlayView(joints: cameraVM.rawJoints, themeColor: selectedClass.themeColor)
+
+                        // Player damage flash on camera half
+                        ForEach(vm.damageNumbers) { dmg in
+                            if !dmg.isBossDamage {
+                                Color.red.opacity(0.3)
+                                    .transition(.opacity)
+                            }
+                        }
+
+                        // Gradient vignette for legibility
+                        VStack(spacing: 0) {
+                            LinearGradient(
+                                colors: [.black.opacity(0.50), .clear],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                            .frame(height: 55)
+                            Spacer()
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.90)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                            .frame(height: 100)
+                        }
+
+                        // Rep counter + exercise label (floating center)
+                        VStack(spacing: 5) {
+                            // Exercise label pill
+                            HStack(spacing: 8) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(selectedClass.themeColor)
+                                Text(selectedClass.primaryExercise.uppercased())
+                                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    .foregroundStyle(selectedClass.themeColor)
+                                Text("= ATTACK")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.45))
+                                Spacer()
+                                // Detection indicator
+                                HStack(spacing: 5) {
+                                    Circle()
+                                        .fill(cameraVM.isPersonDetected ? Theme.success : Theme.danger)
+                                        .frame(width: 7, height: 7)
+                                        .glow(color: cameraVM.isPersonDetected ? Theme.success : Theme.danger, radius: 3)
+                                    Text(cameraVM.isPersonDetected ? "TRACKING" : "SEARCHING")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(cameraVM.isPersonDetected ? Theme.success : Theme.danger)
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color(hex: "111520").opacity(0.88))
+                            .cornerRadius(10)
+                            .padding(.horizontal, 16)
+
+                            // Big rep counter
+                            HStack(alignment: .lastTextBaseline, spacing: 5) {
+                                Text("\(vm.repCount)")
+                                    .font(.system(size: 64, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .shadow(color: selectedClass.themeColor.opacity(0.9), radius: 18)
+                                Text("REPS")
+                                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.45))
+                            }
+                        }
+                        .frame(maxHeight: .infinity)
+                        .padding(.top, 8)
+
+                        // ── Player HP bar — anchored to very bottom ───────────
+                        VStack(spacing: 5) {
+                            HStack {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "shield.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(vm.playerHPPercent < 0.25 ? Color.red : selectedClass.themeColor)
+                                    Text("YOUR HP")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(.white.opacity(0.6))
+                                }
+                                Spacer()
+                                Text("\(vm.playerHP) / \(vm.playerMaxHP)")
+                                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.9))
+                            }
+
+                            GeometryReader { barGeo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.black.opacity(0.7))
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(LinearGradient(
+                                            colors: vm.playerHPPercent < 0.25
+                                                ? [Color.red, Color.orange]
+                                                : [selectedClass.themeColor, selectedClass.themeColor.opacity(0.65)],
+                                            startPoint: .leading, endPoint: .trailing
+                                        ))
+                                        .frame(width: max(0, CGFloat(vm.playerHPPercent) * barGeo.size.width))
+                                        .animation(.spring(response: 0.4), value: vm.playerHP)
+                                        .glow(color: (vm.playerHPPercent < 0.25 ? Color.red : selectedClass.themeColor).opacity(0.5), radius: 4)
+                                }
+                            }
+                            .frame(height: 12)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.black.opacity(0.0), Color.black.opacity(0.90)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                    }
+                    .frame(height: geo.size.height * 0.5)
+                    .clipped()
                 }
             }
-            .onAppear {
-                // Camera starts automatically in dungeon mode via CameraTrackingVM.isDungeonMode
+            .onAppear { 
+                withAnimation { bossPulse = true } 
+                cameraVM.cameraManager.checkPermission()
+            }
+            .onDisappear {
+                cameraVM.cameraManager.stopSession()
             }
             // ── Custom Flee Dialog ────────────────────────────────
             if showExitAlert {
@@ -487,6 +655,7 @@ private struct DungeonCombatView: View {
         }
     }
 }
+
 
 // MARK: – Custom Flee Confirmation Overlay
 

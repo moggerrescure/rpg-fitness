@@ -31,6 +31,14 @@
         { "fieldPath": "selectedClass", "order": "ASCENDING" },
         { "fieldPath": "stats.totalDips", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "selectedClass", "order": "ASCENDING" },
+        { "fieldPath": "level", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

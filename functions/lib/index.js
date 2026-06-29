@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.triggerOpponentBotFallback = exports.fillTeammatesWithBots = exports.onMatchmakingTicketCreated = exports.resolvePvEBattle = exports.equipItem = exports.matchWithOpponent = exports.joinTeam = exports.acceptFriendRequest = exports.sendFriendRequest = exports.processWorldBossCycle = exports.attackWorldBoss = exports.recordClanWarAttack = exports.processClanWarPhases = exports.matchmakeClanWar = void 0;
+exports.getLeaderboards = exports.triggerOpponentBotFallback = exports.fillTeammatesWithBots = exports.onMatchmakingTicketCreated = exports.resolvePvEBattle = exports.equipItem = exports.matchWithOpponent = exports.joinTeam = exports.acceptFriendRequest = exports.inviteToTeam3v3 = exports.searchPlayers = exports.sendFriendRequest = exports.processWorldBossCycle = exports.attackWorldBoss = exports.recordClanWarAttack = exports.processClanWarPhases = exports.matchmakeClanWar = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
@@ -262,8 +262,8 @@ exports.attackWorldBoss = functions.https.onCall(async (data, context) => {
     }
     const uid = context.auth.uid;
     const damage = data.damage;
-    // Anti-cheat limit: Max 500 damage per call
-    if (typeof damage !== "number" || damage <= 0 || damage > 500) {
+    // Anti-cheat limit: Max 5000 damage per call (covers a full 60s raid session)
+    if (typeof damage !== "number" || damage <= 0 || damage > 5000) {
         throw new functions.https.HttpsError("invalid-argument", "Invalid or excessive damage amount.");
     }
     const bossRef = db.collection("world_bosses").doc("current");
@@ -380,7 +380,7 @@ exports.processWorldBossCycle = functions.pubsub.schedule("0 * * * *").onRun(asy
 // 5. HTTP Callable: Send Friend Request
 // -------------------------------------------------------------------
 exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
-    var _a;
+    var _a, _b;
     if (!context.auth)
         throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     const myUid = context.auth.uid;
@@ -407,9 +407,93 @@ exports.sendFriendRequest = functions.https.onCall(async (data, context) => {
     });
     if (sentRequest) {
         const myDoc = await db.collection("users").doc(myUid).get();
-        const myName = ((_a = myDoc.data()) === null || _a === void 0 ? void 0 : _a.name) || "Someone";
+        const myName = ((_a = myDoc.data()) === null || _a === void 0 ? void 0 : _a.username) || ((_b = myDoc.data()) === null || _b === void 0 ? void 0 : _b.name) || "Someone";
         await sendPushNotification(targetUid, "Friend Request", `${myName} sent you a friend request!`);
     }
+    return { success: true };
+});
+// -------------------------------------------------------------------
+// 5b. HTTP Callable: Search Players (by username prefix or UID)
+// -------------------------------------------------------------------
+exports.searchPlayers = functions.https.onCall(async (data, context) => {
+    if (!context.auth)
+        throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+    const query = (data.query || "").trim();
+    if (query.length < 2)
+        return { players: [] };
+    const myUid = context.auth.uid;
+    const results = [];
+    // If query looks like a UID (20+ chars), try exact doc lookup
+    if (query.length >= 20) {
+        try {
+            const directDoc = await db.collection("users").doc(query).get();
+            if (directDoc.exists && directDoc.id !== myUid) {
+                results.push(Object.assign({ id: directDoc.id }, directDoc.data()));
+                return { players: results };
+            }
+        }
+        catch (_) { /* ignore */ }
+    }
+    // Username prefix search using usernameLower field
+    const lowerQuery = query.toLowerCase();
+    const snap = await db.collection("users")
+        .where("usernameLower", ">=", lowerQuery)
+        .where("usernameLower", "<", lowerQuery + "\uf8ff")
+        .limit(20)
+        .get();
+    for (const doc of snap.docs) {
+        if (doc.id !== myUid) {
+            results.push(Object.assign({ id: doc.id }, doc.data()));
+        }
+    }
+    // Fallback: exact case-insensitive username match
+    if (results.length === 0) {
+        const exactSnap = await db.collection("users")
+            .where("username", "==", query)
+            .limit(5)
+            .get();
+        for (const doc of exactSnap.docs) {
+            if (doc.id !== myUid) {
+                results.push(Object.assign({ id: doc.id }, doc.data()));
+            }
+        }
+    }
+    return { players: results };
+});
+// -------------------------------------------------------------------
+// 5c. HTTP Callable: Invite Friend to 3v3 Team
+// -------------------------------------------------------------------
+exports.inviteToTeam3v3 = functions.https.onCall(async (data, context) => {
+    var _a, _b;
+    if (!context.auth)
+        throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+    const myUid = context.auth.uid;
+    const ticketId = data.ticketId;
+    const targetUid = data.targetUid;
+    if (!ticketId || !targetUid) {
+        throw new functions.https.HttpsError("invalid-argument", "ticketId and targetUid required.");
+    }
+    const ticketRef = db.collection("matchmaking").doc(ticketId);
+    const ticketDoc = await ticketRef.get();
+    if (!ticketDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Lobby ticket not found.");
+    }
+    const ticketData = ticketDoc.data() || {};
+    if (ticketData.uid !== myUid) {
+        throw new functions.https.HttpsError("permission-denied", "Only the lobby host can invite.");
+    }
+    const currentTeam = ticketData.team || [];
+    const pendingInvites = ticketData.pendingInvites || [];
+    if (currentTeam.length + pendingInvites.length >= 3) {
+        return { success: false, reason: "Team slots full" };
+    }
+    if (!pendingInvites.includes(targetUid)) {
+        pendingInvites.push(targetUid);
+        await ticketRef.update({ pendingInvites });
+    }
+    const myDoc = await db.collection("users").doc(myUid).get();
+    const myName = ((_a = myDoc.data()) === null || _a === void 0 ? void 0 : _a.username) || ((_b = myDoc.data()) === null || _b === void 0 ? void 0 : _b.name) || "Someone";
+    await sendPushNotification(targetUid, "3v3 Team Invite!", `${myName} invited you to join their 3v3 team!`);
     return { success: true };
 });
 // -------------------------------------------------------------------
@@ -723,14 +807,15 @@ exports.fillTeammatesWithBots = functions.https.onCall(async (data, context) => 
         const bots = ["HealerBot", "TankBot", "MageBot"];
         let botIdx = 0;
         while (team.length < 3) {
-            const botClass = team.length === 1 ? "healer" : "mage";
+            const botClass = team.length === 1 ? "Healer" : "Mage";
+            const botClassLower = botClass.toLowerCase();
             team.push({
                 id: `bot_${admin.firestore.Timestamp.now().toMillis()}_${botIdx}`,
                 name: bots[botIdx % bots.length] || "Bot",
                 characterClass: botClass,
                 health: 110,
                 maxHealth: 110,
-                avatarName: `avatar_${botClass}`,
+                avatarName: `avatar_${botClassLower}`,
                 reps: 0
             });
             botIdx++;
@@ -753,7 +838,8 @@ exports.triggerOpponentBotFallback = functions.https.onCall(async (data, context
     if (!ticketId)
         throw new functions.https.HttpsError("invalid-argument", "Missing ticketId.");
     const ref = db.collection("matchmaking").doc(ticketId);
-    await db.runTransaction(async (transaction) => {
+    let finalBattleId = "";
+    const finalBattleData = await db.runTransaction(async (transaction) => {
         const doc = await transaction.get(ref);
         if (!doc.exists)
             return;
@@ -761,19 +847,21 @@ exports.triggerOpponentBotFallback = functions.https.onCall(async (data, context
         if (!ticket || ticket.status !== "searchingOpponent")
             return;
         const battleId = (0, crypto_1.randomUUID)();
+        finalBattleId = battleId;
         const opponentTeam = [];
         if (type === "team3v3") {
             const bots = ["ShadowFiend", "DoomBringer", "NightStalker"];
-            const classes = ["swordsman", "mage", "archer"];
+            const classes = ["Swordsman", "Mage", "Archer"];
             for (let i = 0; i < 3; i++) {
                 const health = 110 + (i * 10);
+                const classLower = classes[i].toLowerCase();
                 opponentTeam.push({
                     id: `bot_${admin.firestore.Timestamp.now().toMillis()}_${i}`,
                     name: bots[i],
                     characterClass: classes[i],
                     health: health,
                     maxHealth: health,
-                    avatarName: `avatar_${classes[i]}`,
+                    avatarName: `avatar_${classLower}`,
                     reps: 0
                 });
             }
@@ -783,7 +871,7 @@ exports.triggerOpponentBotFallback = functions.https.onCall(async (data, context
             opponentTeam.push({
                 id: `bot_${admin.firestore.Timestamp.now().toMillis()}`,
                 name: "Shadow Warrior",
-                characterClass: "swordsman",
+                characterClass: "Swordsman",
                 health: myCharLevel,
                 maxHealth: myCharLevel,
                 avatarName: "avatar_swordsman",
@@ -797,16 +885,84 @@ exports.triggerOpponentBotFallback = functions.https.onCall(async (data, context
             localTeam: ticket.team || [],
             opponentTeam: opponentTeam,
             secondsRemaining: 60,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
             combatLog: []
         };
         const battleRef = db.collection("battles").doc(battleId);
-        transaction.set(battleRef, newBattle);
+        transaction.set(battleRef, Object.assign(Object.assign({}, newBattle), { createdAt: admin.firestore.FieldValue.serverTimestamp() }));
         transaction.update(ref, {
             status: "matched",
             battleId: battleId
         });
+        return Object.assign(Object.assign({}, newBattle), { createdAt: new Date() });
     });
-    return { success: true };
+    return { success: true, battleId: finalBattleId, battleData: finalBattleData };
+});
+// -------------------------------------------------------------------
+// 15. HTTP Callable: Get Leaderboards
+// -------------------------------------------------------------------
+exports.getLeaderboards = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+    }
+    const requestedTypes = data.types || ["global", "pvp_1v1"];
+    const result = {};
+    const allowedClasses = ["Archer", "Mage", "Swordsman", "Healer"];
+    for (const type of requestedTypes) {
+        try {
+            if (type === "pvp_1v1") {
+                // 1v1 leaderboard: sort by pvpTrophies (current-class trophies, updated on every battle)
+                const snap = await db.collection("users")
+                    .orderBy("pvpTrophies", "desc")
+                    .limit(50)
+                    .get();
+                result[type] = snap.docs.map(d => (Object.assign({ id: d.id }, d.data())));
+            }
+            else if (type === "global") {
+                // Global leaderboard: sort by currentLevel (stored field, synced every login)
+                const snap = await db.collection("users")
+                    .orderBy("currentLevel", "desc")
+                    .limit(50)
+                    .get();
+                result[type] = snap.docs.map(d => (Object.assign({ id: d.id }, d.data())));
+            }
+            else if (type === "clans") {
+                const snap = await db.collection("clans")
+                    .orderBy("trophies", "desc")
+                    .limit(30)
+                    .get();
+                result[type] = snap.docs.map(d => (Object.assign({ id: d.id }, d.data())));
+            }
+            else if (allowedClasses.includes(type)) {
+                // Per-class leaderboard: rank by classTrophies[type].
+                // We fetch top 200 by currentLevel then sort in memory by the class-specific trophies.
+                // This avoids composite index requirements and is accurate for typical player counts.
+                const snap = await db.collection("users")
+                    .orderBy("currentLevel", "desc")
+                    .limit(200)
+                    .get();
+                const allPlayers = snap.docs.map(d => (Object.assign({ id: d.id }, d.data())));
+                // Sort by classTrophies[type] descending
+                allPlayers.sort((a, b) => {
+                    const aTrophies = (a.classTrophies && a.classTrophies[type]) ? a.classTrophies[type] : 0;
+                    const bTrophies = (b.classTrophies && b.classTrophies[type]) ? b.classTrophies[type] : 0;
+                    return bTrophies - aTrophies;
+                });
+                // Only include players who have played as this class (level > 1 or has trophies)
+                const filtered = allPlayers.filter((p) => {
+                    const progressions = p.progressions || {};
+                    const classProg = progressions[type] || {};
+                    const classLevel = classProg.level || 1;
+                    const trophies = (p.classTrophies && p.classTrophies[type]) ? p.classTrophies[type] : 0;
+                    return classLevel > 1 || trophies > 0 || p.selectedClass === type;
+                });
+                result[type] = filtered.slice(0, 30);
+            }
+        }
+        catch (err) {
+            console.error(`Failed to fetch leaderboard type=${type}:`, err);
+            result[type] = [];
+        }
+    }
+    return result;
 });
 //# sourceMappingURL=index.js.map

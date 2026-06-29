@@ -296,9 +296,11 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "RPG Fitness reads your steps, calories and workouts to reward you with XP, gold and in-game power.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RPG Fitness needs permission to save workout data to your Health app.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -345,9 +347,11 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "RPG Fitness reads your steps, calories and workouts to reward you with XP, gold and in-game power.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RPG Fitness needs permission to save workout data to your Health app.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
