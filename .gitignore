@@ -21,3 +21,8 @@ Pods/
 
 # Firebase
 GoogleService-Info.plist
+node_modules/
+functions/lib/
+.firebase/
+firebase-debug.log
+
