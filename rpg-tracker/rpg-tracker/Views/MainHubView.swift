@@ -614,13 +614,23 @@ struct HeroCard: View {
                             .rotationEffect(.degrees(-90))
                             .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 5)
 
-                        Circle()
-                            .fill(char.selectedClass.themeColor.opacity(0.14))
-                            .frame(width: 72, height: 72)
-                        Image(systemName: heroClassIcon(char.selectedClass))
-                            .font(.system(size: 30, weight: .bold))
-                            .foregroundColor(char.selectedClass.themeColor)
-                            .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 6)
+                        ZStack {
+                            if let avatar = char.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                Image(platformImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 72, height: 72)
+                                    .clipShape(Circle())
+                            } else {
+                                Circle()
+                                    .fill(char.selectedClass.themeColor.opacity(0.14))
+                                    .frame(width: 72, height: 72)
+                                Image(systemName: heroClassIcon(char.selectedClass))
+                                    .font(.system(size: 30, weight: .bold))
+                                    .foregroundColor(char.selectedClass.themeColor)
+                                    .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 6)
+                            }
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
