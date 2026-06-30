@@ -606,6 +606,7 @@ private struct ShopItemRow: View {
                 )
         )
         .shadow(color: isEquipped ? accentColor.opacity(0.1) : Color.black.opacity(0.08), radius: 8, x: 0, y: 3)
+        .buttonStyle(TactileButtonStyle())
     }
 
     // Shortcut for gold computation

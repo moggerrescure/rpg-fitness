@@ -222,6 +222,7 @@ struct InventoryGridCell: View {
                     .lineLimit(1)
             }
         }
+        .buttonStyle(TactileButtonStyle())
     }
 }
 

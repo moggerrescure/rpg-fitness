@@ -231,23 +231,6 @@ struct AnimatedBackgroundView: View {
     }
     
     private func startAnimations() {
-        #if targetEnvironment(simulator)
-        // Disable resource-heavy animations on the simulator to prevent rendering lag
-        cloudOffset1 = 150
-        cloudOffset2 = 180
-        windOpacity = 0.2
-        treeSway = 0.0
-        
-        withAnimation(Animation.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) {
-            lampPulse = true
-        }
-        withAnimation(Animation.linear(duration: 40).repeatForever(autoreverses: false)) {
-            fogOffset = 500
-        }
-        withAnimation(Animation.easeInOut(duration: 5.5).repeatForever(autoreverses: true)) {
-            spotlightAngle = 6
-        }
-        #else
         // Slow float for clouds
         withAnimation(Animation.linear(duration: 45).repeatForever(autoreverses: false)) {
             cloudOffset1 = 450
@@ -275,7 +258,6 @@ struct AnimatedBackgroundView: View {
         withAnimation(Animation.easeInOut(duration: 5.0).repeatForever(autoreverses: true)) {
             spotlightAngle = 8
         }
-        #endif
     }
 }
 

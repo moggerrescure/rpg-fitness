@@ -117,8 +117,12 @@ extension View {
 struct TactileButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.12 : 0.0))
+            )
+            .animation(.spring(response: 0.25, dampingFraction: 0.65), value: configuration.isPressed)
     }
 }
 
