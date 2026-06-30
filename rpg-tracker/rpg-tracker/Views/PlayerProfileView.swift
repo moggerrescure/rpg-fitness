@@ -550,7 +550,7 @@ struct AvatarSelectorView: View {
                                 )
                                 .scaleEffect(isSelected ? 1.05 : 0.95)
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(TactileButtonStyle())
                         }
                     }
                     .padding(.horizontal, 24)
