@@ -24,6 +24,7 @@ struct ClanSettingsView: View {
                             .foregroundColor(.gray)
                             .font(.title2)
                     }
+                    .buttonStyle(TactileButtonStyle())
                 }
                 .padding()
                 
@@ -70,6 +71,7 @@ struct ClanSettingsView: View {
                                                 .background(Theme.danger)
                                                 .cornerRadius(8)
                                         }
+                                        .buttonStyle(TactileButtonStyle())
                                     }
                                 }
                                 .padding()
@@ -103,6 +105,7 @@ struct ClanSettingsView: View {
                                 .background(Theme.danger)
                                 .cornerRadius(12)
                             }
+                            .buttonStyle(TactileButtonStyle())
                             .padding(.horizontal)
                         }
                     }

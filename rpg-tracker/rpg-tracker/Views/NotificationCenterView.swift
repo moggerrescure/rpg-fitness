@@ -31,6 +31,7 @@ struct NotificationCenterView: View {
                                 .background(Theme.primary.opacity(0.15))
                                 .cornerRadius(12)
                         }
+                        .buttonStyle(TactileButtonStyle())
                     }
                     
                     Button(action: { dismiss() }) {
@@ -38,6 +39,7 @@ struct NotificationCenterView: View {
                             .font(.title2)
                             .foregroundColor(Theme.textMuted)
                     }
+                    .buttonStyle(TactileButtonStyle())
                     .padding(.leading, 8)
                 }
                 .padding()
@@ -66,6 +68,7 @@ struct NotificationCenterView: View {
                                 .font(.caption)
                                 .foregroundColor(Theme.textMuted)
                         }
+                        .buttonStyle(TactileButtonStyle())
                         .padding(.bottom, 24)
                     }
                 } else {
@@ -164,7 +167,7 @@ struct NotificationCard: View {
                     .stroke(notification.isRead ? Theme.border : colorForType(notification.type).opacity(0.6), lineWidth: notification.isRead ? 1 : 2)
             )
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(TactileButtonStyle())
     }
     
     private func colorForType(_ type: NotificationType) -> Color {

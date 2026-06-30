@@ -354,6 +354,7 @@ struct FriendsView: View {
                         .background(.green)
                         .clipShape(Circle())
                 }
+                .buttonStyle(TactileButtonStyle())
                 
                 Button(action: { vm.declineRequest(from: char.id) }) {
                     Image(systemName: "xmark")
@@ -363,6 +364,7 @@ struct FriendsView: View {
                         .background(Theme.cardBackground)
                         .clipShape(Circle())
                 }
+                .buttonStyle(TactileButtonStyle())
             }
         }
         .padding(14)
