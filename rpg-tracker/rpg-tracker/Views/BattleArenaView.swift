@@ -25,14 +25,13 @@ enum BattleArenaSheetType: Identifiable, Equatable {
 }
 
 enum StorySetupStep: Equatable {
-    case selectMode       // solo / coop prompt
-    case inviteFriend     // invite companion inline
     case warpAnimation    // github-like warp animation
     case activeMap        // actual map view
 }
 
 struct BattleArenaView: View {
     @Environment(\.scenePhase) var scenePhase
+    @Environment(\.dismiss) var dismiss
     @StateObject private var viewModel = BattleVM()
     @State private var selectedTab: Int = 0 // 0: Arena, 1: 1v1 Leaderboards
     @State private var isInLobby: Bool = false
@@ -73,62 +72,21 @@ struct BattleArenaView: View {
                             }
                         }
                         .toolbar(.hidden, for: .tabBar)
+                    } else if MultiplayerService.shared.isInTeamLobby {
+                        // New direct 3v3 flow: show team lobby with slots + countdown
+                        TeamLobbyView(onBattleStarted: { })
+                            .environmentObject(MultiplayerService.shared)
+                            .environmentObject(FirebaseService.shared)
                     } else if isInLobby {
                         BattleArenaTeamLobbyView(viewModel: viewModel, backAction: {
                             isInLobby = false
+                            MultiplayerService.shared.leaveMatch()
                             viewModel.selectedPvPType = .duel1v1
                         }, inviteAction: {
                             showInviteSheet = true
                         }, searchAction: {
                             showMatchmakingClassPicker = true
                         })
-                    } else if storySetupStep == .selectMode {
-                        ZStack {
-                            AnimatedBackgroundView(backgroundType: .mountain)
-                            Color.black.opacity(0.5)
-                                .ignoresSafeArea()
-                            
-                            StoryModePromptInlineView(
-                                selectSolo: {
-                                    isStoryCoop = false
-                                    storyCoopFriend = nil
-                                    withAnimation(.easeInOut(duration: 0.5)) {
-                                        storySetupStep = .warpAnimation
-                                    }
-                                },
-                                selectCoop: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        storySetupStep = .inviteFriend
-                                    }
-                                },
-                                onCancel: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        storySetupStep = nil
-                                    }
-                                }
-                            )
-                        }
-                    } else if storySetupStep == .inviteFriend {
-                        ZStack {
-                            AnimatedBackgroundView(backgroundType: .mountain)
-                            Color.black.opacity(0.5)
-                                .ignoresSafeArea()
-                            
-                            StoryInviteFriendsInlineView(
-                                invitedFriend: $storyCoopFriend,
-                                onCompleted: {
-                                    isStoryCoop = true
-                                    withAnimation(.easeInOut(duration: 0.5)) {
-                                        storySetupStep = .warpAnimation
-                                    }
-                                },
-                                onCancel: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        storySetupStep = .selectMode
-                                    }
-                                }
-                            )
-                        }
                     } else if storySetupStep == .warpAnimation {
                         WarpTransitionView {
                             withAnimation(.easeInOut(duration: 0.8)) {
@@ -169,8 +127,10 @@ struct BattleArenaView: View {
                                     showInviteSheet = true
                                 },
                                 selectStory: {
-                                    withAnimation {
-                                        storySetupStep = .selectMode
+                                    isStoryCoop = false
+                                    storyCoopFriend = nil
+                                    withAnimation(.easeInOut(duration: 0.5)) {
+                                        storySetupStep = .warpAnimation
                                     }
                                 },
                                 selectBossRaid: {
@@ -272,6 +232,8 @@ struct BattleArenaView: View {
                 )
             case .pvpInviteFriends:
                 InviteFriendsSheet(viewModel: viewModel)
+                    .environmentObject(MultiplayerService.shared)
+                    .environmentObject(FirebaseService.shared)
             }
         }
         .sheet(isPresented: $showMatchmakingClassPicker) {
@@ -302,10 +264,6 @@ struct BattleArenaView: View {
             if newValue == nil {
                 if showInviteSheet {
                     showInviteSheet = false
-                    if viewModel.selectedPvPType == .team3v3 {
-                        // Immediately search for opponent once the invite sheet is dismissed
-                        viewModel.startQueue()
-                    }
                 }
             }
         }
@@ -322,6 +280,26 @@ struct BattleArenaView: View {
         }
         .navigationTitle("ARENA & ARENAS")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if initialPvPType != nil {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .foregroundColor(Theme.textPrimary)
+                    }
+                }
+            }
+        }
+        .onChange(of: viewModel.activeBattle) { oldBattle, newBattle in
+            if oldBattle != nil && newBattle == nil && initialPvPType != nil {
+                dismiss()
+            }
+        }
+        .onChange(of: viewModel.isSearching) { oldSearching, newSearching in
+            if oldSearching && !newSearching && viewModel.activeBattle == nil && initialPvPType != nil {
+                dismiss()
+            }
+        }
         .onAppear {
             if let type = initialPvPType {
                 viewModel.selectedPvPType = type
@@ -781,7 +759,7 @@ struct InviteFriendsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var friendsVM = FriendsVM()
     @State private var showTeamLobby = false
-    @State private var selectedFriendUids: [String] = []
+    @EnvironmentObject var multiplayerService: MultiplayerService
     
     var body: some View {
         ZStack {
@@ -790,7 +768,10 @@ struct InviteFriendsSheet: View {
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    Button { dismiss() } label: {
+                    Button { 
+                        multiplayerService.leaveMatch()
+                        dismiss() 
+                    } label: {
                         Image(systemName: "xmark")
                             .font(.body.bold())
                             .foregroundStyle(Theme.textSecondary)
@@ -833,7 +814,17 @@ struct InviteFriendsSheet: View {
                     ScrollView {
                         VStack(spacing: 10) {
                             ForEach(friendsVM.friends) { friend in
-                                let isSelected = selectedFriendUids.contains(friend.id)
+                                let slotMatch = multiplayerService.teamLobbySlots.first(where: { 
+                                    if case .invited(let uid, _) = $0.state, uid == friend.id { return true }
+                                    if case .joined(let uid, _, _) = $0.state, uid == friend.id { return true }
+                                    return false
+                                })
+                                let isInvited = slotMatch != nil
+                                let hasJoined = {
+                                    if let slot = slotMatch, case .joined = slot.state { return true }
+                                    return false
+                                }()
+                                
                                 HStack(spacing: 14) {
                                     ZStack {
                                         Circle()
@@ -853,26 +844,24 @@ struct InviteFriendsSheet: View {
                                     }
                                     Spacer()
                                     Button {
-                                        if isSelected {
-                                            selectedFriendUids.removeAll { $0 == friend.id }
-                                        } else if selectedFriendUids.count < 2 {
-                                            selectedFriendUids.append(friend.id)
+                                        if !isInvited {
+                                            multiplayerService.sendTeamInvite(uid: friend.id)
                                         }
                                     } label: {
-                                        Text(isSelected ? "INVITED ✓" : "INVITE")
+                                        Text(hasJoined ? "JOINED ✓" : (isInvited ? "INVITED ✓" : "INVITE"))
                                             .font(.system(size: 11, weight: .black, design: .monospaced))
-                                            .foregroundStyle(isSelected ? .white : Theme.primary)
+                                            .foregroundStyle(isInvited ? .white : Theme.primary)
                                             .padding(.horizontal, 14)
                                             .padding(.vertical, 8)
-                                            .background(isSelected ? Theme.primary : Theme.primary.opacity(0.12))
+                                            .background(isInvited ? (hasJoined ? Theme.success : Theme.primary) : Theme.primary.opacity(0.12))
                                             .clipShape(Capsule())
                                     }
-                                    .disabled(selectedFriendUids.count >= 2 && !isSelected)
+                                    .disabled(isInvited)
                                 }
                                 .padding(14)
-                                .background(isSelected ? Theme.primary.opacity(0.08) : Theme.cardBackground.opacity(0.6))
+                                .background(isInvited ? (hasJoined ? Theme.success.opacity(0.15) : Theme.primary.opacity(0.08)) : Theme.cardBackground.opacity(0.6))
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(isSelected ? Theme.primary.opacity(0.5) : Theme.border, lineWidth: isSelected ? 1.5 : 1))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(isInvited ? (hasJoined ? Theme.success.opacity(0.5) : Theme.primary.opacity(0.5)) : Theme.border, lineWidth: isInvited ? 1.5 : 1))
                             }
                         }
                         .padding(.horizontal)
@@ -881,13 +870,17 @@ struct InviteFriendsSheet: View {
                 }
                 
                 // Start button
+                let activeCount = multiplayerService.teamLobbySlots.filter { 
+                    if case .bot = $0.state { return false } else { return true } 
+                }.count
+                
                 Button {
                     dismiss()
-                    MultiplayerService.shared.createTeamLobby(invitedFriendUids: selectedFriendUids)
+                    multiplayerService.startTeamBattleFromLobby()
                 } label: {
                     HStack {
                         Image(systemName: "person.3.fill")
-                        Text(selectedFriendUids.isEmpty ? "START WITH BOTS" : "CREATE TEAM (\(selectedFriendUids.count + 1)/3)")
+                        Text(activeCount <= 1 ? "FIGHT SOLO 🤖" : "BATTLE! (\(activeCount)/3)")
                             .fontWeight(.black)
                     }
                     .font(.system(.headline, design: .monospaced))
@@ -901,6 +894,11 @@ struct InviteFriendsSheet: View {
                     .shadow(color: Theme.primary.opacity(0.35), radius: 10, y: 4)
                 }
                 .padding()
+            }
+        }
+        .onAppear {
+            if multiplayerService.teamLobbyTicketId == nil {
+                multiplayerService.initTeamLobby()
             }
         }
     }

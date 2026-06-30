@@ -57,6 +57,11 @@ class MultiplayerService: ObservableObject {
     @Published var incomingTeamInvite: MatchmakingTicket?   // Incoming 3v3 team invite
     @Published var teamLobbyTicketId: String?               // Active 3v3 lobby ticket (host)
     @Published var teamLobbySlots: [TeamSlot] = []          // Visual lobby state
+    @Published var friendDuelCountdown: Int? = nil          // 3→2→1 before friend battle shows
+    @Published var isInTeamLobby: Bool = false               // True while 10s team assembly window is open
+    
+    private var pendingFriendBattle: Battle? = nil           // Held until countdown ends
+    private var countdownTimer: Timer?
     
     private let db = Firestore.firestore()
     private var matchmakingListener: ListenerRegistration?
@@ -116,91 +121,193 @@ class MultiplayerService: ObservableObject {
             }
     }
     
-    // MARK: - 3v3 Lobby
+    // MARK: - 3v3 Team Battle (Direct, no separate lobby step)
     
-    /// Create a 3v3 lobby ticket and invite specific friends.
-    func createTeamLobby(invitedFriendUids: [String]) {
+    /// Opens the team lobby, creating the battle placeholder but NOT starting a timer.
+    func initTeamLobby() {
         guard let char = FirebaseService.shared.currentCharacter else { return }
+        
+        self.currentSearchType = .team3v3
+        
         let myPlayer = BattlePlayer(
             id: char.id, name: char.username,
             characterClass: char.selectedClass,
             health: 100 + char.level * 10, maxHealth: 100 + char.level * 10,
             avatarName: char.avatarName
         )
+        
+        let battleId = "t3v3_\(UUID().uuidString)"
+        
+        // Build initial placeholder: host + empty slots (friends fill them on accept)
+        let placeholder = Battle(
+            id: battleId, type: .team3v3, status: .searching,
+            localTeam: [myPlayer], opponentTeam: [], secondsRemaining: 60
+        )
+        
         let ticket = MatchmakingTicket(
             uid: char.id, playerClass: char.selectedClass, playerLevel: char.level,
             playerAvatar: char.avatarName ?? "avatar_knight", playerName: char.username,
-            status: .searchingTeammates, teamType: .team3v3, team: [myPlayer]
+            status: .searchingTeammates, teamType: .team3v3, team: [myPlayer],
+            pendingInvites: []
         )
+        
         do {
-            let docRef = try db.collection("matchmaking").addDocument(from: ticket)
+            try db.collection("battles").document(battleId).setData(from: placeholder)
+            
+            var ticketData = (try? Firestore.Encoder().encode(ticket) as? [String: Any]) ?? [:]
+            ticketData["battleId"] = battleId
+            let docRef = db.collection("matchmaking").addDocument(data: ticketData)
+            
             self.teamLobbyTicketId = docRef.documentID
             self.currentTicketId = docRef.documentID
-            self.currentSearchType = .team3v3
-            isSearching = true
             
-            // Build initial lobby slots
-            var slots: [TeamSlot] = [TeamSlot(id: char.id, state: .me)]
-            for uid in invitedFriendUids.prefix(2) {
-                // Invite via cloud function
-                let functions = Functions.functions()
-                Task {
-                    let targetName = await FirebaseService.shared.fetchCharacters(byUids: [uid]).first?.username ?? uid
-                    let slot = TeamSlot(id: uid, state: .invited(uid: uid, name: targetName))
-                    if !self.teamLobbySlots.contains(where: { $0.id == uid }) {
-                        self.teamLobbySlots.append(slot)
-                    }
-                    _ = try? await functions.httpsCallable("inviteToTeam3v3").call([
-                        "ticketId": docRef.documentID,
-                        "targetUid": uid
-                    ])
-                }
-            }
-            slots.append(contentsOf: invitedFriendUids.prefix(2).map {
-                TeamSlot(id: $0, state: .invited(uid: $0, name: "Inviting..."))
-            })
-            self.teamLobbySlots = slots
+            // Set up lobby slots: Host + 2 empty Bot slots
+            self.teamLobbySlots = [
+                TeamSlot(id: char.id, state: .me),
+                TeamSlot(id: "bot_\(UUID().uuidString)", state: .bot),
+                TeamSlot(id: "bot_\(UUID().uuidString)", state: .bot)
+            ]
             
-            // Listen for changes to this lobby ticket
-            listenToTeamLobby(docRef: docRef)
+            listenToTeamLobby(docRef: docRef, battleId: battleId, hostPlayer: myPlayer)
         } catch {
-            print("Failed to create team lobby: \(error)")
+            print("Failed to init team lobby: \(error)")
         }
     }
     
-    private func listenToTeamLobby(docRef: DocumentReference) {
+    /// Sends an invite to a specific friend from the open team lobby.
+    func sendTeamInvite(uid: String) {
+        guard let ticketId = currentTicketId, let char = FirebaseService.shared.currentCharacter else { return }
+        
+        // Find first bot slot and replace with invited
+        if let idx = teamLobbySlots.firstIndex(where: { if case .bot = $0.state { return true } else { return false } }) {
+            teamLobbySlots[idx] = TeamSlot(id: uid, state: .invited(uid: uid, name: "Inviting..."))
+        }
+        
+        // Update ticket in Firestore
+        db.collection("matchmaking").document(ticketId).updateData([
+            "pendingInvites": FieldValue.arrayUnion([uid])
+        ])
+        
+        // Send notification
+        NotificationManager.sendInAppNotification(
+            to: uid,
+            title: "3v3 Team Invite! ⚔️",
+            message: "\(char.username) wants you on their 3v3 team! Tap to join.",
+            type: .duel,
+            actionData: ["type": "teamInvite", "ticketId": ticketId]
+        )
+    }
+    
+    private func listenToTeamLobby(docRef: DocumentReference, battleId: String, hostPlayer: BattlePlayer) {
         teamLobbyListener?.remove()
-        teamLobbyListener = docRef.addSnapshotListener { [weak self] snapshot, error in
-            guard let self = self, let snapshot = snapshot, snapshot.exists else { return }
-            guard let ticket = try? snapshot.data(as: MatchmakingTicket.self) else { return }
-            
-            // Update slot states based on team array
-            let joinedIds = Set((ticket.team ?? []).map { $0.id })
-            self.teamLobbySlots = self.teamLobbySlots.map { slot in
-                var updated = slot
-                if case .invited(let uid, let name) = slot.state, joinedIds.contains(uid) {
-                    // Friend joined! Find their class from the team
-                    if let player = ticket.team?.first(where: { $0.id == uid }) {
-                        updated.state = .joined(uid: uid, name: name, cls: player.characterClass)
+        teamLobbyListener = db.collection("battles").document(battleId)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self, let snapshot = snapshot, snapshot.exists else { return }
+                guard let battle = try? snapshot.data(as: Battle.self) else { return }
+                
+                // Update slot states: anyone who joined appears in localTeam
+                let joinedIds = Set(battle.localTeam.map { $0.id })
+                self.teamLobbySlots = self.teamLobbySlots.map { slot in
+                    var updated = slot
+                    if case .invited(let uid, let name) = slot.state, joinedIds.contains(uid) {
+                        if let player = battle.localTeam.first(where: { $0.id == uid }) {
+                            updated.state = .joined(uid: uid, name: player.name, cls: player.characterClass)
+                        }
                     }
+                    return updated
                 }
-                return updated
+                
+                // If battle is now active (host triggered start), stop listening
+                if battle.status == .active {
+                    self.teamLobbyListener?.remove()
+                }
             }
-            
-            // If status changed to searchingOpponent, the team is full — start actual matchmaking
-            if ticket.status == .searchingOpponent {
-                self.listenToTicketAsHost(docRef: docRef, type: .team3v3)
+    }
+    
+    /// Called when host taps GO NOW: cancels the 10s timer and starts battle immediately.
+    func startTeamBattleFromLobby() {
+        guard let ticketId = currentTicketId else { return }
+        Task {
+            if let ticketDoc = try? await db.collection("matchmaking").document(ticketId).getDocument(),
+               let bId = ticketDoc.data()?["battleId"] as? String {
+                self.startTeamBattle(battleId: bId)
             }
         }
     }
     
-    /// Accept a 3v3 team invite from another player.
+    /// Fills remaining team slots with bots, creates opponent team, sets battle to active.
+    private func startTeamBattle(battleId: String) {
+        teamLobbyListener?.remove()
+        let ticketIdToDelete = currentTicketId
+        teamLobbyTicketId = nil
+        isInTeamLobby = false
+        
+        Task {
+            // Read current battle to get who has joined
+            guard let doc = try? await db.collection("battles").document(battleId).getDocument(),
+                  var battle = try? doc.data(as: Battle.self) else { return }
+            
+            // Fill localTeam to 3 with bots
+            let botNames = ["IronBot", "StoneBot", "SwiftBot"]
+            let botClasses: [CharacterClass] = [.healer, .mage, .archer]
+            var idx = 0
+            while battle.localTeam.count < 3 {
+                let cls = botClasses[idx % botClasses.count]
+                battle.localTeam.append(BattlePlayer(
+                    id: "bot_ally_\(UUID().uuidString)", name: botNames[idx % botNames.count],
+                    characterClass: cls, health: 110, maxHealth: 110,
+                    avatarName: "avatar_\(cls.rawValue.lowercased())"
+                ))
+                idx += 1
+            }
+            
+            // Build opponent team of 3 bots
+            let oppNames = ["ShadowFiend", "DoomBringer", "NightStalker"]
+            let oppClasses: [CharacterClass] = [.swordsman, .mage, .archer]
+            let opponentTeam = (0..<3).map { i in
+                BattlePlayer(
+                    id: "bot_opp_\(UUID().uuidString)", name: oppNames[i],
+                    characterClass: oppClasses[i],
+                    health: 110 + (i * 10), maxHealth: 110 + (i * 10),
+                    avatarName: "avatar_\(oppClasses[i].rawValue.lowercased())"
+                )
+            }
+            
+            // Build the final complete battle and write it to Firestore
+            let finalBattle = Battle(
+                id: battleId, type: .team3v3, status: .active,
+                localTeam: battle.localTeam, opponentTeam: opponentTeam,
+                secondsRemaining: 60
+            )
+            
+            do {
+                try db.collection("battles").document(battleId).setData(from: finalBattle)
+            } catch {
+                print("Failed to start 3v3 battle: \(error)")
+                return
+            }
+            
+            if let tId = ticketIdToDelete {
+                try? await db.collection("matchmaking").document(tId).delete()
+            }
+            
+            self.currentTicketId = nil
+            self.isSearching = false
+            self.startFriendBattleCountdown(battle: finalBattle)
+        }
+    }
+    
+    /// Acceptor joins the team directly on the battle document.
     func acceptTeamInvite(_ ticket: MatchmakingTicket) {
         guard let char = FirebaseService.shared.currentCharacter else { return }
-        guard let ticketId = ticket.id else { return }
+        guard let battleId = ticket.battleId else {
+            print("acceptTeamInvite: no battleId on ticket")
+            self.incomingTeamInvite = nil
+            return
+        }
         
         self.incomingTeamInvite = nil
-        self.isSearching = true
+        self.isSearching = false
         
         let myPlayer = BattlePlayer(
             id: char.id, name: char.username,
@@ -210,11 +317,42 @@ class MultiplayerService: ObservableObject {
         )
         
         Task {
-            let success = try? await joinTeam(ticketId: ticketId, guests: [myPlayer])
-            if success == true {
-                self.listenToTicketAsGuest(ticketId: ticketId)
-            } else {
-                self.isSearching = false
+            do {
+                // Add self to localTeam on the battle document
+                let playerData = try Firestore.Encoder().encode(myPlayer)
+                try await db.collection("battles").document(battleId).updateData([
+                    "localTeam": FieldValue.arrayUnion([playerData])
+                ])
+                
+                // Remove self from pendingInvites on ticket
+                if let ticketId = ticket.id {
+                    try? await db.collection("matchmaking").document(ticketId).updateData([
+                        "pendingInvites": FieldValue.arrayRemove([char.id])
+                    ])
+                }
+                
+                // Listen for battle to become active (host will trigger startTeamBattle)
+                self.matchmakingListener = db.collection("battles").document(battleId)
+                    .addSnapshotListener { [weak self] snapshot, _ in
+                        guard let self = self, let snap = snapshot, snap.exists else { return }
+                        guard let battle = try? snap.data(as: Battle.self) else { return }
+                        guard battle.status == .active, !battle.opponentTeam.isEmpty else { return }
+                        
+                        self.matchmakingListener?.remove()
+                        self.isSearching = false
+                        
+                        // Build acceptor-perspective battle (my player is in localTeam from server)
+                        self.startFriendBattleCountdown(battle: battle)
+                    }
+                
+                // Timeout after 30s: just cancel
+                DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+                    guard let self = self else { return }
+                    self.matchmakingListener?.remove()
+                    self.isSearching = false
+                }
+            } catch {
+                print("acceptTeamInvite failed: \(error)")
             }
         }
     }
@@ -222,96 +360,160 @@ class MultiplayerService: ObservableObject {
     /// Decline a 3v3 team invite.
     func declineTeamInvite(_ ticket: MatchmakingTicket) {
         self.incomingTeamInvite = nil
-        // Remove our UID from pendingInvites on the ticket
-        if let id = ticket.id, let myUid = FirebaseService.shared.currentCharacter?.id {
-            db.collection("matchmaking").document(id).updateData([
+        guard let myUid = FirebaseService.shared.currentCharacter?.id, let ticketId = ticket.id else { return }
+        
+        Task {
+            try? await db.collection("matchmaking").document(ticketId).updateData([
                 "pendingInvites": FieldValue.arrayRemove([myUid])
             ])
         }
     }
     
-    /// Start the 3v3 battle from the lobby (fills remaining slots with bots).
-    func startTeamBattleFromLobby() {
-        guard let ticketId = teamLobbyTicketId,
-              let char = FirebaseService.shared.currentCharacter else { return }
-        teamLobbyTicketId = nil
-        // Trigger the bot fill + matchmaking pipeline via fillTeammatesWithBots
-        Task {
-            await fillTeammatesWithBots(ticketId: ticketId)
-        }
-    }
+
+    // MARK: - Friend Duels (Direct, no matchmaking queue)
     
+    /// Challenger creates the battle document immediately and waits for acceptor to fill in their player.
     func challengeFriend(friendUid: String) {
         guard let char = FirebaseService.shared.currentCharacter else { return }
         
         self.currentSearchType = .duel1v1
         isSearching = true
         
-        let localTeam = [BattlePlayer(id: char.id, name: char.username, characterClass: char.selectedClass, health: 100 + char.level * 10, maxHealth: 100 + char.level * 10, avatarName: char.avatarName)]
+        let myPlayer = BattlePlayer(
+            id: char.id, name: char.username,
+            characterClass: char.selectedClass,
+            health: 100 + char.level * 10, maxHealth: 100 + char.level * 10,
+            avatarName: char.avatarName
+        )
+        
+        // Write a placeholder battle: localTeam = challenger, opponentTeam = empty (filled on accept)
+        let battleId = "fduel_\(UUID().uuidString)"
+        let placeholder = Battle(
+            id: battleId, type: .duel1v1, status: .searching,
+            localTeam: [myPlayer], opponentTeam: [], secondsRemaining: 60
+        )
         
         let ticket = MatchmakingTicket(
             uid: char.id, playerClass: char.selectedClass, playerLevel: char.level,
             playerAvatar: char.avatarName ?? "avatar_knight", playerName: char.username,
-            status: .waitingForFriend, teamType: .duel1v1, team: localTeam, targetUid: friendUid
+            status: .waitingForFriend, teamType: .duel1v1, team: [myPlayer], targetUid: friendUid
         )
         
         do {
-            let docRef = try db.collection("matchmaking").addDocument(from: ticket)
+            // Write battle placeholder
+            try db.collection("battles").document(battleId).setData(from: placeholder)
+            
+            // Write matchmaking ticket so acceptor can find it
+            var ticketData = (try? Firestore.Encoder().encode(ticket) as? [String: Any]) ?? [:]
+            ticketData["battleId"] = battleId
+            let docRef = db.collection("matchmaking").addDocument(data: ticketData)
             self.currentTicketId = docRef.documentID
             
-            // Send in-app notification to target
+            // Notify the friend
             NotificationManager.sendInAppNotification(
                 to: friendUid,
-                title: "Duel Challenge!",
-                message: "\(char.username) has challenged you to a duel!",
+                title: "Duel Challenge! ⚔️",
+                message: "\(char.username) challenged you to a 1v1 duel! Tap to accept.",
                 type: .duel,
                 actionData: ["type": "duel", "ticketId": docRef.documentID]
             )
             
-            // Listen for friend to accept (status changes to matched)
-            self.matchmakingListener = docRef.addSnapshotListener { [weak self] snapshot, error in
-                guard let self = self, let snapshot = snapshot, snapshot.exists else { return }
-                guard let updatedTicket = try? snapshot.data(as: MatchmakingTicket.self) else { return }
-                
-                if updatedTicket.status == .matched, let battleId = updatedTicket.battleId {
+            // Listen for battle to become active (acceptor fills opponentTeam)
+            self.matchmakingListener = db.collection("battles").document(battleId)
+                .addSnapshotListener { [weak self] snapshot, error in
+                    guard let self = self, let snapshot = snapshot, snapshot.exists else { return }
+                    guard let battle = try? snapshot.data(as: Battle.self) else { return }
+                    guard battle.status == .active, !battle.opponentTeam.isEmpty else { return }
+                    
                     self.matchmakingListener?.remove()
                     self.currentTicketId = nil
-                    Task { try? await docRef.delete() }
-                    self.listenToBattle(battleId: battleId)
+                    self.isSearching = false
+                    
+                    // Build challenger-perspective battle (challenger is localTeam)
+                    var clientBattle = battle
+                    clientBattle.localTeam = battle.localTeam
+                    clientBattle.opponentTeam = battle.opponentTeam
+                    self.startFriendBattleCountdown(battle: clientBattle)
                 }
-            }
             
-            // Timeout if friend doesn't accept in 30 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-                if self.currentTicketId == docRef.documentID {
-                    self.leaveMatch()
-                }
+            // Timeout: 60 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
+                guard let self = self, self.currentTicketId == docRef.documentID else { return }
+                self.leaveMatch()
             }
         } catch {
             print("Failed to challenge friend: \(error)")
+            isSearching = false
         }
     }
     
+    /// Acceptor fills in their player on the battle document, marking it active immediately.
     func acceptDuel(_ ticket: MatchmakingTicket) {
         guard let char = FirebaseService.shared.currentCharacter else { return }
-        guard let ticketId = ticket.id else { return }
+        guard let battleId = ticket.battleId else {
+            print("acceptDuel: no battleId on ticket")
+            self.incomingDuel = nil
+            return
+        }
         
         self.incomingDuel = nil
-        self.isSearching = true
+        self.isSearching = false
         
-        let myTeam = [BattlePlayer(id: char.id, name: char.username, characterClass: char.selectedClass, health: 100 + char.level * 10, maxHealth: 100 + char.level * 10, avatarName: char.avatarName)]
+        let acceptorPlayer = BattlePlayer(
+            id: char.id, name: char.username,
+            characterClass: char.selectedClass,
+            health: 100 + char.level * 10, maxHealth: 100 + char.level * 10,
+            avatarName: char.avatarName
+        )
+        
+        let challengerPlayer = ticket.team?.first ?? BattlePlayer(
+            id: ticket.uid, name: ticket.playerName,
+            characterClass: ticket.playerClass,
+            health: 100 + ticket.playerLevel * 10, maxHealth: 100 + ticket.playerLevel * 10,
+            avatarName: ticket.playerAvatar
+        )
         
         Task {
-            let success = try? await matchWithOpponent(opponentTicketId: ticketId, opponent: ticket, myTeam: myTeam)
-            if success == true {
-                // Battle is created in matchWithOpponent, and we can just listen to the new ticket or battle.
-                // Actually, matchWithOpponent creates the battle and returns true. Let's start listening to the battle directly.
-                // We need the newly generated battleId.
-                // Wait, matchWithOpponent updates the ticket, the host will create battle?
-                // Let's modify matchWithOpponent to return battleId if needed, or we just listen to ticket as guest.
-                self.listenToTicketAsGuest(ticketId: ticketId)
-            } else {
-                self.isSearching = false
+            do {
+                // Update the battle: set opponentTeam (acceptor) and mark active
+                let acceptorData = try Firestore.Encoder().encode(acceptorPlayer)
+                try await db.collection("battles").document(battleId).updateData([
+                    "opponentTeam": [acceptorData],
+                    "status": BattleStatus.active.rawValue,
+                    "createdAt": Timestamp(date: Date())
+                ])
+                
+                // Build acceptor-perspective battle (acceptor is localTeam, challenger is opponentTeam)
+                let clientBattle = Battle(
+                    id: battleId, type: .duel1v1, status: .active,
+                    localTeam: [acceptorPlayer], opponentTeam: [challengerPlayer],
+                    secondsRemaining: 60
+                )
+                self.startFriendBattleCountdown(battle: clientBattle)
+            } catch {
+                print("acceptDuel failed: \(error)")
+            }
+        }
+    }
+    
+    /// Starts a 3-second countdown, then launches the friend battle.
+    private func startFriendBattleCountdown(battle: Battle) {
+        self.pendingFriendBattle = battle
+        self.friendDuelCountdown = 3
+        self.countdownTimer?.invalidate()
+        
+        var remaining = 3
+        self.countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self = self else { timer.invalidate(); return }
+            remaining -= 1
+            self.friendDuelCountdown = remaining
+            if remaining <= 0 {
+                timer.invalidate()
+                self.countdownTimer = nil
+                self.friendDuelCountdown = nil
+                self.activeBattle = self.pendingFriendBattle
+                self.pendingFriendBattle = nil
+                self.listenToBattle(battleId: battle.id)
             }
         }
     }
@@ -1039,12 +1241,19 @@ class MultiplayerService: ObservableObject {
 
         self.isSearching = false
         self.isBattleStarting = false
+        self.isInTeamLobby = false
         self.teammateFallbackTimer?.invalidate()
         self.teammateFallbackTimer = nil
         self.opponentFallbackTimer?.invalidate()
         self.opponentFallbackTimer = nil
         self.matchmakingListener?.remove()
         self.battleListener?.remove()
+        
+        // Cancel any pending friend-duel countdown
+        self.countdownTimer?.invalidate()
+        self.countdownTimer = nil
+        self.friendDuelCountdown = nil
+        self.pendingFriendBattle = nil
         
         if let ticketId = currentTicketId {
             Task { try? await db.collection("matchmaking").document(ticketId).delete() }

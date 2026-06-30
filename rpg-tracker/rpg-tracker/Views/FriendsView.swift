@@ -10,20 +10,29 @@ struct FriendsView: View {
     @State private var pendingTeamInviteUids: [String] = []
     @FocusState private var searchFocused: Bool
     
+    var isEmbedded: Bool = false
+    
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            if !isEmbedded {
+                Theme.background.ignoresSafeArea()
+            }
             
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .font(.title3.bold())
-                            .foregroundStyle(Theme.textPrimary)
-                            .padding(12)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
+                    if !isEmbedded {
+                        Button(action: { dismiss() }) {
+                            Image(systemName: "chevron.left")
+                                .font(.title3.bold())
+                                .foregroundStyle(Theme.textPrimary)
+                                .padding(12)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
+                    } else {
+                        // Spacer to keep layout balanced
+                        Color.clear.frame(width: 44, height: 44)
                     }
                     
                     Spacer()
@@ -428,7 +437,8 @@ struct FriendsView: View {
                 // 3v3 Invite
                 Button {
                     pendingTeamInviteUids = [char.id]
-                    MultiplayerService.shared.createTeamLobby(invitedFriendUids: [char.id])
+                    MultiplayerService.shared.initTeamLobby()
+                    MultiplayerService.shared.sendTeamInvite(uid: char.id)
                     showTeamLobby = true
                 } label: {
                     VStack(spacing: 3) {

@@ -70,6 +70,16 @@ struct MainHubView: View {
                     .zIndex(100)
                 }
                 
+                // MARK: - Friend Duel Countdown Overlay
+                if let countdown = multiplayerService.friendDuelCountdown {
+                    Color.black.opacity(0.92).ignoresSafeArea()
+                        .zIndex(300)
+                    
+                    FriendDuelCountdownOverlay(countdown: countdown)
+                        .zIndex(301)
+                        .transition(.opacity.combined(with: .scale))
+                }
+                
                 // Incoming Duel Challenge Overlay
                 if let duelTicket = MultiplayerService.shared.incomingDuel {
                     Color.black.opacity(0.85).ignoresSafeArea()
@@ -106,7 +116,7 @@ struct MainHubView: View {
                             
                             Button("Accept!") {
                                 MultiplayerService.shared.acceptDuel(duelTicket)
-                                currentTab = 1 // Switch to PVP arena
+                                currentTab = 2 // Switch to Battle Arena tab
                             }
                             .font(.headline.bold())
                             .foregroundColor(.white)
@@ -212,6 +222,8 @@ struct MainHubView: View {
                 NotificationCenterView()
             }
             .task {
+                // Try to set up listeners immediately; if character isn't loaded yet,
+                // onChange below will retry when it becomes available.
                 MultiplayerService.shared.listenForIncomingDuels()
                 if let uid = firebaseService.currentCharacter?.id {
                     NotificationManager.shared.listenForInAppNotifications(userId: uid)
@@ -220,8 +232,30 @@ struct MainHubView: View {
             .onChange(of: firebaseService.currentCharacter?.id) { newId in
                 if let uid = newId {
                     NotificationManager.shared.listenForInAppNotifications(userId: uid)
+                    // Re-setup incoming duel/team listeners now that we have a valid UID.
+                    // This handles the timing race where character loads after .task runs.
+                    MultiplayerService.shared.listenForIncomingDuels()
                 } else {
                     NotificationManager.shared.stopListening()
+                }
+            }
+            // Deep-link navigation from notification taps
+            .onReceive(NotificationManager.shared.$pendingDeepLink) { link in
+                guard let link = link else { return }
+                switch link {
+                case "duel", "arena":
+                    currentTab = 2  // Battle Arena tab
+                case "friends":
+                    currentTab = 0  // Home tab (Friends sheet opens from there)
+                default:
+                    break
+                }
+                NotificationManager.shared.pendingDeepLink = nil
+            }
+            // Auto-switch to Battle Arena when friend countdown finishes
+            .onChange(of: multiplayerService.friendDuelCountdown) { newVal in
+                if newVal == nil && multiplayerService.activeBattle != nil {
+                    withAnimation { currentTab = 2 }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowDungeonRun"))) { _ in
@@ -229,6 +263,80 @@ struct MainHubView: View {
             }
             .fullScreenCover(isPresented: $showDungeonRun) {
                 DungeonRunView()
+            }
+        }
+    }
+}
+
+// MARK: - Friend Duel Countdown Overlay
+struct FriendDuelCountdownOverlay: View {
+    let countdown: Int
+    @State private var ringProgress: CGFloat = 1.0
+    @State private var pulse: Bool = false
+
+    var body: some View {
+        VStack(spacing: 32) {
+            // Crossed-swords badge
+            ZStack {
+                Circle()
+                    .fill(Color.red.opacity(0.12))
+                    .frame(width: 100, height: 100)
+                    .scaleEffect(pulse ? 1.15 : 1.0)
+                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: pulse)
+
+                Circle()
+                    .trim(from: 0, to: ringProgress)
+                    .stroke(
+                        LinearGradient(colors: [Color.red, Color.orange],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                    )
+                    .frame(width: 100, height: 100)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.8), value: ringProgress)
+
+                Image(systemName: "figure.fencing")
+                    .font(.system(size: 38, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(colors: [Color.orange, Color.red],
+                                       startPoint: .top, endPoint: .bottom)
+                    )
+            }
+
+            VStack(spacing: 10) {
+                Text("BATTLE BEGINS IN")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
+                    .tracking(4)
+
+                // Countdown number with glow
+                ZStack {
+                    Text(countdown > 0 ? "\(countdown)" : "FIGHT!")
+                        .font(.system(size: countdown > 0 ? 88 : 52, weight: .black, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(colors: [Color.orange, Color.red],
+                                           startPoint: .top, endPoint: .bottom)
+                        )
+                        .shadow(color: Color.orange.opacity(0.6), radius: 20)
+                        .shadow(color: Color.red.opacity(0.4), radius: 40)
+                        .contentTransition(.numericText())
+                        .animation(.spring(response: 0.3, dampingFraction: 0.5), value: countdown)
+                }
+                .frame(height: 110)
+            }
+
+            Text("Prepare for combat!")
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .foregroundColor(Theme.textSecondary.opacity(0.7))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            pulse = true
+            ringProgress = 0.0
+        }
+        .onChange(of: countdown) { _ in
+            withAnimation(.easeInOut(duration: 0.9)) {
+                ringProgress = countdown > 0 ? CGFloat(countdown) / 3.0 : 0
             }
         }
     }

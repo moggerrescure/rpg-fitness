@@ -76,6 +76,8 @@ class FirebaseService: ObservableObject {
     }
     
     private var characterListener: ListenerRegistration?
+    private var clanListener: ListenerRegistration?
+    private var currentListenedClanId: String?
     
     func startListeningToCharacter(uid: String) {
         characterListener?.remove()
@@ -114,6 +116,17 @@ class FirebaseService: ObservableObject {
                                 }
                                 self.syncCharacter(updated)
                             }
+                            
+                            // Manage Clan Listener
+                            if let clanId = char.clanId {
+                                if self.currentListenedClanId != clanId {
+                                    self.startListeningToClan(clanId: clanId)
+                                }
+                            } else {
+                                self.clanListener?.remove()
+                                self.currentListenedClanId = nil
+                                self.userClan = nil
+                            }
                         }
                     } catch {
                         print("Error decoding character from Firestore: \(error)")
@@ -123,6 +136,55 @@ class FirebaseService: ObservableObject {
                     // Set to nil so MainHubView shows ClassSelectionView for class setup.
                     DispatchQueue.main.async {
                         self.currentCharacter = nil
+                        self.clanListener?.remove()
+                        self.currentListenedClanId = nil
+                        self.userClan = nil
+                    }
+                }
+            }
+    }
+    
+    private func startListeningToClan(clanId: String) {
+        clanListener?.remove()
+        currentListenedClanId = clanId
+        
+        clanListener = Firestore.firestore().collection("clans").document(clanId)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self, let snapshot = snapshot else { return }
+                
+                if snapshot.exists {
+                    do {
+                        let clan = try snapshot.data(as: Clan.self)
+                        DispatchQueue.main.async {
+                            // Check if user is still in the clan (self-healing if kicked/left offline)
+                            if let char = self.currentCharacter, !clan.members.contains(where: { $0.id == char.id }) {
+                                // User was kicked or clan was bugged
+                                self.clanListener?.remove()
+                                self.currentListenedClanId = nil
+                                self.userClan = nil
+                                
+                                var updatedChar = char
+                                updatedChar.clanId = nil
+                                self.syncCharacter(updatedChar)
+                            } else {
+                                self.userClan = clan
+                            }
+                        }
+                    } catch {
+                        print("Error decoding clan from Firestore: \(error)")
+                    }
+                } else {
+                    // Clan was disbanded or deleted
+                    DispatchQueue.main.async {
+                        self.clanListener?.remove()
+                        self.currentListenedClanId = nil
+                        self.userClan = nil
+                        
+                        if let char = self.currentCharacter {
+                            var updatedChar = char
+                            updatedChar.clanId = nil
+                            self.syncCharacter(updatedChar)
+                        }
                     }
                 }
             }
@@ -155,7 +217,7 @@ class FirebaseService: ObservableObject {
         saveFriendsToDisk()
     }
     
-    // MARK: - Character Sync
+    // MARK: - Character & Clan Sync
     func syncCharacter(_ character: Character) {
         var updated = character
         updated.currentLevel = updated.level
@@ -167,6 +229,14 @@ class FirebaseService: ObservableObject {
             Firestore.firestore().collection("users").document(updated.id).setData(data)
         } else {
             try? Firestore.firestore().collection("users").document(updated.id).setData(from: updated)
+        }
+    }
+    
+    func syncClan(_ clan: Clan) {
+        do {
+            try Firestore.firestore().collection("clans").document(clan.id).setData(from: clan)
+        } catch {
+            print("Failed to sync clan: \(error)")
         }
     }
     
@@ -324,6 +394,7 @@ class FirebaseService: ObservableObject {
         )
         
         self.userClan = newClan
+        self.syncClan(newClan)
         
         var updatedChar = char
         updatedChar.clanId = newClan.id
@@ -331,10 +402,18 @@ class FirebaseService: ObservableObject {
     }
     
     func sendFriendRequest(to targetUid: String) async {
-        guard currentCharacter != nil else { return }
+        guard let char = currentCharacter else { return }
         let functions = Functions.functions()
         do {
             _ = try await functions.httpsCallable("sendFriendRequest").call(["targetUid": targetUid])
+            // Notify the target player so they see the request immediately
+            NotificationManager.sendInAppNotification(
+                to: targetUid,
+                title: "New Friend Request!",
+                message: "\(char.username) wants to be your friend. Check the Friends list to accept.",
+                type: .system,
+                actionData: ["type": "friendRequest", "senderUid": char.id]
+            )
         } catch {
             print("Failed to send friend request: \(error)")
         }
@@ -514,6 +593,7 @@ class FirebaseService: ObservableObject {
         guard var clan = userClan else { return }
         clan.description = description
         self.userClan = clan
+        self.syncClan(clan)
     }
     
     func joinClan(_ clan: Clan) {
@@ -525,7 +605,7 @@ class FirebaseService: ObservableObject {
         
         var updatedClan = clan
         // Enforce membership limits
-        guard updatedClan.members.count < 3 else { return }
+        guard updatedClan.members.count < updatedClan.maxMembers else { return }
         
         let member = ClanMember(
             id: char.id,
@@ -537,6 +617,7 @@ class FirebaseService: ObservableObject {
         
         updatedClan.members.append(member)
         self.userClan = updatedClan
+        self.syncClan(updatedClan)
         
         var updatedChar = currentCharacter ?? char
         updatedChar.clanId = updatedClan.id
@@ -564,17 +645,22 @@ class FirebaseService: ObservableObject {
         }
         
         self.userClan = clan
+        self.syncClan(clan)
     }
     func kickMember(memberId: String) {
         guard var clan = userClan else { return }
         clan.members.removeAll(where: { $0.id == memberId })
         self.userClan = clan
+        self.syncClan(clan)
     }
     
     func disbandClan() {
         guard let char = currentCharacter, let clan = userClan else { return }
         if clan.leaderId == char.id {
             self.userClan = nil
+            // Delete clan document
+            Firestore.firestore().collection("clans").document(clan.id).delete()
+            
             var updatedChar = char
             updatedChar.clanId = nil
             syncCharacter(updatedChar)
@@ -588,6 +674,7 @@ class FirebaseService: ObservableObject {
         
         if clan.members.isEmpty {
             self.userClan = nil
+            Firestore.firestore().collection("clans").document(clan.id).delete()
         } else {
             // Assign next leader if leaving leader
             if clan.leaderId == char.id {
@@ -599,6 +686,7 @@ class FirebaseService: ObservableObject {
                 }
             }
             self.userClan = nil
+            self.syncClan(clan)
         }
         
         var updatedChar = char
@@ -608,28 +696,137 @@ class FirebaseService: ObservableObject {
     
     func startClanWar() {
         guard var clan = userClan else { return }
-        let endsAt = Date().addingTimeInterval(86400) // 24 hours from now
+        
+        // Show "searching" state immediately
+        let endsAt = Date().addingTimeInterval(3600) // 1 hour search timeout roughly
         clan.activeWar = ClanWar(
-            phase: .active,
+            phase: .searching,
             phaseEndsAt: endsAt,
-            opponentClanId: "opponent_clan_555",
-            opponentClanName: "IronBeasts",
+            opponentClanId: nil,
+            opponentClanName: nil,
             myClanScore: 0,
-            opponentClanScore: 15
+            opponentClanScore: 0
         )
         self.userClan = clan
+        self.syncClan(clan)
+        
+        Task {
+            do {
+                let db = Firestore.firestore()
+                // Search for an opponent searching for war
+                let snapshot = try await db.collection("matchmaking")
+                    .whereField("type", isEqualTo: "clan_war")
+                    .whereField("status", isEqualTo: "searching")
+                    .limit(to: 5)
+                    .getDocuments()
+                
+                // Find first ticket not from our clan
+                if let doc = snapshot.documents.first(where: { ($0.data()["clanId"] as? String) != clan.id }),
+                   let opponentClanId = doc.data()["clanId"] as? String {
+                    
+                    // Claim the ticket
+                    try await doc.reference.updateData(["status": "matched", "matchedWith": clan.id])
+                    
+                    // Fetch opponent clan
+                    let oppDoc = try await db.collection("clans").document(opponentClanId).getDocument()
+                    let oppName = oppDoc.data()?["name"] as? String ?? "Unknown Clan"
+                    
+                    let warDuration: TimeInterval = 86400 // 24 hours
+                    let warEndsAt = Date().addingTimeInterval(warDuration)
+                    
+                    // Update My Clan
+                    var myClan = clan
+                    myClan.activeWar = ClanWar(phase: .active, phaseEndsAt: warEndsAt, opponentClanId: opponentClanId, opponentClanName: oppName, myClanScore: 0, opponentClanScore: 0)
+                    self.syncClan(myClan)
+                    
+                    // Update Opponent Clan
+                    if var oppClan = try? oppDoc.data(as: Clan.self) {
+                        oppClan.activeWar = ClanWar(phase: .active, phaseEndsAt: warEndsAt, opponentClanId: clan.id, opponentClanName: clan.name, myClanScore: 0, opponentClanScore: 0)
+                        self.syncClan(oppClan)
+                    }
+                } else {
+                    // Create our own searching ticket
+                    try await db.collection("matchmaking").addDocument(data: [
+                        "type": "clan_war",
+                        "clanId": clan.id,
+                        "status": "searching",
+                        "createdAt": FieldValue.serverTimestamp()
+                    ])
+                }
+            } catch {
+                print("Error starting clan war: \(error)")
+            }
+        }
+    }
+    
+    func cancelClanWarSearch() {
+        guard var clan = userClan else { return }
+        
+        // Remove active war locally and in DB
+        clan.activeWar = nil
+        self.userClan = clan
+        self.syncClan(clan)
+        
+        Task {
+            do {
+                let db = Firestore.firestore()
+                let snapshot = try await db.collection("matchmaking")
+                    .whereField("type", isEqualTo: "clan_war")
+                    .whereField("clanId", isEqualTo: clan.id)
+                    .whereField("status", isEqualTo: "searching")
+                    .getDocuments()
+                
+                for doc in snapshot.documents {
+                    try await doc.reference.delete()
+                }
+            } catch {
+                print("Error cancelling clan war search: \(error)")
+            }
+        }
     }
     
     func contributeWarScore(points: Int) {
-        guard var clan = userClan, var war = clan.activeWar else { return }
-        war.myClanScore += points
-        clan.activeWar = war
+        guard var clan = userClan, let charId = currentCharacter?.id else { return }
+        
+        // Find my member in clan and update their stats
+        if let idx = clan.members.firstIndex(where: { $0.id == charId }) {
+            if points > 0 {
+                clan.members[idx].warScoreContributed += points
+            }
+        }
+        
+        if var war = clan.activeWar, points > 0 {
+            war.myClanScore += points
+            clan.activeWar = war
+        }
+        
         self.userClan = clan
+        self.syncClan(clan)
     }
     
     func recordClanWarBattle(won: Bool) {
-        let points = won ? 3 : 1
-        contributeWarScore(points: points)
+        guard var clan = userClan, let charId = currentCharacter?.id else { return }
+        
+        if let idx = clan.members.firstIndex(where: { $0.id == charId }) {
+            clan.members[idx].warAttacksUsed += 1
+        }
+        
+        self.userClan = clan
+        // Sync before contributing points to ensure attacks are saved
+        self.syncClan(clan)
+        
+        if won {
+            contributeWarScore(points: 2)
+        } else {
+            // Update opponent clan score locally for the loser
+            guard var currentClan = userClan else { return }
+            if var war = currentClan.activeWar {
+                war.opponentClanScore += 2
+                currentClan.activeWar = war
+                self.userClan = currentClan
+                self.syncClan(currentClan)
+            }
+        }
     }
     
     // MARK: - Leaderboard Fetch
@@ -711,5 +908,13 @@ class FirebaseService: ObservableObject {
             char.equipAmulet(itemId: itemId)
         }
         syncCharacter(char)
+    }
+    
+    // MARK: - FCM Token
+    func updateFCMToken(_ token: String) {
+        guard var char = currentCharacter else { return }
+        char.fcmToken = token
+        // Persist to Firestore without triggering full character sync overhead
+        Firestore.firestore().collection("users").document(char.id).updateData(["fcmToken": token])
     }
 }

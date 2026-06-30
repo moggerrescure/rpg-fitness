@@ -33,7 +33,9 @@ struct ClanDashboardView: View {
                 } else if selectedTab == 1 {
                     LeaderboardListView(viewModel: viewModel)
                 } else {
-                    FriendsSocialView(currentTab: $currentTab)
+                    FriendsView(isEmbedded: true)
+                        .environmentObject(FirebaseService.shared)
+                        .environmentObject(MultiplayerService.shared)
                 }
             }
             
@@ -633,9 +635,24 @@ struct ActiveClanView: View {
                                 Spacer()
                             }
                             
-                            Text("If no opponent is found within 24 hours, a training opponent will be generated.")
+                            Text("If no opponent is found within 1 hour, search will timeout.")
                                 .font(.caption2)
                                 .foregroundColor(Theme.textSecondary)
+                                
+                            if clan.leaderId == FirebaseService.shared.currentCharacter?.id {
+                                Button(action: viewModel.cancelWarSearch) {
+                                    Text("CANCEL SEARCH")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .fontWeight(.bold)
+                                        .padding(.vertical, 8)
+                                        .padding(.horizontal, 16)
+                                        .background(Theme.danger.opacity(0.8))
+                                        .foregroundColor(.white)
+                                        .cornerRadius(8)
+                                }
+                                .buttonStyle(TactileButtonStyle())
+                                .padding(.top, 8)
+                            }
                         } else if war.phase == .preparation {
                             HStack {
                                 Text(clan.name.uppercased())
@@ -766,17 +783,24 @@ struct ActiveClanView: View {
                             .font(.system(.caption, design: .monospaced))
                             .foregroundColor(Theme.textSecondary)
                         
-                        Button(action: viewModel.startWar) {
-                            Text("INITIATE CLAN WAR")
-                                .font(.system(.subheadline, design: .monospaced))
-                                .fontWeight(.black)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Theme.accent)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
+                        if clan.leaderId == FirebaseService.shared.currentCharacter?.id {
+                            Button(action: viewModel.startWar) {
+                                Text("INITIATE CLAN WAR")
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .fontWeight(.black)
+                                    .padding()
+                                    .frame(maxWidth: .infinity)
+                                    .background(Theme.accent)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(12)
+                            }
+                            .buttonStyle(TactileButtonStyle())
+                        } else {
+                            Text("Only the Clan Leader can initiate wars.")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(Theme.textMuted)
+                                .padding(.top, 4)
                         }
-                        .buttonStyle(TactileButtonStyle())
                     }
                     .padding()
                     .background(Theme.cardBackground.opacity(0.8))
@@ -795,14 +819,6 @@ struct ActiveClanView: View {
         .fullScreenCover(isPresented: $showWarBattle) {
             NavigationView {
                 BattleArenaView(initialPvPType: .clanWar)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button("Flee War") {
-                                showWarBattle = false
-                            }
-                            .foregroundColor(Theme.danger)
-                        }
-                    }
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -854,7 +870,36 @@ struct LeaderboardListView: View {
                                 .foregroundColor(Theme.textMuted)
                         }
                         .padding(.top, 60)
-                    } else if viewModel.leaderboardPlayers.isEmpty {
+                    } else if viewModel.leaderboardType == "clans" && viewModel.leaderboardClans.isEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: "shield")
+                                .font(.system(size: 40))
+                                .foregroundColor(Theme.textMuted.opacity(0.4))
+                            Text("No rankings yet")
+                                .font(.system(.subheadline, design: .monospaced))
+                                .fontWeight(.bold)
+                                .foregroundColor(Theme.textMuted)
+                            Text("Be the first to compete!")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(Theme.textMuted.opacity(0.6))
+                            Button(action: {
+                                isLoading = true
+                                viewModel.fetchClans()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { isLoading = false }
+                            }) {
+                                Label("Refresh", systemImage: "arrow.clockwise")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(Theme.primary)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 10)
+                                    .background(Theme.primary.opacity(0.12))
+                                    .cornerRadius(10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.primary.opacity(0.3), lineWidth: 1))
+                            }
+                            .buttonStyle(TactileButtonStyle())
+                        }
+                        .padding(.top, 40)
+                    } else if viewModel.leaderboardType != "clans" && viewModel.leaderboardPlayers.isEmpty {
                         VStack(spacing: 16) {
                             Image(systemName: "trophy")
                                 .font(.system(size: 40))
@@ -883,6 +928,61 @@ struct LeaderboardListView: View {
                             .buttonStyle(TactileButtonStyle())
                         }
                         .padding(.top, 40)
+                    } else if viewModel.leaderboardType == "clans" {
+                        ForEach(Array(viewModel.leaderboardClans.enumerated()), id: \.offset) { index, clan in
+                            let isMyClan = clan.id == FirebaseService.shared.userClan?.id
+                            HStack(spacing: 14) {
+                                RankIndicator(rank: index + 1)
+                                
+                                Image(systemName: clan.emblem)
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Theme.primary)
+                                    .frame(width: 40, height: 40)
+                                    .background(Theme.cardBackground)
+                                    .clipShape(Circle())
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(clan.name)
+                                            .font(.system(.subheadline, design: .default))
+                                            .fontWeight(.black)
+                                            .foregroundColor(isMyClan ? Theme.primary : Theme.textPrimary)
+                                        if isMyClan {
+                                            Text("YOURS")
+                                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 2)
+                                                .background(Theme.primary)
+                                                .cornerRadius(4)
+                                        }
+                                    }
+                                    Text("\(clan.members.count) Members")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundColor(Theme.textSecondary)
+                                }
+                                
+                                Spacer()
+                                
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("LVL \(clan.level)")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Theme.textPrimary)
+                                    
+                                    Label("\(clan.trophies)", systemImage: "trophy.fill")
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundColor(Theme.warning)
+                                }
+                            }
+                            .padding()
+                            .background(isMyClan ? Theme.primary.opacity(0.15) : Theme.cardBackground.opacity(0.8))
+                            .cornerRadius(16)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(isMyClan ? Theme.primary.opacity(0.6) : (index < 3 ? Theme.warning.opacity(0.3) : Theme.border), lineWidth: isMyClan ? 1.5 : 1)
+                            )
+                        }
                     } else {
                         ForEach(Array(viewModel.leaderboardPlayers.enumerated()), id: \.offset) { index, player in
                             let isMe = player.id == FirebaseService.shared.currentCharacter?.id

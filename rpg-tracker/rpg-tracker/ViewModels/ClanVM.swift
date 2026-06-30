@@ -18,7 +18,9 @@ class ClanVM: ObservableObject {
             checkWarEnd()
         }
     }
+
     @Published var searchResults: [Clan] = []
+    @Published var leaderboardClans: [Clan] = []
     @Published var leaderboardType: String = "global"
     @Published var clanNameInput: String = ""
     @Published var clanDescriptionInput: String = ""
@@ -97,23 +99,30 @@ class ClanVM: ObservableObject {
         firebaseService.startClanWar()
     }
     
+    func cancelWarSearch() {
+        firebaseService.cancelClanWarSearch()
+    }
+    
     func contributeWarScore() {
         // Simulate contributing points from exercises
         firebaseService.contributeWarScore(points: 5)
     }
     
+    private var clansListener: ListenerRegistration?
+    
     func fetchClans() {
-        Task {
-            do {
-                let snapshot = try await Firestore.firestore().collection("clans").limit(to: 20).getDocuments()
+        clansListener?.remove()
+        clansListener = Firestore.firestore().collection("clans")
+            .order(by: "trophies", descending: true)
+            .limit(to: 50)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self, let snapshot = snapshot else { return }
                 let clans = snapshot.documents.compactMap { try? $0.data(as: Clan.self) }
                 DispatchQueue.main.async {
                     self.searchResults = clans
+                    self.leaderboardClans = clans
                 }
-            } catch {
-                print("Error fetching clans: \(error)")
             }
-        }
     }
     
     private func checkWarEnd() {

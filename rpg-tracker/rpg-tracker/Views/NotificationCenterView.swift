@@ -102,8 +102,10 @@ struct NotificationCard: View {
                 NotificationManager.shared.markAsRead(notification)
             }
             if let type = notification.actionData?["type"] {
-                if type == "duel" {
+                if type == "duel" || type == "teamInvite" {
                     NotificationManager.shared.pendingDeepLink = "duel"
+                } else if type == "friendRequest" {
+                    NotificationManager.shared.pendingDeepLink = "friends"
                 }
             }
         }) {

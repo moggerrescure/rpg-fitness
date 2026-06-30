@@ -119,7 +119,7 @@ struct TeamLobbyView: View {
     }
     
     private func startCountdown() {
-        countdown = 20
+        countdown = 10
         countdownTimer?.invalidate()
         countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             Task { @MainActor in
