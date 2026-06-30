@@ -50,6 +50,7 @@ struct Clan: Codable, Identifiable {
     var level: Int = 1
     var xp: Int = 0
     var activeWar: ClanWar? = nil
+    var treasuryGold: Int? = 0
     
     var maxMembers: Int {
         return 10 + (level - 1) * 5

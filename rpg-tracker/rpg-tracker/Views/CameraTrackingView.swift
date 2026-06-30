@@ -11,6 +11,7 @@ struct CameraTrackingView: View {
     @State private var screenShake: Bool = false
     @State private var activeDebuff: CharacterClass? = nil
     @State private var debuffTask: Task<Void, Never>? = nil
+    @State private var showHitOverlay: Bool = false
     
     let bossName: String?
     let bossImage: String?
@@ -170,36 +171,209 @@ struct CameraTrackingView: View {
                     let isBattle = (viewModel.bossMaxHP > 0) || (FirebaseService.shared.activeBattle != nil) || (BattleEngine.shared.activeBattle != nil)
                     
                     if isBattle {
-                        ZStack(alignment: .top) {
-                            CameraPreview(session: viewModel.cameraManager.session)
-                                .ignoresSafeArea()
-                            
-                            PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
-                            
-                            // Flying spell projectiles overlay
-                            ForEach(combatEffects) { effect in
-                                SpellEffectView(effect: effect)
-                            }
-                            
-                            VStack(spacing: 12) {
-                                topControlsBar
-                                    .padding(.top, 10)
+                        let battle = MultiplayerService.shared.activeBattle ?? BattleEngine.shared.activeBattle
+                        VStack(spacing: 0) {
+                            // Top Half: Opponent Combat Area
+                            ZStack {
+                                // Dynamic background
+                                AnimatedBackgroundView(backgroundType: .arena)
+                                    .brightness(-0.15)
                                 
-                                if viewModel.bossMaxHP > 0 {
-                                    bossInfoSection
+                                // Boss / Opponent representation
+                                VStack(spacing: 12) {
+                                    Spacer()
+                                    
+                                    if let battle = battle, let opponent = battle.opponentTeam.first {
+                                        // Opponent Info: Name, Class, level
+                                        VStack(spacing: 4) {
+                                            Text(opponent.name.uppercased())
+                                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                                .foregroundColor(.white)
+                                                .glow(color: opponent.characterClass.themeColor.opacity(0.4), radius: 5)
+                                            Text(opponent.characterClass.rawValue.uppercased())
+                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                .foregroundColor(opponent.characterClass.themeColor)
+                                                .tracking(1)
+                                        }
+                                        
+                                        // Health Bar
+                                        let hpProgress = CGFloat(opponent.health) / CGFloat(opponent.maxHealth)
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Color.black.opacity(0.75))
+                                                .frame(width: 200, height: 10)
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(opponent.characterClass.themeColor)
+                                                .frame(width: 200 * hpProgress, height: 10)
+                                                .glow(color: opponent.characterClass.themeColor.opacity(0.6), radius: 4)
+                                        }
+                                        .frame(width: 200)
+                                        
+                                        // Health Text
+                                        Text("HP: \(opponent.health) / \(opponent.maxHealth)")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.white.opacity(0.85))
+                                        
+                                        // Opponent Avatar (Large and gorgeous)
+                                        ZStack {
+                                            Circle()
+                                                .fill(opponent.characterClass.themeColor.opacity(0.12))
+                                                .frame(width: 100, height: 100)
+                                                .overlay(Circle().stroke(opponent.characterClass.themeColor, lineWidth: 2))
+                                                .glow(color: opponent.characterClass.themeColor.opacity(0.3), radius: 8)
+                                            
+                                            if let avatar = opponent.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                                Image(platformImage: uiImage)
+                                                    .resizable()
+                                                    .scaledToFill()
+                                                    .frame(width: 96, height: 96)
+                                                    .clipShape(Circle())
+                                            } else {
+                                                Image(systemName: "person.crop.circle.fill")
+                                                    .font(.system(size: 80))
+                                                    .foregroundColor(opponent.characterClass.themeColor)
+                                            }
+                                            
+                                            // Red Damage Overlay & Shake
+                                            if showHitOverlay {
+                                                Circle()
+                                                    .fill(Color.red.opacity(0.4))
+                                                    .frame(width: 100, height: 100)
+                                            }
+                                        }
+                                        .scaleEffect(showHitOverlay ? 1.15 : 1.0)
+                                        .offset(x: showHitOverlay ? CGFloat.random(in: -8...8) : 0)
+                                        .animation(.spring(response: 0.2, dampingFraction: 0.5), value: showHitOverlay)
+                                    } else if viewModel.bossMaxHP > 0 {
+                                        // World Boss info
+                                        VStack(spacing: 4) {
+                                            Text(bossName?.uppercased() ?? "WORLD BOSS")
+                                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                                .foregroundColor(Theme.danger)
+                                                .glow(color: Theme.danger.opacity(0.4), radius: 5)
+                                        }
+                                        
+                                        // Boss Health Bar
+                                        let hpProgress = CGFloat(viewModel.bossCurrentHP) / CGFloat(max(1, viewModel.bossMaxHP))
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Color.black.opacity(0.75))
+                                                .frame(width: 200, height: 10)
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Theme.danger)
+                                                .frame(width: 200 * hpProgress, height: 10)
+                                                .glow(color: Theme.danger.opacity(0.6), radius: 4)
+                                        }
+                                        .frame(width: 200)
+                                        
+                                        // Health Text
+                                        Text("HP: \(viewModel.bossCurrentHP) / \(viewModel.bossMaxHP)")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.white.opacity(0.85))
+                                        
+                                        // Boss Avatar
+                                        ZStack {
+                                            Circle()
+                                                .fill(Theme.danger.opacity(0.12))
+                                                .frame(width: 100, height: 100)
+                                                .overlay(Circle().stroke(Theme.danger, lineWidth: 2))
+                                                .glow(color: Theme.danger.opacity(0.3), radius: 8)
+                                            
+                                            if let bImg = bossImage {
+                                                Image(bImg)
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .frame(width: 96, height: 96)
+                                                    .clipShape(Circle())
+                                            } else {
+                                                Image(systemName: "shield.fill")
+                                                    .font(.system(size: 80))
+                                                    .foregroundColor(Theme.danger)
+                                            }
+                                            
+                                            BossDebuffOverlay(debuff: activeDebuff)
+                                                .frame(width: 100, height: 100)
+                                            
+                                            if showHitOverlay {
+                                                Circle()
+                                                    .fill(Color.red.opacity(0.45))
+                                                    .frame(width: 100, height: 100)
+                                            }
+                                        }
+                                        .scaleEffect(showHitOverlay ? 1.15 : 1.0)
+                                        .offset(x: showHitOverlay ? CGFloat.random(in: -8...8) : 0)
+                                        .animation(.spring(response: 0.2, dampingFraction: 0.5), value: showHitOverlay)
+                                    }
+                                    
+                                    Spacer()
                                 }
                                 
-                                pvpMatchupSection
-                                    .padding(.horizontal, 14)
+                                // Flying spells overhead
+                                ForEach(combatEffects) { effect in
+                                    SpellEffectView(effect: effect)
+                                }
                                 
-                                Spacer()
-                                
-                                liveFeedbackPrompt
-                                
-                                repsDisplay
-                                    .padding(.bottom, 24)
+                                // Back Button & Timer
+                                VStack {
+                                    HStack {
+                                        Button(action: {
+                                            withAnimation { isWorkoutStarted = false }
+                                        }) {
+                                            Image(systemName: "arrow.left")
+                                                .font(.title3)
+                                                .foregroundColor(.white)
+                                                .frame(width: 44, height: 44)
+                                                .background(Color.black.opacity(0.4))
+                                                .clipShape(Circle())
+                                        }
+                                        Spacer()
+                                        
+                                        // Timer overlay if battle is present
+                                        if let battle = battle {
+                                            Text("\(battle.secondsRemaining)s")
+                                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 6)
+                                                .background(Color.black.opacity(0.5))
+                                                .cornerRadius(10)
+                                        }
+                                    }
+                                    .padding(.horizontal)
+                                    .padding(.top, 10)
+                                    
+                                    Spacer()
+                                }
                             }
+                            .frame(height: geo.size.height * 0.45)
                             .offset(x: screenShake ? CGFloat.random(in: -7...7) : 0, y: screenShake ? CGFloat.random(in: -5...5) : 0)
+                            
+                            // Golden separator line
+                            Rectangle()
+                                .fill(LinearGradient(colors: [Theme.healerColor, Theme.healerColor.opacity(0.3), Theme.healerColor], startPoint: .leading, endPoint: .trailing))
+                                .frame(height: 3)
+                                .shadow(color: Theme.healerColor.opacity(0.6), radius: 4)
+                            
+                            // Bottom Half: User Camera
+                            ZStack(alignment: .bottom) {
+                                CameraPreview(session: viewModel.cameraManager.session)
+                                    .frame(height: geo.size.height * 0.55)
+                                    .clipped()
+                                
+                                PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
+                                    .frame(height: geo.size.height * 0.55)
+                                
+                                VStack {
+                                    Spacer()
+                                    
+                                    liveFeedbackPrompt
+                                        .padding(.bottom, 6)
+                                    
+                                    repsDisplay
+                                        .padding(.bottom, 16)
+                                }
+                            }
+                            .frame(height: geo.size.height * 0.55)
                         }
                     } else {
                         // Normal Training Layout
@@ -489,9 +663,15 @@ struct CameraTrackingView: View {
             guard newVal > oldVal else { return }
             withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
                 screenShake = true
+                showHitOverlay = true
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 screenShake = false
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                withAnimation {
+                    showHitOverlay = false
+                }
             }
             
             // Trigger status debuff on boss based on current class

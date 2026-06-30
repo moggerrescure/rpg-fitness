@@ -91,6 +91,10 @@ class ClanVM: ObservableObject {
         firebaseService.updateClanDescription(description: description)
     }
     
+    func depositGold(amount: Int) {
+        firebaseService.depositClanGold(amount: amount)
+    }
+    
     func changeMemberRole(memberId: String, newRole: ClanRole) {
         firebaseService.changeMemberRole(memberId: memberId, newRole: newRole)
     }

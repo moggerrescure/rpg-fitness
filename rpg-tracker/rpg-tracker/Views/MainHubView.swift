@@ -482,17 +482,22 @@ struct DashboardNavBar: View {
             Button(action: { showProfile = true }) {
                 HStack(spacing: 11) {
                     ZStack {
-                        Circle()
-                            .fill(char.selectedClass.themeColor.opacity(0.18))
-                            .frame(width: 44, height: 44)
-                        Image(systemName: "person.crop.circle.fill")
-                            .font(.system(size: 34))
-                            .foregroundColor(char.selectedClass.themeColor)
+                        if let avatar = char.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                            Image(platformImage: uiImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 44, height: 44)
+                                .clipShape(Circle())
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 34))
+                                .foregroundColor(char.selectedClass.themeColor)
+                        }
                     }
-                    .overlay(Circle().stroke(char.selectedClass.themeColor.opacity(0.6), lineWidth: 1.5))
-                    .glow(color: char.selectedClass.themeColor.opacity(0.3), radius: 6)
+                    .overlay(Circle().stroke(char.selectedClass.themeColor.opacity(0.8), lineWidth: 2))
+                    .glow(color: char.selectedClass.themeColor.opacity(0.35), radius: 8)
 
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text("LVL \(char.level) · \(char.selectedClass.rawValue.uppercased())")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundColor(char.selectedClass.themeColor)
@@ -503,6 +508,18 @@ struct DashboardNavBar: View {
                             .foregroundColor(Theme.textPrimary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
+                        
+                        // XP Progression mini bar
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.white.opacity(0.12))
+                                .frame(width: 80, height: 4)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(char.selectedClass.themeColor)
+                                .frame(width: 80 * CGFloat(min(1.0, Double(char.xp) / Double(char.xpForNextLevel))), height: 4)
+                                .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 2)
+                        }
+                        .padding(.top, 1)
                     }
                 }
             }

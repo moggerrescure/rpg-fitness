@@ -523,6 +523,13 @@ struct ActiveClanView: View {
                     }
                 }
                 
+                // Castle Modules
+                ClanTreasuryCard(clan: clan, viewModel: viewModel)
+                
+                ClanBuffsCard(clan: clan)
+                
+                ClanRaidBossCard(clan: clan)
+                
                 Divider()
                     .background(Theme.border)
                 
@@ -1598,5 +1605,249 @@ struct LiveCountdownView: View {
         let m = (Int(interval) % 3600) / 60
         let s = Int(interval) % 60
         return String(format: "%02d:%02d:%02d", h, m, s)
+    }
+}
+
+// MARK: - Clan Castle Treasury Widget
+
+struct ClanTreasuryCard: View {
+    let clan: Clan
+    let viewModel: ClanVM
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "banknote.fill")
+                    .foregroundColor(Theme.healerColor)
+                    .font(.title3)
+                
+                Text("CASTLE TREASURY")
+                    .font(.system(.subheadline, design: .monospaced))
+                    .fontWeight(.black)
+                    .foregroundColor(.white)
+                    .tracking(1)
+                
+                Spacer()
+                
+                Text("\(clan.treasuryGold ?? 0) / 100,000 g")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.healerColor)
+            }
+            
+            // Progress Bar
+            let treasury = Double(clan.treasuryGold ?? 0)
+            let progress = min(1.0, treasury / 100000.0)
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 8)
+                GeometryReader { gr in
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.healerColor)
+                        .frame(width: gr.size.width * CGFloat(progress), height: 8)
+                        .glow(color: Theme.healerColor.opacity(0.4), radius: 3)
+                }
+                .frame(height: 8)
+            }
+            .frame(maxWidth: .infinity)
+            
+            // Deposit Buttons
+            HStack(spacing: 12) {
+                let playerGold = FirebaseService.shared.currentCharacter?.gold ?? 0
+                
+                Button(action: {
+                    viewModel.depositGold(amount: 100)
+                }) {
+                    Text("+100 GOLD")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(playerGold >= 100 ? Theme.healerColor.opacity(0.2) : Color.white.opacity(0.05))
+                        .foregroundColor(playerGold >= 100 ? Theme.healerColor : Theme.textMuted)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(playerGold >= 100 ? Theme.healerColor.opacity(0.4) : Color.clear, lineWidth: 1))
+                }
+                .disabled(playerGold < 100)
+                .buttonStyle(TactileButtonStyle())
+                
+                Button(action: {
+                    viewModel.depositGold(amount: 500)
+                }) {
+                    Text("+500 GOLD")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(playerGold >= 500 ? Theme.healerColor.opacity(0.2) : Color.white.opacity(0.05))
+                        .foregroundColor(playerGold >= 500 ? Theme.healerColor : Theme.textMuted)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(playerGold >= 500 ? Theme.healerColor.opacity(0.4) : Color.clear, lineWidth: 1))
+                }
+                .disabled(playerGold < 500)
+                .buttonStyle(TactileButtonStyle())
+            }
+        }
+        .padding(14)
+        .background(Theme.secondaryCard.opacity(0.85))
+        .cornerRadius(14)
+        .dndBorder()
+        .padding(.horizontal)
+    }
+}
+
+// MARK: - Clan Active Buffs Widget
+
+struct ClanBuffsCard: View {
+    let clan: Clan
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "sparkles")
+                    .foregroundColor(Theme.primary)
+                    .font(.title3)
+                
+                Text("GUILD BUFFS")
+                    .font(.system(.subheadline, design: .monospaced))
+                    .fontWeight(.black)
+                    .foregroundColor(.white)
+                    .tracking(1)
+            }
+            
+            VStack(spacing: 8) {
+                // Buff 1
+                HStack {
+                    Image(systemName: "bolt.fill")
+                        .foregroundColor(Theme.primary)
+                        .font(.caption)
+                    Text("CRUSADER'S EXP")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Text("+15% XP")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundColor(Theme.success)
+                }
+                .padding(8)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(8)
+                
+                // Buff 2
+                HStack {
+                    Image(systemName: "flame.fill")
+                        .foregroundColor(Theme.warning)
+                        .font(.caption)
+                    Text("VALOROUS SWORD")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Text("+10% DMG")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundColor(Theme.success)
+                }
+                .padding(8)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(8)
+                
+                // Buff 3
+                HStack {
+                    Image(systemName: "lock.fill")
+                        .foregroundColor(Theme.textMuted)
+                        .font(.caption)
+                    Text("CELESTIAL REGEN")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.textMuted)
+                    Spacer()
+                    Text("REQUIRES LVL 5")
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .foregroundColor(Theme.textMuted)
+                }
+                .padding(8)
+                .background(Color.white.opacity(0.02))
+                .cornerRadius(8)
+            }
+        }
+        .padding(14)
+        .background(Theme.secondaryCard.opacity(0.85))
+        .cornerRadius(14)
+        .dndBorder()
+        .padding(.horizontal)
+    }
+}
+
+// MARK: - Clan Daily Raid Boss Widget
+
+struct ClanRaidBossCard: View {
+    let clan: Clan
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "flame.circle.fill")
+                    .foregroundColor(Theme.danger)
+                    .font(.title3)
+                
+                Text("GUILD DAILY BOSS RAID")
+                    .font(.system(.subheadline, design: .monospaced))
+                    .fontWeight(.black)
+                    .foregroundColor(.white)
+                    .tracking(1)
+            }
+            
+            HStack(spacing: 14) {
+                // Mini boss image or symbol
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Theme.danger.opacity(0.1))
+                        .frame(width: 54, height: 54)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Theme.danger.opacity(0.3), lineWidth: 1)
+                        )
+                    Image(systemName: "shield.fill")
+                        .font(.title2)
+                        .foregroundColor(Theme.danger)
+                }
+                .glow(color: Theme.danger.opacity(0.3), radius: 5)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ICE DRAGON OVERLORD")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                    
+                    Text("HP: 142,500 / 200,000")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    // HP Bar
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.white.opacity(0.12))
+                            .frame(height: 5)
+                        GeometryReader { gr in
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Theme.danger)
+                                .frame(width: gr.size.width * CGFloat(142500.0 / 200000.0), height: 5)
+                                .glow(color: Theme.danger.opacity(0.4), radius: 2)
+                        }
+                        .frame(height: 5)
+                    }
+                }
+            }
+            
+            HStack {
+                Text("Today's Clan Reps:")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
+                Spacer()
+                Text("\(clan.totalReps) / 500 Reps")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.accent)
+            }
+        }
+        .padding(14)
+        .background(Theme.secondaryCard.opacity(0.85))
+        .cornerRadius(14)
+        .dndBorder()
+        .padding(.horizontal)
     }
 }

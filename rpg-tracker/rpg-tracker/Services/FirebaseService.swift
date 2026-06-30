@@ -596,6 +596,21 @@ class FirebaseService: ObservableObject {
         self.syncClan(clan)
     }
     
+    func depositClanGold(amount: Int) {
+        guard var char = currentCharacter else { return }
+        guard var clan = userClan else { return }
+        guard char.gold >= amount else { return }
+        
+        char.gold -= amount
+        self.currentCharacter = char
+        self.syncCharacter(char)
+        
+        let currentTreasury = clan.treasuryGold ?? 0
+        clan.treasuryGold = currentTreasury + amount
+        self.userClan = clan
+        self.syncClan(clan)
+    }
+    
     func joinClan(_ clan: Clan) {
         guard let char = currentCharacter else { return }
         // Person can only be in one clan: enforce leaving first if they belong to one
