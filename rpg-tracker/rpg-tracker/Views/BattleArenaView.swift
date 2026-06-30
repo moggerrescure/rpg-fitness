@@ -1017,6 +1017,7 @@ struct CombatArenaView: View {
     // Local ticking timer so the ring updates every second even without Firestore snapshots
     @State private var localSecondsRemaining: Int = 60
     @State private var localTimerTask: Timer? = nil
+    @State private var showHitOverlay: Bool = false
     
     init(battle: Battle, viewModel: BattleVM) {
         self.battle = battle
@@ -1175,31 +1176,75 @@ struct CombatArenaView: View {
                                     }
                                 }
                             } else if battle.type == .duel1v1 {
-                                // 1v1 Side-by-side fighters
-                                HStack(spacing: 0) {
-                                    // Local player card
-                                    if let p1 = battle.localTeam.first {
-                                        ArenaFighterCard(player: p1, isLocal: true, side: .left)
-                                    }
-
-                                    // VS lightning bolt
-                                    VStack(spacing: 4) {
-                                        Image(systemName: "bolt.fill")
-                                            .font(.system(size: 22, weight: .black))
-                                            .foregroundStyle(Color.yellow)
-                                            .glow(color: Color.yellow.opacity(0.8), radius: 10)
-                                        Text("VS")
-                                            .font(.system(size: 11, weight: .black, design: .monospaced))
-                                            .foregroundStyle(.white)
-                                    }
-                                    .frame(width: 50)
-
-                                    // Opponent card
-                                    if let p2 = battle.opponentTeam.first {
-                                        ArenaFighterCard(player: p2, isLocal: false, side: .right)
+                                // 1v1 Vertical Centered Opponent Fighter Layout
+                                if let opponent = battle.opponentTeam.first {
+                                    VStack(spacing: 12) {
+                                        Spacer()
+                                        
+                                        // Opponent Info: Name, Class
+                                        VStack(spacing: 4) {
+                                            Text(opponent.name.uppercased())
+                                                .font(.system(size: 15, weight: .black, design: .monospaced))
+                                                .foregroundColor(.white)
+                                                .glow(color: opponent.characterClass.themeColor.opacity(0.4), radius: 5)
+                                            
+                                            Text(opponent.characterClass.rawValue.uppercased())
+                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                .foregroundColor(opponent.characterClass.themeColor)
+                                                .tracking(1)
+                                        }
+                                        
+                                        // Health Bar
+                                        let hpProgress = CGFloat(max(0, opponent.health)) / CGFloat(max(1, opponent.maxHealth))
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 5)
+                                                .fill(Color.black.opacity(0.75))
+                                                .frame(width: 220, height: 10)
+                                            RoundedRectangle(cornerRadius: 5)
+                                                .fill(opponent.characterClass.themeColor)
+                                                .frame(width: 220 * hpProgress, height: 10)
+                                                .glow(color: opponent.characterClass.themeColor.opacity(0.6), radius: 4)
+                                        }
+                                        .frame(width: 220)
+                                        
+                                        // Health Text
+                                        Text("HP: \(max(0, opponent.health)) / \(opponent.maxHealth)")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.white.opacity(0.85))
+                                        
+                                        // Large Opponent Avatar with Damage Flashing & Shaking
+                                        ZStack {
+                                            Circle()
+                                                .fill(opponent.characterClass.themeColor.opacity(0.12))
+                                                .frame(width: 110, height: 110)
+                                                .overlay(Circle().stroke(opponent.characterClass.themeColor, lineWidth: 2))
+                                                .glow(color: opponent.characterClass.themeColor.opacity(0.3), radius: 8)
+                                            
+                                            if let avatar = opponent.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                                Image(platformImage: uiImage)
+                                                    .resizable()
+                                                    .scaledToFill()
+                                                    .frame(width: 106, height: 106)
+                                                    .clipShape(Circle())
+                                            } else {
+                                                Image(systemName: "person.crop.circle.fill")
+                                                    .font(.system(size: 90))
+                                                    .foregroundColor(opponent.characterClass.themeColor)
+                                            }
+                                            
+                                            if showHitOverlay {
+                                                Circle()
+                                                    .fill(Color.red.opacity(0.45))
+                                                    .frame(width: 110, height: 110)
+                                            }
+                                        }
+                                        .scaleEffect(showHitOverlay ? 1.15 : 1.0)
+                                        .offset(x: showHitOverlay ? CGFloat.random(in: -8...8) : 0)
+                                        .animation(.spring(response: 0.2, dampingFraction: 0.5), value: showHitOverlay)
+                                        
+                                        Spacer()
                                     }
                                 }
-                                .padding(.horizontal, 16)
                             } else {
                                 // 3v3 Team layout
                                 HStack(spacing: 8) {
@@ -1276,6 +1321,54 @@ struct CombatArenaView: View {
 
                         // Pose skeleton overlay
                         PoseOverlayView(joints: cameraVM.rawJoints, themeColor: cameraVM.selectedClass.themeColor)
+
+                        // Player Dynamic Avatar & Status overlayed on camera
+                        if let player = localPlayer {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 6) {
+                                    ZStack {
+                                        if let avatar = FirebaseService.shared.currentCharacter?.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                            Image(platformImage: uiImage)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(width: 32, height: 32)
+                                                .clipShape(Circle())
+                                        } else {
+                                            Image(systemName: "person.crop.circle.fill")
+                                                .font(.system(size: 24))
+                                                .foregroundColor(cameraVM.selectedClass.themeColor)
+                                        }
+                                    }
+                                    .overlay(Circle().stroke(cameraVM.selectedClass.themeColor, lineWidth: 1.5))
+                                    .glow(color: cameraVM.selectedClass.themeColor.opacity(0.4), radius: 4)
+                                    
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(player.name)
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.white)
+                                        Text("HP: \(max(0, player.health)) / \(player.maxHealth)")
+                                            .font(.system(size: 8, design: .monospaced))
+                                            .foregroundColor(.white.opacity(0.85))
+                                    }
+                                }
+                                
+                                // Mini HP Bar
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Color.black.opacity(0.6))
+                                        .frame(width: 90, height: 4)
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(cameraVM.selectedClass.themeColor)
+                                        .frame(width: 90 * CGFloat(localHPPercent), height: 4)
+                                }
+                            }
+                            .padding(8)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(10)
+                            .padding(.leading, 12)
+                            .padding(.top, 12)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        }
 
                         // Dark gradient vignette
                         VStack(spacing: 0) {
@@ -1397,6 +1490,17 @@ struct CombatArenaView: View {
                     }
                     let isPlayerTarget = lastEvent.targetName == FirebaseService.shared.currentCharacter?.username
                     spawnDamageNumber(amount: lastEvent.value, isCritical: lastEvent.isCritical ?? false, isPlayerTarget: isPlayerTarget)
+                    
+                    if !isPlayerTarget {
+                        withAnimation(.easeInOut(duration: 0.1)) {
+                            showHitOverlay = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            withAnimation {
+                                showHitOverlay = false
+                            }
+                        }
+                    }
                 }
             }
         }
