@@ -77,6 +77,19 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
         }
     }
     
+    func getAssetImageName() -> String? {
+        if slot == .weapon {
+            switch classRestriction {
+            case .archer:    return "weapon_archer_epic"
+            case .mage:      return "weapon_mage_epic"
+            case .healer:    return "weapon_healer_epic"
+            case .swordsman: return "weapon_swordsman_epic"
+            case .none:      return nil
+            }
+        }
+        return nil
+    }
+    
     static func == (lhs: EquipmentItem, rhs: EquipmentItem) -> Bool {
         lhs.id == rhs.id
     }
@@ -380,5 +393,26 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
         EquipmentItem(id: "amu_myt_1", name: "Amulet of Antigravity", slot: .amulet, rarity: .mythical, combatPowerBonus: 65, defense: 30, cost: 3000, classRestriction: nil,
                       description: "A mysterious artifact that defies gravity. Every punch feels weightless."),
     ]
+}
+
+// MARK: - Reusable Item Icon View
+
+struct ItemIconView: View {
+    let item: EquipmentItem?
+    let fallbackIcon: String
+    
+    var body: some View {
+        if let item = item {
+            if let assetName = item.getAssetImageName() {
+                Image(assetName)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: item.getIconName())
+            }
+        } else {
+            Image(systemName: fallbackIcon)
+        }
+    }
 }
 

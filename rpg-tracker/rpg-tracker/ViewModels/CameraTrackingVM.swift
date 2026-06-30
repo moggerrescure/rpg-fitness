@@ -35,10 +35,16 @@ class CameraTrackingVM: ObservableObject {
     private var lastRepTimestamp: Date? = nil
     private var hasTriggeredCompletion = false
     
-    init(selectedClass: CharacterClass, targetReps: Int? = nil, bossMaxHP: Int? = nil, damagePerRep: Int? = nil, isDungeonMode: Bool = false, onComplete: ((Int) -> Void)? = nil) {
+    private var bossName: String?
+    private var bossImage: String?
+    private var endDate: Date = Date()
+    
+    init(selectedClass: CharacterClass, targetReps: Int? = nil, bossMaxHP: Int? = nil, damagePerRep: Int? = nil, bossName: String? = nil, bossImage: String? = nil, isDungeonMode: Bool = false, onComplete: ((Int) -> Void)? = nil) {
         self.selectedClass = selectedClass
         self.onComplete = onComplete
         self.isDungeonMode = isDungeonMode
+        self.bossName = bossName
+        self.bossImage = bossImage
         
         let maxHP = bossMaxHP ?? 0
         let dmg = damagePerRep ?? 0
@@ -52,9 +58,13 @@ class CameraTrackingVM: ObservableObject {
             self.targetReps = targetReps
         }
         
+        let duration = BattleEngine.shared.activeBattle?.secondsRemaining ?? 60
+        self.endDate = Date().addingTimeInterval(TimeInterval(duration))
+        
         engine.setExercise(selectedClass)
         
         setupBindings()
+        startLiveActivity()
     }
     
     private func setupBindings() {
@@ -178,6 +188,39 @@ class CameraTrackingVM: ObservableObject {
                     self.onComplete?(self.repCount)
                 }
             }
+        }
+        
+        updateLiveActivity()
+    }
+    
+    private func startLiveActivity() {
+        let bName = bossName ?? BattleEngine.shared.activeBoss?.name
+        let bImg = bossImage ?? BattleEngine.shared.activeBoss?.avatarName
+        let exercise = selectedClass.primaryExercise
+        
+        LiveActivityManager.shared.startLiveActivity(
+            bossName: bName,
+            bossImage: bImg,
+            exerciseName: exercise,
+            initialReps: repCount,
+            bossCurrentHP: bossCurrentHP,
+            bossMaxHP: bossMaxHP,
+            endDate: endDate
+        )
+    }
+    
+    private func updateLiveActivity() {
+        LiveActivityManager.shared.updateLiveActivity(
+            repCount: repCount,
+            bossCurrentHP: bossCurrentHP,
+            bossMaxHP: bossMaxHP,
+            endDate: endDate
+        )
+    }
+    
+    deinit {
+        Task { @MainActor in
+            await LiveActivityManager.shared.endLiveActivity()
         }
     }
 }

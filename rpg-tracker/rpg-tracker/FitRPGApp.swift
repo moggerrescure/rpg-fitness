@@ -63,6 +63,8 @@ struct FitRPGApp: App {
     @StateObject private var firebaseService = FirebaseService.shared
     @StateObject private var versionManager = VersionManager.shared
     @StateObject private var networkMonitor = NetworkMonitor.shared
+    
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
 
     var body: some Scene {
         WindowGroup {
@@ -93,6 +95,14 @@ struct FitRPGApp: App {
                         }
                     }
                     .transition(.opacity)
+                } else if !hasCompletedOnboarding {
+                    // Show premium RPG onboarding
+                    RPGOnboardingView {
+                        withAnimation(.easeInOut(duration: 0.6)) {
+                            hasCompletedOnboarding = true
+                        }
+                    }
+                    .transition(.asymmetric(insertion: .opacity, removal: .move(edge: .top).combined(with: .opacity)))
                 } else {
                     MainHubView()
                         .environmentObject(authManager)

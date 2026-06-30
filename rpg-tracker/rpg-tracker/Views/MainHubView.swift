@@ -128,8 +128,8 @@ struct MainHubView: View {
                         }
                     }
                     .padding(30)
-                    .background(Theme.cardBackground)
-                    .cornerRadius(24)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
                     .overlay(
                         RoundedRectangle(cornerRadius: 24)
                             .stroke(duelTicket.playerClass.themeColor, lineWidth: 2)
@@ -196,8 +196,8 @@ struct MainHubView: View {
                         }
                     }
                     .padding(28)
-                    .background(Theme.cardBackground)
-                    .cornerRadius(24)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
                     .overlay(
                         RoundedRectangle(cornerRadius: 24)
                             .stroke(teamTicket.playerClass.themeColor, lineWidth: 2)
@@ -520,8 +520,8 @@ struct DashboardNavBar: View {
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 7)
-            .background(Theme.cardBackground.opacity(0.9))
-            .cornerRadius(12)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.healerColor.opacity(0.25), lineWidth: 1))
 
             navIconButton(systemName: "bell.fill", color: Theme.textPrimary, action: { showNotifications = true })
@@ -539,7 +539,7 @@ struct DashboardNavBar: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundColor(color)
                 .frame(width: 36, height: 36)
-                .background(Theme.cardBackground.opacity(0.9))
+                .background(.thinMaterial)
                 .clipShape(Circle())
                 .overlay(Circle().stroke(Theme.border, lineWidth: 1))
         }
@@ -569,127 +569,139 @@ struct HeroCard: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 18) {
-                // Avatar with energy ring
-                ZStack {
-                    Circle()
-                        .stroke(Theme.secondaryCard, lineWidth: 4)
-                        .frame(width: 84, height: 84)
-                    Circle()
-                        .trim(from: 0, to: energyProgress)
-                        .stroke(
-                            AngularGradient(
-                                colors: [char.selectedClass.themeColor, char.selectedClass.themeColor.opacity(0.4)],
-                                center: .center
-                            ),
-                            style: StrokeStyle(lineWidth: 4, lineCap: .round)
-                        )
-                        .frame(width: 84, height: 84)
-                        .rotationEffect(.degrees(-90))
-                        .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 5)
+        ZStack {
+            // Ambient class-colored glow breathing behind the card
+            Circle()
+                .fill(char.selectedClass.themeColor.opacity(0.18))
+                .frame(width: 260, height: 260)
+                .blur(radius: 40)
+                .offset(x: -80, y: -20)
+            
+            VStack(spacing: 0) {
+                HStack(alignment: .top, spacing: 18) {
+                    // Avatar with energy ring
+                    ZStack {
+                        Circle()
+                            .stroke(Theme.secondaryCard, lineWidth: 4)
+                            .frame(width: 84, height: 84)
+                        Circle()
+                            .trim(from: 0, to: energyProgress)
+                            .stroke(
+                                AngularGradient(
+                                    colors: [char.selectedClass.themeColor, char.selectedClass.themeColor.opacity(0.4)],
+                                    center: .center
+                                ),
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                            )
+                            .frame(width: 84, height: 84)
+                            .rotationEffect(.degrees(-90))
+                            .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 5)
 
-                    Circle()
-                        .fill(char.selectedClass.themeColor.opacity(0.14))
-                        .frame(width: 72, height: 72)
-                    Image(systemName: heroClassIcon(char.selectedClass))
-                        .font(.system(size: 30, weight: .bold))
-                        .foregroundColor(char.selectedClass.themeColor)
-                        .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 6)
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("COMBAT POWER")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
-                            .foregroundColor(Theme.textMuted)
-                            .tracking(1)
-                        Text("\(char.combatPower)")
-                            .font(.system(size: 30, weight: .black, design: .monospaced))
-                            .foregroundColor(Theme.textPrimary)
-                            .glow(color: char.selectedClass.themeColor.opacity(0.3), radius: 5)
+                        Circle()
+                            .fill(char.selectedClass.themeColor.opacity(0.14))
+                            .frame(width: 72, height: 72)
+                        Image(systemName: heroClassIcon(char.selectedClass))
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundColor(char.selectedClass.themeColor)
+                            .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 6)
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("XP")
+                    VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("COMBAT POWER")
                                 .font(.system(size: 8, weight: .bold, design: .monospaced))
                                 .foregroundColor(Theme.textMuted)
-                            Spacer()
-                            Text("\(char.xp) / \(char.xpForNextLevel)")
-                                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                .foregroundColor(Theme.textSecondary)
+                                .tracking(1)
+                            Text("\(char.combatPower)")
+                                .font(.system(size: 30, weight: .black, design: .monospaced))
+                                .foregroundColor(Theme.textPrimary)
+                                .glow(color: char.selectedClass.themeColor.opacity(0.3), radius: 5)
                         }
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 4).fill(Theme.secondaryCard)
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(LinearGradient(
-                                        colors: [char.selectedClass.themeColor, char.selectedClass.themeColor.opacity(0.6)],
-                                        startPoint: .leading, endPoint: .trailing
-                                    ))
-                                    .frame(width: xpProgress * geo.size.width)
-                                    .glow(color: char.selectedClass.themeColor.opacity(0.4), radius: 3)
-                            }
-                        }
-                        .frame(height: 6)
 
-                        HStack(spacing: 5) {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(char.selectedClass.themeColor)
-                            Text("ENERGY \(char.energy)/\(char.maxEnergy)")
-                                .font(.system(size: 9, weight: .black, design: .monospaced))
-                                .foregroundColor(char.selectedClass.themeColor)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("XP")
+                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                    .foregroundColor(Theme.textMuted)
+                                Spacer()
+                                Text("\(char.xp) / \(char.xpForNextLevel)")
+                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 4).fill(Theme.secondaryCard)
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(LinearGradient(
+                                            colors: [char.selectedClass.themeColor, char.selectedClass.themeColor.opacity(0.6)],
+                                            startPoint: .leading, endPoint: .trailing
+                                        ))
+                                        .frame(width: xpProgress * geo.size.width)
+                                        .glow(color: char.selectedClass.themeColor.opacity(0.4), radius: 3)
+                                }
+                            }
+                            .frame(height: 6)
+
+                            HStack(spacing: 5) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(char.selectedClass.themeColor)
+                                Text("ENERGY \(char.energy)/\(char.maxEnergy)")
+                                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                                    .foregroundColor(char.selectedClass.themeColor)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(char.selectedClass.themeColor.opacity(0.1))
+                            .cornerRadius(8)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(char.selectedClass.themeColor.opacity(0.1))
-                        .cornerRadius(8)
                     }
                 }
+                .padding(18)
+
+                Divider().background(Theme.border).padding(.horizontal, 14)
+
+                // Gear strip
+                HStack(spacing: 0) {
+                    GearSlotStrip(slot: "WEAPON", item: equippedWeapon, fallbackIcon: "bolt.slash.fill",
+                                  accentColor: char.selectedClass.themeColor, action: onWeaponTap)
+                        .frame(maxWidth: .infinity)
+
+                    Rectangle().fill(Theme.border).frame(width: 1, height: 52)
+
+                    GearSlotStrip(slot: "ARMOR", item: equippedArmor, fallbackIcon: "tshirt.fill",
+                                  accentColor: Theme.textMuted, action: onArmorTap)
+                        .frame(maxWidth: .infinity)
+
+                    Rectangle().fill(Theme.border).frame(width: 1, height: 52)
+
+                    GearSlotStrip(slot: "RING", item: equippedRing, fallbackIcon: "circle.dotted",
+                                  accentColor: equippedRing != nil ? equippedRing!.rarity.color : Theme.textMuted,
+                                  action: onRingTap)
+                        .frame(maxWidth: .infinity)
+
+                    Rectangle().fill(Theme.border).frame(width: 1, height: 52)
+
+                    GearSlotStrip(slot: "AMULET", item: equippedAmulet, fallbackIcon: "sparkles",
+                                  accentColor: equippedAmulet != nil ? equippedAmulet!.rarity.color : Theme.textMuted,
+                                  action: onAmuletTap)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.vertical, 12)
             }
-            .padding(18)
-
-            Divider().background(Theme.border).padding(.horizontal, 14)
-
-            // Gear strip
-            HStack(spacing: 0) {
-                GearSlotStrip(slot: "WEAPON", item: equippedWeapon, fallbackIcon: "bolt.slash.fill",
-                              accentColor: char.selectedClass.themeColor, action: onWeaponTap)
-                    .frame(maxWidth: .infinity)
-
-                Rectangle().fill(Theme.border).frame(width: 1, height: 52)
-
-                GearSlotStrip(slot: "ARMOR", item: equippedArmor, fallbackIcon: "tshirt.fill",
-                              accentColor: Theme.textMuted, action: onArmorTap)
-                    .frame(maxWidth: .infinity)
-
-                Rectangle().fill(Theme.border).frame(width: 1, height: 52)
-
-                GearSlotStrip(slot: "RING", item: equippedRing, fallbackIcon: "circle.dotted",
-                              accentColor: equippedRing != nil ? equippedRing!.rarity.color : Theme.textMuted,
-                              action: onRingTap)
-                    .frame(maxWidth: .infinity)
-
-                Rectangle().fill(Theme.border).frame(width: 1, height: 52)
-
-                GearSlotStrip(slot: "AMULET", item: equippedAmulet, fallbackIcon: "sparkles",
-                              accentColor: equippedAmulet != nil ? equippedAmulet!.rarity.color : Theme.textMuted,
-                              action: onAmuletTap)
-                    .frame(maxWidth: .infinity)
-            }
-            .padding(.vertical, 12)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22)
+                    .stroke(LinearGradient(
+                        colors: [char.selectedClass.themeColor.opacity(0.45), Color.clear],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ), lineWidth: 1.5)
+            )
+            .shadow(color: char.selectedClass.themeColor.opacity(0.12), radius: 16, y: 6)
+            .dndBorder(color: char.selectedClass.themeColor.opacity(0.65), length: 18, lineWidth: 2)
         }
-        .background(RoundedRectangle(cornerRadius: 22).fill(Theme.cardBackground.opacity(0.9)))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22)
-                .stroke(LinearGradient(
-                    colors: [char.selectedClass.themeColor.opacity(0.45), Color.clear],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                ), lineWidth: 1.5)
-        )
-        .shadow(color: char.selectedClass.themeColor.opacity(0.12), radius: 16, y: 6)
+        .tilt(maxAngle: 12)
     }
 
     private func heroClassIcon(_ c: CharacterClass) -> String {
@@ -737,10 +749,11 @@ struct GearSlotStrip: View {
                                 .opacity(item != nil ? 0.6 : 0)
                         )
 
-                    if item != nil {
-                        Image(systemName: item!.getIconName())
+                    if let item = item {
+                        ItemIconView(item: item, fallbackIcon: "questionmark")
+                            .frame(width: 20, height: 20)
                             .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(item!.rarity.color)
+                            .foregroundColor(item.rarity.color)
                     } else {
                         // "+" icon for empty slots
                         Image(systemName: "plus")
@@ -924,14 +937,20 @@ struct DailyQuestCard: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(isComplete ? quest.iconColor.opacity(0.06) : Theme.cardBackground.opacity(0.85))
+            ZStack {
+                if isComplete {
+                    quest.iconColor.opacity(0.06)
+                }
+            }
+            .background(.thinMaterial)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(isComplete ? quest.iconColor.opacity(0.3) : Theme.border, lineWidth: 1)
         )
         .shadow(color: isComplete ? quest.iconColor.opacity(0.08) : Color.black.opacity(0.07), radius: 8, y: 3)
+        .dndBorder(color: quest.iconColor.opacity(isComplete ? 0.65 : 0.25), length: 12, lineWidth: 1.2)
         .scaleEffect(animated ? 1 : 0.94)
         .opacity(animated ? 1 : 0)
         .animation(.spring(response: 0.5, dampingFraction: 0.78).delay(Double(index) * 0.08), value: animated)
@@ -1021,7 +1040,8 @@ struct SlotCard: View {
                 }
             }
             .padding(.vertical, 16).padding(.horizontal, 10).frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.cardBackground.opacity(0.8)))
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(LinearGradient(colors: [color.opacity(0.35), Color.clear], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.5))
             .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
         }
@@ -1057,7 +1077,8 @@ struct QuestRow: View {
                 .background(completed ? Theme.success.opacity(0.1) : Theme.secondaryCard.opacity(0.5)).cornerRadius(6)
         }
         .padding()
-        .background(RoundedRectangle(cornerRadius: 14).fill(Theme.cardBackground.opacity(0.8)))
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(completed ? Theme.success.opacity(0.3) : Theme.border, lineWidth: 1))
     }
 }
@@ -1081,11 +1102,9 @@ struct CustomBottomNavBar: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 24)
-                .fill(Theme.cardBackground.opacity(0.85))
-                .shadow(color: activeColor.opacity(0.2), radius: 10, x: 0, y: 5)
-        )
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .shadow(color: activeColor.opacity(0.2), radius: 10, x: 0, y: 5)
         .overlay(
             RoundedRectangle(cornerRadius: 24)
                 .stroke(LinearGradient(
@@ -1190,8 +1209,15 @@ struct ClassSwitcherPanel: View {
                         }
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
-                        .background(isSelected ? Theme.secondaryCard.opacity(0.9) : Theme.cardBackground.opacity(0.6))
-                        .cornerRadius(12)
+                        .background(
+                            ZStack {
+                                if isSelected {
+                                    charClass.themeColor.opacity(0.12)
+                                }
+                            }
+                            .background(.thinMaterial)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
                                 .stroke(isSelected ? charClass.themeColor : Theme.border, lineWidth: isSelected ? 2 : 1)

@@ -22,7 +22,7 @@ struct ArmoryShopView: View {
         ZStack(alignment: .top) {
             // Background
             AnimatedBackgroundView(backgroundType: .shop)
-            Color.black.opacity(0.45).ignoresSafeArea()
+            Color.black.opacity(0.35).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // ── Header ──────────────────────────────────────────────
@@ -240,7 +240,8 @@ private struct EquippedPreviewStrip: View {
                                     .stroke(isActive ? (item?.rarity.color ?? character.selectedClass.themeColor) : Theme.border, lineWidth: isActive ? 2 : 1)
                             )
 
-                        Image(systemName: item?.getIconName() ?? slotIcon(slot))
+                        ItemIconView(item: item, fallbackIcon: slotIcon(slot))
+                            .frame(width: 24, height: 24)
                             .font(.system(size: 18, weight: .bold))
                             .foregroundColor(item?.rarity.color ?? Theme.textMuted)
                     }
@@ -254,8 +255,8 @@ private struct EquippedPreviewStrip: View {
             }
         }
         .padding(12)
-        .background(Theme.cardBackground.opacity(0.7))
-        .cornerRadius(14)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border, lineWidth: 1))
     }
 
@@ -306,7 +307,7 @@ private struct SlotTabRow: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .background(Theme.cardBackground.opacity(0.5))
+        .background(.thinMaterial)
     }
 
     private func slotIcon(_ slot: EquipmentSlot) -> String {
@@ -462,7 +463,8 @@ private struct ShopItemRow: View {
                                     .stroke(isEquipped ? item.rarity.color : item.rarity.color.opacity(0.3), lineWidth: isEquipped ? 2 : 1)
                             )
 
-                        Image(systemName: item.getIconName())
+                        ItemIconView(item: item, fallbackIcon: "questionmark")
+                            .frame(width: 32, height: 32)
                             .font(.title3)
                             .foregroundColor(item.rarity.color)
                     }
@@ -588,9 +590,14 @@ private struct ShopItemRow: View {
         }
         .buttonStyle(PlainButtonStyle())
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(isEquipped ? accentColor.opacity(0.06) : Theme.cardBackground.opacity(0.85))
+            ZStack {
+                if isEquipped {
+                    accentColor.opacity(0.06)
+                }
+            }
+            .background(.thinMaterial)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		009D58E12B1874F82A0427B0 /* FitRPGWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = E17EF1D2C58DAEDDB74FBADD /* FitRPGWidget.appex */; };
+		5DE1D6C17416B44F14E90709 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5FB13102CFD3F5C27BFC044 /* Foundation.framework */; };
 		AC365FCD2FE97A13006D8C07 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = AC365FCC2FE97A13006D8C07 /* FirebaseAppCheck */; };
 		AC7766A12FE736EE0067B7D3 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE90E3BE538AFF14CF764E5 /* FirebaseAuth */; };
 		AC7766A22FE736EE0067B7D3 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = EBEC446B8D30AE874EF05AB9 /* FirebaseFirestore */; };
@@ -14,10 +16,41 @@
 		AC7766A52FE736EE0067B7D3 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 5F7203E8C8463C592AFE691E /* GoogleSignIn */; };
 		AC7766A62FE736EE0067B7D3 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 8EB1AEBA9744F78D8CB919FC /* GoogleSignInSwift */; };
 		AC7769E92FE73D970067B7D3 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = AC7769E82FE73D970067B7D3 /* FirebaseFunctions */; };
+		B1B38D9BB942BD8869B32D31 /* FitRPGWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29668CC25D2FDCCFB1B5D440 /* FitRPGWidget.swift */; };
+		DB824B20C187E0E5A3B6E690 /* LiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D55F58F0C714DC8271F0A3CF /* LiveActivityAttributes.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		CE68A9B02B886F44BEE48542 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 93E04F122FE41A0700C2384D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F6E963CFBACEF4944DFE0F1D;
+			remoteInfo = FitRPGWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		D7FC0B0A6E23B400268359E3 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				009D58E12B1874F82A0427B0 /* FitRPGWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		29668CC25D2FDCCFB1B5D440 /* FitRPGWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FitRPGWidget.swift; path = FitRPGWidget/FitRPGWidget.swift; sourceTree = "<group>"; };
+		369EDC20DA83884C858CE1FF /* FitRPGWidget-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "FitRPGWidget-Info.plist"; path = "FitRPGWidget/FitRPGWidget-Info.plist"; sourceTree = "<group>"; };
 		93E04F1A2FE41A0700C2384D /* rpg-tracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "rpg-tracker.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B5FB13102CFD3F5C27BFC044 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		D55F58F0C714DC8271F0A3CF /* LiveActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveActivityAttributes.swift; path = "rpg-tracker/Models/LiveActivityAttributes.swift"; sourceTree = "<group>"; };
+		E17EF1D2C58DAEDDB74FBADD /* FitRPGWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FitRPGWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +64,14 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		7C083F8CA1D78AB8FA04224E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5DE1D6C17416B44F14E90709 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		93E04F172FE41A0700C2384D /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -48,12 +89,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		2B69A47AEBE848E2D8CE088F /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				B5FB13102CFD3F5C27BFC044 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 		93E04F112FE41A0700C2384D = {
 			isa = PBXGroup;
 			children = (
 				93E04F1C2FE41A0700C2384D /* rpg-tracker */,
 				AC7769582FE73A9B0067B7D3 /* Frameworks */,
 				93E04F1B2FE41A0700C2384D /* Products */,
+				CAFD1AAB42480204E0D9B878 /* FitRPGWidgetSources */,
 			);
 			sourceTree = "<group>";
 		};
@@ -61,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				93E04F1A2FE41A0700C2384D /* rpg-tracker.app */,
+				E17EF1D2C58DAEDDB74FBADD /* FitRPGWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -68,8 +119,19 @@
 		AC7769582FE73A9B0067B7D3 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				2B69A47AEBE848E2D8CE088F /* iOS */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		CAFD1AAB42480204E0D9B878 /* FitRPGWidgetSources */ = {
+			isa = PBXGroup;
+			children = (
+				29668CC25D2FDCCFB1B5D440 /* FitRPGWidget.swift */,
+				D55F58F0C714DC8271F0A3CF /* LiveActivityAttributes.swift */,
+				369EDC20DA83884C858CE1FF /* FitRPGWidget-Info.plist */,
+			);
+			name = FitRPGWidgetSources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -82,10 +144,12 @@
 				93E04F162FE41A0700C2384D /* Sources */,
 				93E04F172FE41A0700C2384D /* Frameworks */,
 				93E04F182FE41A0700C2384D /* Resources */,
+				D7FC0B0A6E23B400268359E3 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				915757922A014DB80A274E5A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				93E04F1C2FE41A0700C2384D /* rpg-tracker */,
@@ -103,6 +167,23 @@
 			productName = "rpg-tracker";
 			productReference = 93E04F1A2FE41A0700C2384D /* rpg-tracker.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F6E963CFBACEF4944DFE0F1D /* FitRPGWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E51497E4FBA01DB3ABFCF7A2 /* Build configuration list for PBXNativeTarget "FitRPGWidget" */;
+			buildPhases = (
+				99AC664E5F696BB445442357 /* Sources */,
+				7C083F8CA1D78AB8FA04224E /* Frameworks */,
+				93AC5F4B8FB9E4AC1A75FF24 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FitRPGWidget;
+			productName = FitRPGWidget;
+			productReference = E17EF1D2C58DAEDDB74FBADD /* FitRPGWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -146,11 +227,19 @@
 			projectRoot = "";
 			targets = (
 				93E04F192FE41A0700C2384D /* rpg-tracker */,
+				F6E963CFBACEF4944DFE0F1D /* FitRPGWidget */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		93AC5F4B8FB9E4AC1A75FF24 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		93E04F182FE41A0700C2384D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -168,9 +257,51 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		99AC664E5F696BB445442357 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1B38D9BB942BD8869B32D31 /* FitRPGWidget.swift in Sources */,
+				DB824B20C187E0E5A3B6E690 /* LiveActivityAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		915757922A014DB80A274E5A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = FitRPGWidget;
+			target = F6E963CFBACEF4944DFE0F1D /* FitRPGWidget */;
+			targetProxy = CE68A9B02B886F44BEE48542 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		66217B7B0AA35DC2E303A80C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST = NO;
+				INFOPLIST_FILE = "FitRPGWidget/FitRPGWidget-Info.plist";
+				INFOPLIST_KEY_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.borisdev.rpg-tracker.FitRPGWidget";
+				PRODUCT_NAME = FitRPGWidget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+				WRAPPER_EXTENSION = appex;
+			};
+			name = Release;
+		};
 		93E04F232FE41A0800C2384D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -306,6 +437,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "RPG Fitness reads your steps, calories and workouts to reward you with XP, gold and in-game power.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RPG Fitness needs permission to save workout data to your Health app.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -358,6 +490,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "RPG Fitness reads your steps, calories and workouts to reward you with XP, gold and in-game power.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RPG Fitness needs permission to save workout data to your Health app.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -391,6 +524,29 @@
 			};
 			name = Release;
 		};
+		A5D8EB76B6BF414DCE8779FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST = NO;
+				INFOPLIST_FILE = "FitRPGWidget/FitRPGWidget-Info.plist";
+				INFOPLIST_KEY_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.borisdev.rpg-tracker.FitRPGWidget";
+				PRODUCT_NAME = FitRPGWidget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				WRAPPER_EXTENSION = appex;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -408,6 +564,15 @@
 			buildConfigurations = (
 				93E04F262FE41A0800C2384D /* Debug */,
 				93E04F272FE41A0800C2384D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E51497E4FBA01DB3ABFCF7A2 /* Build configuration list for PBXNativeTarget "FitRPGWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				66217B7B0AA35DC2E303A80C /* Release */,
+				A5D8EB76B6BF414DCE8779FB /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

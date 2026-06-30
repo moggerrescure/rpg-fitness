@@ -59,7 +59,7 @@ struct BattleArenaView: View {
                 PvPLeaderboardView()
             } else {
                 ZStack {
-                    Theme.background
+                    Color.clear
                         .ignoresSafeArea()
                     
                     if viewModel.isSearching || viewModel.activeBattle != nil {
@@ -763,7 +763,8 @@ struct InviteFriendsSheet: View {
     
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            AnimatedBackgroundView(backgroundType: .tavern)
+            Color.black.opacity(0.45).ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Header
@@ -1993,7 +1994,8 @@ struct BossRaidResultOverlay: View {
                                         )
                                         .glow(color: droppedLoot.rarity.color.opacity(0.4), radius: 6)
                                     
-                                    Image(systemName: droppedLoot.getIconName())
+                                    ItemIconView(item: droppedLoot, fallbackIcon: "questionmark")
+                                        .frame(width: 28, height: 28)
                                         .font(.title2)
                                         .foregroundColor(droppedLoot.rarity.color)
                                 }
@@ -2744,7 +2746,8 @@ struct StoryStagePrepView: View {
     var body: some View {
         ZStack {
             // Background
-            Theme.background.ignoresSafeArea()
+            AnimatedBackgroundView(backgroundType: .mountain)
+            Color.black.opacity(0.4).ignoresSafeArea()
             
             // Subtle animated glow in background
             RadialGradient(
@@ -3108,8 +3111,8 @@ struct MatchmakingClassPickerSheet: View {
     
     var body: some View {
         ZStack {
-            Theme.background
-                .ignoresSafeArea()
+            AnimatedBackgroundView(backgroundType: .arena)
+            Color.black.opacity(0.4).ignoresSafeArea()
             
             VStack(spacing: 20) {
                 // Header

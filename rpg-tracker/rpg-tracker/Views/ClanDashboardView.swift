@@ -321,7 +321,12 @@ struct CreateClanSheetView: View {
             .padding(.horizontal)
             .padding(.bottom, 24)
         }
-        .background(Theme.background.ignoresSafeArea())
+        .background(
+            ZStack {
+                AnimatedBackgroundView(backgroundType: .clanHall)
+                Color.black.opacity(0.45).ignoresSafeArea()
+            }
+        )
     }
 }
 

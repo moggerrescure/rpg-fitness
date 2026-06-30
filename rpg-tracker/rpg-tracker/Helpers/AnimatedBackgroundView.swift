@@ -30,6 +30,9 @@ struct AnimatedBackgroundView: View {
     @State private var cloudOffset2: CGFloat = -200
     @State private var windOpacity: Double = 0.2
     @State private var treeSway: Double = 0.0
+    @State private var lampPulse: Bool = false
+    @State private var fogOffset: CGFloat = -450
+    @State private var spotlightAngle: Double = -5
     
     init(backgroundType: BackgroundType = .general) {
         self.backgroundType = backgroundType
@@ -88,6 +91,73 @@ struct AnimatedBackgroundView: View {
                             }
                         }
                     }
+                    .ignoresSafeArea()
+                }
+                
+                // Tavern warm lamp flickering overlays (highly optimized, uses hardware-accelerated opacity pulse)
+                if backgroundType == .tavern {
+                    RadialGradient(
+                        colors: [Color(hex: "F59E0B").opacity(lampPulse ? 0.22 : 0.12), Color.clear],
+                        center: .topLeading,
+                        startRadius: 20,
+                        endRadius: 260
+                    )
+                    .ignoresSafeArea()
+                    
+                    RadialGradient(
+                        colors: [Color(hex: "EF4444").opacity(lampPulse ? 0.10 : 0.05), Color.clear],
+                        center: .topTrailing,
+                        startRadius: 10,
+                        endRadius: 180
+                    )
+                    .ignoresSafeArea()
+                }
+                
+                // Clan Hall soft glowing candle spots
+                if backgroundType == .clanHall {
+                    ForEach(0..<3) { idx in
+                        RadialGradient(
+                            colors: [Color(hex: "FCD34D").opacity(lampPulse ? 0.25 : 0.12), Color.clear],
+                            center: UnitPoint(x: 0.25 + CGFloat(idx) * 0.25, y: 0.35 + CGFloat(idx % 2) * 0.08),
+                            startRadius: 4,
+                            endRadius: 60
+                        )
+                    }
+                    .ignoresSafeArea()
+                }
+                
+                // Horizontally moving fog banks for Mountain event
+                if backgroundType == .mountain {
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.0), Color.white.opacity(0.06), Color.white.opacity(0.0)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(height: 100)
+                    .offset(x: fogOffset, y: geo.size.height * 0.45)
+                    .blur(radius: 15)
+                }
+                
+                // Sweeping spotlights for Gladiator Arena
+                if backgroundType == .arena {
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: 0))
+                        path.addLine(to: CGPoint(x: geo.size.width * 0.35, y: geo.size.height))
+                        path.addLine(to: CGPoint(x: geo.size.width * 0.50, y: geo.size.height))
+                        path.closeSubpath()
+                    }
+                    .fill(LinearGradient(colors: [Color.white.opacity(0.04), Color.clear], startPoint: .top, endPoint: .bottom))
+                    .rotationEffect(.degrees(spotlightAngle), anchor: .topLeading)
+                    .ignoresSafeArea()
+                    
+                    Path { path in
+                        path.move(to: CGPoint(x: geo.size.width, y: 0))
+                        path.addLine(to: CGPoint(x: geo.size.width * 0.65, y: geo.size.height))
+                        path.addLine(to: CGPoint(x: geo.size.width * 0.50, y: geo.size.height))
+                        path.closeSubpath()
+                    }
+                    .fill(LinearGradient(colors: [Color.white.opacity(0.04), Color.clear], startPoint: .top, endPoint: .bottom))
+                    .rotationEffect(.degrees(-spotlightAngle * 0.8), anchor: .topTrailing)
                     .ignoresSafeArea()
                 }
                 
@@ -167,6 +237,16 @@ struct AnimatedBackgroundView: View {
         cloudOffset2 = 180
         windOpacity = 0.2
         treeSway = 0.0
+        
+        withAnimation(Animation.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) {
+            lampPulse = true
+        }
+        withAnimation(Animation.linear(duration: 40).repeatForever(autoreverses: false)) {
+            fogOffset = 500
+        }
+        withAnimation(Animation.easeInOut(duration: 5.5).repeatForever(autoreverses: true)) {
+            spotlightAngle = 6
+        }
         #else
         // Slow float for clouds
         withAnimation(Animation.linear(duration: 45).repeatForever(autoreverses: false)) {
@@ -184,6 +264,16 @@ struct AnimatedBackgroundView: View {
         // Pine trees swaying back and forth
         withAnimation(Animation.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
             treeSway = 1.8 // Sway angle in degrees
+        }
+        
+        withAnimation(Animation.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+            lampPulse = true
+        }
+        withAnimation(Animation.linear(duration: 28).repeatForever(autoreverses: false)) {
+            fogOffset = 500
+        }
+        withAnimation(Animation.easeInOut(duration: 5.0).repeatForever(autoreverses: true)) {
+            spotlightAngle = 8
         }
         #endif
     }

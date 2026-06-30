@@ -98,7 +98,7 @@ struct TeamLobbyView: View {
                             .foregroundStyle(Theme.textSecondary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Theme.cardBackground.opacity(0.5))
+                            .background(.thinMaterial)
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
                     .buttonStyle(TactileButtonStyle())
@@ -260,7 +260,7 @@ struct BotSlotCard: View {
             Spacer()
         }
         .padding(16)
-        .background(Theme.cardBackground.opacity(0.3))
+        .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)

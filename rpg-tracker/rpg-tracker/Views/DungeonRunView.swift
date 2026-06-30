@@ -9,6 +9,12 @@ struct DungeonRunView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let selectedClass: CharacterClass
+    
+    // Spell and shake effects
+    @State private var combatEffects: [CombatSpellEffect] = []
+    @State private var screenShake: Bool = false
+    @State private var activeDebuff: CharacterClass? = nil
+    @State private var debuffTask: Task<Void, Never>? = nil
 
     init() {
         let cls = FirebaseService.shared.currentCharacter?.selectedClass ?? .archer
@@ -28,7 +34,7 @@ struct DungeonRunView: View {
                     .transition(.opacity)
 
             case .combat(let wave):
-                DungeonCombatView(vm: vm, cameraVM: cameraVM, selectedClass: selectedClass, wave: wave) {
+                DungeonCombatView(vm: vm, cameraVM: cameraVM, selectedClass: selectedClass, wave: wave, activeDebuff: activeDebuff) {
                     // Exit dungeon
                     vm.exitDungeon()
                     dismiss()
@@ -57,9 +63,52 @@ struct DungeonRunView: View {
                 }
                 .transition(.opacity)
             }
+            
+            // Flying spell projectiles overlay
+            ForEach(combatEffects) { effect in
+                SpellEffectView(effect: effect)
+            }
         }
         .hideNavigationBar()
-        .onChange(of: cameraVM.repCount) { _, newCount in
+        .offset(x: screenShake ? CGFloat.random(in: -7...7) : 0, y: screenShake ? CGFloat.random(in: -5...5) : 0)
+        .onChange(of: cameraVM.repCount) { oldVal, newVal in
+            guard newVal > oldVal else { return }
+            
+            // Trigger screen shake
+            withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
+                screenShake = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                screenShake = false
+            }
+            
+            // Trigger status debuff on boss based on current class
+            debuffTask?.cancel()
+            activeDebuff = selectedClass
+            debuffTask = Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        activeDebuff = nil
+                    }
+                }
+            }
+            
+            // Spawn spell projectile
+            let newEffect = CombatSpellEffect(
+                type: selectedClass,
+                startPoint: CGPoint(x: CGFloat.random(in: 80...300), y: 620),
+                endPoint: CGPoint(x: 180, y: 220)
+            )
+            withAnimation {
+                combatEffects.append(newEffect)
+            }
+            
+            // Auto remove after animation finishes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                combatEffects.removeAll(where: { $0.id == newEffect.id })
+            }
+            
             // Bridge: every new rep → dungeon VM registers it
             let combo = cameraVM.activeCombo
             vm.onRepPerformed(combo: combo)
@@ -288,6 +337,7 @@ private struct DungeonCombatView: View {
     @ObservedObject var cameraVM: CameraTrackingVM
     let selectedClass: CharacterClass
     let wave: Int
+    let activeDebuff: CharacterClass?
     let onExit: () -> Void
 
     @State private var showExitAlert = false
@@ -422,17 +472,22 @@ private struct DungeonCombatView: View {
                                         .offset(y: geo.size.height * 0.105)
                                         .blur(radius: 16)
 
-                                    Image(boss.imageName)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(height: geo.size.height * 0.40)
-                                        .shadow(color: boss.color.opacity(vm.bossHPPercent < 0.25 ? 0.9 : 0.5), radius: vm.bossHPPercent < 0.25 ? 24 : 14)
-                                        .offset(
-                                            x: vm.bossShake ? CGFloat.random(in: -8...8) : 0,
-                                            y: vm.bossShake ? CGFloat.random(in: -5...5) : 0
-                                        )
-                                        .scaleEffect(bossPulse ? 1.015 : 1.0)
-                                        .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true), value: bossPulse)
+                                    ZStack {
+                                        Image(boss.imageName)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(height: geo.size.height * 0.40)
+                                            .shadow(color: boss.color.opacity(vm.bossHPPercent < 0.25 ? 0.9 : 0.5), radius: vm.bossHPPercent < 0.25 ? 24 : 14)
+                                            .offset(
+                                                x: vm.bossShake ? CGFloat.random(in: -8...8) : 0,
+                                                y: vm.bossShake ? CGFloat.random(in: -5...5) : 0
+                                            )
+                                            .scaleEffect(bossPulse ? 1.015 : 1.0)
+                                            .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true), value: bossPulse)
+                                        
+                                        BossDebuffOverlay(debuff: activeDebuff)
+                                            .frame(width: 200, height: geo.size.height * 0.40)
+                                    }
 
                                     // Floating damage numbers on boss
                                     ForEach(vm.damageNumbers) { dmg in
@@ -922,8 +977,14 @@ private struct DungeonWaveClearView: View {
 private struct DungeonVictoryView: View {
     @ObservedObject var vm: DungeonVM
     let onExit: () -> Void
+    
     @State private var appear = false
-    @State private var particleActive = false
+    @State private var chestScale: CGFloat = 0.0
+    @State private var chestOffset: CGFloat = 80.0
+    @State private var chestOpen: Bool = false
+    @State private var showLootCard: Bool = false
+    @State private var lightBeamScale: CGFloat = 0.0
+    @State private var lightBeamOpacity: Double = 0.0
 
     var body: some View {
         ZStack {
@@ -934,22 +995,10 @@ private struct DungeonVictoryView: View {
             RadialGradient(colors: [Theme.healerColor.opacity(0.15), Color.clear], center: .center, startRadius: 0, endRadius: 300)
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
                 Spacer()
 
-                // Trophy icon
-                ZStack {
-                    Circle()
-                        .fill(Theme.healerColor.opacity(0.12))
-                        .frame(width: 100, height: 100)
-                    Image(systemName: "trophy.fill")
-                        .font(.system(size: 50))
-                        .foregroundColor(Theme.healerColor)
-                        .glow(color: Theme.healerColor.opacity(0.6), radius: 15)
-                }
-                .scaleEffect(appear ? 1 : 0.5)
-
-                VStack(spacing: 8) {
+                VStack(spacing: 4) {
                     Text("DUNGEON CONQUERED!")
                         .font(.system(size: 22, weight: .black, design: .monospaced))
                         .foregroundColor(Theme.healerColor)
@@ -958,27 +1007,52 @@ private struct DungeonVictoryView: View {
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(Theme.textSecondary)
                 }
-                .opacity(appear ? 1 : 0)
+                .opacity(showLootCard ? 1 : 0)
+                
+                // Animated Treasure Chest opening sequence
+                ZStack {
+                    // Expanding radial light beam matching item rarity color
+                    let glowColor = vm.droppedLoot?.rarity.color ?? Theme.healerColor
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [glowColor.opacity(0.65), Color.clear],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 60
+                            )
+                        )
+                        .scaleEffect(lightBeamScale)
+                        .opacity(lightBeamOpacity)
+                        .frame(width: 140, height: 140)
+                    
+                    InteractiveTreasureChest(isOpen: chestOpen)
+                        .scaleEffect(chestScale)
+                        .offset(y: chestOffset)
+                }
+                .frame(height: 140)
 
-                // Rewards
+                // Rewards (XP and GOLD)
                 HStack(spacing: 16) {
                     rewardCard(value: "+\(vm.xpEarned)", label: "XP", icon: "star.fill", color: Theme.primary)
                     rewardCard(value: "+\(vm.goldEarned)", label: "GOLD", icon: "centsign.circle.fill", color: Theme.healerColor)
                 }
                 .padding(.horizontal, 32)
-                .opacity(appear ? 1 : 0)
+                .opacity(showLootCard ? 1 : 0)
 
-                // Loot drop
+                // Epic Loot Emerging Out
                 if let loot = vm.droppedLoot {
                     VStack(spacing: 8) {
                         Text("EPIC LOOT SECURED")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundColor(Theme.textMuted)
                             .tracking(2)
+                        
                         HStack(spacing: 12) {
-                            Image(systemName: loot.getIconName())
-                                .font(.system(size: 22))
+                            ItemIconView(item: loot, fallbackIcon: "questionmark")
+                                .frame(width: 32, height: 32)
                                 .foregroundColor(loot.rarity.color)
+                                .glow(color: loot.rarity.color.opacity(0.5), radius: 5)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(loot.name.uppercased())
                                     .font(.system(size: 13, weight: .black))
@@ -989,13 +1063,15 @@ private struct DungeonVictoryView: View {
                             }
                         }
                         .padding(14)
-                        .background(loot.rarity.color.opacity(0.1))
+                        .background(loot.rarity.color.opacity(0.08))
                         .cornerRadius(14)
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(loot.rarity.color.opacity(0.4), lineWidth: 1.5))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(loot.rarity.color.opacity(0.35), lineWidth: 1.5))
                         .glow(color: loot.rarity.color.opacity(0.2), radius: 8)
+                        .dndBorder(color: loot.rarity.color.opacity(0.6), length: 10, lineWidth: 1)
                     }
                     .padding(.horizontal, 32)
-                    .opacity(appear ? 1 : 0)
+                    .scaleEffect(showLootCard ? 1 : 0.4)
+                    .opacity(showLootCard ? 1 : 0)
                 }
 
                 Spacer()
@@ -1013,11 +1089,32 @@ private struct DungeonVictoryView: View {
                 .buttonStyle(TactileButtonStyle())
                 .padding(.horizontal, 24)
                 .padding(.bottom, 48)
-                .opacity(appear ? 1 : 0)
+                .opacity(showLootCard ? 1 : 0)
             }
         }
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.75)) { appear = true }
+            // Stage 1: Spring chest bounce
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.65)) {
+                chestScale = 1.0
+                chestOffset = 0.0
+            }
+            
+            // Stage 2: Open chest + light beam
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
+                    chestOpen = true
+                    lightBeamScale = 1.6
+                    lightBeamOpacity = 0.8
+                }
+            }
+            
+            // Stage 3: Fade in title, loot card, rewards
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
+                    showLootCard = true
+                    appear = true
+                }
+            }
         }
     }
 
@@ -1040,6 +1137,32 @@ private struct DungeonVictoryView: View {
         .background(color.opacity(0.1))
         .cornerRadius(16)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(color.opacity(0.25), lineWidth: 1))
+    }
+}
+
+// MARK: - Interactive Treasure Chest Vector component
+
+struct InteractiveTreasureChest: View {
+    let isOpen: Bool
+    
+    var body: some View {
+        ZStack {
+            if isOpen {
+                Image("chest_open")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 140, height: 140)
+                    .shadow(color: Theme.healerColor.opacity(0.8), radius: 18)
+                    .transition(.opacity)
+            } else {
+                Image("chest_closed")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 140, height: 140)
+                    .shadow(color: .black.opacity(0.5), radius: 10, y: 5)
+                    .transition(.opacity)
+            }
+        }
     }
 }
 
@@ -1265,3 +1388,4 @@ private struct DamageFloater: View {
             }
     }
 }
+

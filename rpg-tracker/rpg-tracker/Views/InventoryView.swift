@@ -187,13 +187,16 @@ struct InventoryGridCell: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14)
                         .fill(item.rarity.color.opacity(0.1))
+                        .background(.thinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                         .aspectRatio(1, contentMode: .fit)
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
                                 .stroke(isEquipped ? Theme.success : item.rarity.color.opacity(0.3), lineWidth: isEquipped ? 2 : 1)
                         )
                     
-                    Image(systemName: item.getIconName())
+                    ItemIconView(item: item, fallbackIcon: "questionmark")
+                        .frame(width: 44, height: 44)
                         .font(.system(size: 36))
                         .foregroundColor(item.rarity.color)
                         .glow(color: item.rarity.color.opacity(0.5), radius: 8)
@@ -245,7 +248,8 @@ struct InventoryItemSheet: View {
                                 .stroke(item.rarity.color.opacity(0.5), lineWidth: 1.5)
                         )
                     
-                    Image(systemName: item.getIconName())
+                    ItemIconView(item: item, fallbackIcon: "questionmark")
+                        .frame(width: 56, height: 56)
                         .font(.system(size: 40))
                         .foregroundColor(item.rarity.color)
                         .glow(color: item.rarity.color.opacity(0.6), radius: 10)
@@ -346,8 +350,8 @@ struct InventoryItemSheet: View {
             .disabled(isEquipped || (item.classRestriction != nil && item.classRestriction != character.selectedClass))
         }
         .padding(24)
-        .background(Theme.cardBackground)
-        .cornerRadius(24)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(
             RoundedRectangle(cornerRadius: 24)
                 .stroke(Theme.border, lineWidth: 1)

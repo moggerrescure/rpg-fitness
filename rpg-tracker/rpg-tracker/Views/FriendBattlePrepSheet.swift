@@ -76,8 +76,8 @@ struct FriendBattlePrepSheet: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .padding(.horizontal, 4)
-                        .background(Theme.cardBackground.opacity(0.8))
-                        .cornerRadius(16)
+                        .background(.thinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(playerClass.themeColor.opacity(0.25), lineWidth: 1)
@@ -121,8 +121,8 @@ struct FriendBattlePrepSheet: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .padding(.horizontal, 4)
-                        .background(Theme.cardBackground.opacity(0.8))
-                        .cornerRadius(16)
+                        .background(.thinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(friendClass.themeColor.opacity(0.25), lineWidth: 1)
@@ -160,8 +160,15 @@ struct FriendBattlePrepSheet: View {
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 12)
-                                    .background(isSelected ? Theme.secondaryCard.opacity(0.9) : Theme.cardBackground.opacity(0.5))
-                                    .cornerRadius(12)
+                                    .background(
+                                        ZStack {
+                                            if isSelected {
+                                                charClass.themeColor.opacity(0.12)
+                                            }
+                                        }
+                                        .background(.thinMaterial)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 12)
                                             .stroke(isSelected ? charClass.themeColor : Theme.border, lineWidth: isSelected ? 2 : 1)
@@ -219,8 +226,15 @@ struct FriendBattlePrepSheet: View {
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 12)
-                                    .background(isSelected ? Theme.secondaryCard.opacity(0.9) : Theme.cardBackground.opacity(0.5))
-                                    .cornerRadius(12)
+                                    .background(
+                                        ZStack {
+                                            if isSelected {
+                                                charClass.themeColor.opacity(0.12)
+                                            }
+                                        }
+                                        .background(.thinMaterial)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 12)
                                             .stroke(isSelected ? charClass.themeColor : Theme.border, lineWidth: isSelected ? 2 : 1)
@@ -262,8 +276,8 @@ struct FriendBattlePrepSheet: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.cardBackground.opacity(0.6))
-                    .cornerRadius(14)
+                    .background(.thinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
                             .stroke(Theme.border, lineWidth: 1)

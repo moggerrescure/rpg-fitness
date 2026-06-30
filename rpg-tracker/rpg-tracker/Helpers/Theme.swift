@@ -62,10 +62,8 @@ struct GlassmorphicCard: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Theme.cardBackground.opacity(0.8))
-            )
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(LinearGradient(
@@ -165,4 +163,92 @@ struct PillSegmentPicker: View {
         )
     }
 }
+
+// TOUCH-REACTIVE 3D TILT EFFECT MODIFIER
+public struct TiltCardModifier: ViewModifier {
+    public var maxTiltAngle: Double = 15
+    @State private var dragOffset: CGSize = .zero
+    
+    public init(maxTiltAngle: Double = 15) {
+        self.maxTiltAngle = maxTiltAngle
+    }
+    
+    public func body(content: Content) -> some View {
+        content
+            .rotation3DEffect(
+                .degrees(Double(dragOffset.width / 15)),
+                axis: (x: 0.0, y: 1.0, z: 0.0)
+            )
+            .rotation3DEffect(
+                .degrees(Double(-dragOffset.height / 15)),
+                axis: (x: 1.0, y: 0.0, z: 0.0)
+            )
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        withAnimation(.interactiveSpring()) {
+                            let w = max(-maxTiltAngle * 15, min(maxTiltAngle * 15, value.translation.width))
+                            let h = max(-maxTiltAngle * 15, min(maxTiltAngle * 15, value.translation.height))
+                            dragOffset = CGSize(width: w, height: h)
+                        }
+                    }
+                    .onEnded { _ in
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.6)) {
+                            dragOffset = .zero
+                        }
+                    }
+            )
+    }
+}
+
+extension View {
+    public func tilt(maxAngle: Double = 15) -> some View {
+        self.modifier(TiltCardModifier(maxTiltAngle: maxAngle))
+    }
+}
+
+// MARK: - D&D Corner Border Frame Modifier
+
+struct DndBorderModifier: ViewModifier {
+    let color: Color
+    let length: CGFloat
+    let lineWidth: CGFloat
+    
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                GeometryReader { geo in
+                    Path { path in
+                        // Top-Left corner
+                        path.move(to: CGPoint(x: 0, y: length))
+                        path.addLine(to: CGPoint(x: 0, y: 0))
+                        path.addLine(to: CGPoint(x: length, y: 0))
+                        
+                        // Top-Right corner
+                        path.move(to: CGPoint(x: geo.size.width - length, y: 0))
+                        path.addLine(to: CGPoint(x: geo.size.width, y: 0))
+                        path.addLine(to: CGPoint(x: geo.size.width, y: length))
+                        
+                        // Bottom-Right corner
+                        path.move(to: CGPoint(x: geo.size.width, y: geo.size.height - length))
+                        path.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
+                        path.addLine(to: CGPoint(x: geo.size.width - length, y: geo.size.height))
+                        
+                        // Bottom-Left corner
+                        path.move(to: CGPoint(x: length, y: geo.size.height))
+                        path.addLine(to: CGPoint(x: 0, y: geo.size.height))
+                        path.addLine(to: CGPoint(x: 0, y: geo.size.height - length))
+                    }
+                    .stroke(color, lineWidth: lineWidth)
+                }
+            )
+    }
+}
+
+extension View {
+    func dndBorder(color: Color = Color(hex: "D97706"), length: CGFloat = 14, lineWidth: CGFloat = 1.5) -> some View {
+        self.modifier(DndBorderModifier(color: color, length: length, lineWidth: lineWidth))
+    }
+}
+
 

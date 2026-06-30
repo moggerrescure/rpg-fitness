@@ -6,7 +6,8 @@ struct NotificationCenterView: View {
     
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            AnimatedBackgroundView(backgroundType: .general)
+            Color.black.opacity(0.4).ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Header
@@ -40,7 +41,7 @@ struct NotificationCenterView: View {
                     .padding(.leading, 8)
                 }
                 .padding()
-                .background(Theme.cardBackground)
+                .background(.thinMaterial)
                 
                 // List
                 if notificationManager.inAppNotifications.isEmpty {
@@ -151,15 +152,13 @@ struct NotificationCard: View {
             .background(
                 ZStack {
                     if !notification.isRead {
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Theme.secondaryCard)
+                        colorForType(notification.type).opacity(0.08)
                             .shadow(color: colorForType(notification.type).opacity(0.3), radius: 8, x: 0, y: 0)
-                    } else {
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Theme.cardBackground.opacity(0.6))
                     }
                 }
+                .background(.thinMaterial)
             )
+            .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(notification.isRead ? Theme.border : colorForType(notification.type).opacity(0.6), lineWidth: notification.isRead ? 1 : 2)

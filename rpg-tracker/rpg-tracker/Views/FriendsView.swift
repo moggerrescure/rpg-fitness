@@ -15,7 +15,8 @@ struct FriendsView: View {
     var body: some View {
         ZStack {
             if !isEmbedded {
-                Theme.background.ignoresSafeArea()
+                AnimatedBackgroundView(backgroundType: .tavern)
+                Color.black.opacity(0.45).ignoresSafeArea()
             }
             
             VStack(spacing: 0) {
@@ -365,7 +366,12 @@ struct FriendsView: View {
             }
         }
         .padding(14)
-        .background(Theme.warning.opacity(0.06))
+        .background(
+            ZStack {
+                Theme.warning.opacity(0.06)
+            }
+            .background(.thinMaterial)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)

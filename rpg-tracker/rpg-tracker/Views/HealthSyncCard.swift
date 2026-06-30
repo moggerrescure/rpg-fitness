@@ -91,7 +91,8 @@ struct HealthRewardsView: View {
     
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            AnimatedBackgroundView(backgroundType: .general)
+            Color.black.opacity(0.4).ignoresSafeArea()
             
             VStack(spacing: 24) {
                 Text("HEALTH SYNC COMPLETE")

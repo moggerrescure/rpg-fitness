@@ -7,7 +7,7 @@ struct WorldBossDashboardView: View {
     
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            Color.black.opacity(0.35).ignoresSafeArea()
             
             ScrollView {
                 VStack(spacing: 24) {

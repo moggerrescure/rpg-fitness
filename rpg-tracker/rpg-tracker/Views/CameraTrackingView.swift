@@ -7,6 +7,11 @@ struct CameraTrackingView: View {
     @State private var isWorkoutStarted: Bool
     @State private var workoutCompletionRewards: (xp: Int, gold: Int)? = nil
     
+    @State private var combatEffects: [CombatSpellEffect] = []
+    @State private var screenShake: Bool = false
+    @State private var activeDebuff: CharacterClass? = nil
+    @State private var debuffTask: Task<Void, Never>? = nil
+    
     let bossName: String?
     let bossImage: String?
     
@@ -24,7 +29,7 @@ struct CameraTrackingView: View {
         let finalBossHP = bossMaxHP ?? engineBossHP
         let finalDamage = damagePerRep ?? (isEngineBoss ? Int(Double(FirebaseService.shared.currentCharacter?.combatPower ?? 10) * 0.15) : nil)
         
-        _viewModel = StateObject(wrappedValue: CameraTrackingVM(selectedClass: selectedClass, targetReps: targetReps, bossMaxHP: finalBossHP, damagePerRep: finalDamage, onComplete: onComplete))
+        _viewModel = StateObject(wrappedValue: CameraTrackingVM(selectedClass: selectedClass, targetReps: targetReps, bossMaxHP: finalBossHP, damagePerRep: finalDamage, bossName: bossName, bossImage: bossImage, onComplete: onComplete))
     }
     
     var body: some View {
@@ -165,65 +170,36 @@ struct CameraTrackingView: View {
                     let isBattle = (viewModel.bossMaxHP > 0) || (FirebaseService.shared.activeBattle != nil) || (BattleEngine.shared.activeBattle != nil)
                     
                     if isBattle {
-                        VStack(spacing: 0) {
-                            // ╔══════════════════════════════╗
-                            // ║   BATTLE UI (top 40%)        ║
-                            // ╚══════════════════════════════╝
-                            ZStack {
-                                VStack(spacing: 8) {
-                                    topControlsBar
-                                        .padding(.top, 10)
-                                        
-                                    if viewModel.bossMaxHP > 0 {
-                                        bossInfoSection
-                                            .frame(maxHeight: .infinity) // Fill all remaining space
-                                    }
-                                    
-                                    pvpMatchupSection
-                                }
-                                .frame(maxHeight: .infinity) // Force VStack to fill the ZStack
-                                .padding(.bottom, 10)
-                            }
-                            .frame(height: geo.size.height * 0.4) // 40% height for Boss UI
-                            .background(Color.black.ignoresSafeArea(edges: .top))
+                        ZStack(alignment: .top) {
+                            CameraPreview(session: viewModel.cameraManager.session)
+                                .ignoresSafeArea()
                             
-                            // ── Glowing split divider ──────────────────────────────────
-                            ZStack {
-                                Rectangle()
-                                    .fill(LinearGradient(
-                                        colors: [Theme.danger.opacity(0.7), viewModel.selectedClass.themeColor.opacity(0.7)],
-                                        startPoint: .leading, endPoint: .trailing
-                                    ))
-                                    .frame(height: 2)
-                                    .blur(radius: 1)
-                                Rectangle()
-                                    .fill(LinearGradient(
-                                        colors: [Theme.danger, viewModel.selectedClass.themeColor],
-                                        startPoint: .leading, endPoint: .trailing
-                                    ))
-                                    .frame(height: 1.5)
+                            PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
+                            
+                            // Flying spell projectiles overlay
+                            ForEach(combatEffects) { effect in
+                                SpellEffectView(effect: effect)
                             }
                             
-                            // ╔══════════════════════════════╗
-                            // ║   CAMERA FEED (bottom 50%)   ║
-                            // ╚══════════════════════════════╝
-                            ZStack(alignment: .bottom) {
-                                CameraPreview(session: viewModel.cameraManager.session)
-                                    .ignoresSafeArea(edges: .bottom)
-                                    
-                                PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
+                            VStack(spacing: 12) {
+                                topControlsBar
+                                    .padding(.top, 10)
                                 
-                                // Gradient vignette for legibility (removed bottom black stripes per request)
-                                
-                                VStack(spacing: 0) {
-                                    Spacer()
-                                    liveFeedbackPrompt
-                                    Spacer()
-                                    repsDisplay
-                                    Spacer()
+                                if viewModel.bossMaxHP > 0 {
+                                    bossInfoSection
                                 }
+                                
+                                pvpMatchupSection
+                                    .padding(.horizontal, 14)
+                                
+                                Spacer()
+                                
+                                liveFeedbackPrompt
+                                
+                                repsDisplay
+                                    .padding(.bottom, 24)
                             }
-                            .frame(height: geo.size.height * 0.6) // 60% height for Camera feed
+                            .offset(x: screenShake ? CGFloat.random(in: -7...7) : 0, y: screenShake ? CGFloat.random(in: -5...5) : 0)
                         }
                     } else {
                         // Normal Training Layout
@@ -509,6 +485,40 @@ struct CameraTrackingView: View {
         .onDisappear {
             viewModel.cameraManager.stopSession()
         }
+        .onChange(of: viewModel.repCount) { oldVal, newVal in
+            guard newVal > oldVal else { return }
+            withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
+                screenShake = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                screenShake = false
+            }
+            
+            // Trigger status debuff on boss based on current class
+            debuffTask?.cancel()
+            activeDebuff = viewModel.selectedClass
+            debuffTask = Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        activeDebuff = nil
+                    }
+                }
+            }
+            
+            let newEffect = CombatSpellEffect(
+                type: viewModel.selectedClass,
+                startPoint: CGPoint(x: CGFloat.random(in: 80...300), y: 620),
+                endPoint: CGPoint(x: 180, y: 140)
+            )
+            withAnimation {
+                combatEffects.append(newEffect)
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                combatEffects.removeAll(where: { $0.id == newEffect.id })
+            }
+        }
     }
     
     private func classEmblem(for cls: CharacterClass) -> String {
@@ -565,64 +575,64 @@ struct CameraTrackingView: View {
     }
     
     private var bossInfoSection: some View {
-        VStack(spacing: 8) {
-            if let bossImage = bossImage, let bossName = bossName {
-                // Boss image takes up most of the available space
-                Image(bossImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 180, height: 180) // ABSOLUTE FORCE it to be large
-                    .shadow(color: Theme.danger.opacity(0.5), radius: 12)
-                    
-                Text(bossName)
-                    .font(.system(.title3, design: .monospaced)) // Made text larger too
-                    .fontWeight(.black)
-                    .foregroundColor(Theme.danger)
-                    .shadow(color: .black, radius: 2)
-            }
-            
-            // HP bar — compact, at the bottom
-            VStack(spacing: 3) {
-                HStack {
-                    Text("BOSS HP")
-                        .font(.system(size: 10, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(viewModel.hpBarBurn ? .orange : Theme.textSecondary)
-                
-                    Spacer()
-                
-                    Text("\(viewModel.bossCurrentHP) / \(viewModel.bossMaxHP) HP")
-                        .font(.system(size: 11, design: .monospaced))
-                        .fontWeight(.black)
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 4)
-                
-                GeometryReader { barGeo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(Color.black.opacity(0.6))
-                            .frame(height: 10)
+        VStack(spacing: 6) {
+            HStack(spacing: 12) {
+                if let bossImage = bossImage {
+                    ZStack {
+                        Image(bossImage)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 56, height: 56)
+                            .shadow(color: Theme.danger.opacity(0.5), radius: 6)
                         
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(LinearGradient(
-                                colors: viewModel.hpBarBurn ? [.red, .orange, .yellow] : [Color.red, Color.orange],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ))
-                            .frame(width: CGFloat(viewModel.bossCurrentHP) / CGFloat(max(1, viewModel.bossMaxHP)) * barGeo.size.width, height: 10)
-                            .glow(color: viewModel.hpBarBurn ? .orange.opacity(0.8) : .red.opacity(0.4), radius: viewModel.hpBarBurn ? 6 : 3)
+                        BossDebuffOverlay(debuff: activeDebuff)
+                            .frame(width: 56, height: 56)
                     }
                 }
-                .frame(height: 10)
+                
+                VStack(alignment: .leading, spacing: 3) {
+                    if let bossName = bossName {
+                        Text(bossName.uppercased())
+                            .font(.system(size: 14, weight: .black, design: .monospaced))
+                            .foregroundColor(Theme.danger)
+                    }
+                    
+                    Text("\(viewModel.bossCurrentHP) / \(viewModel.bossMaxHP) HP")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+                
+                Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.55))
-            .cornerRadius(10)
+            
+            // HP bar
+            GeometryReader { barGeo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.black.opacity(0.6))
+                    
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(LinearGradient(
+                            colors: viewModel.hpBarBurn ? [.red, .orange, .yellow] : [Color.red, Color.orange],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ))
+                        .frame(width: CGFloat(viewModel.bossCurrentHP) / CGFloat(max(1, viewModel.bossMaxHP)) * barGeo.size.width)
+                        .glow(color: viewModel.hpBarBurn ? .orange.opacity(0.8) : .red.opacity(0.4), radius: viewModel.hpBarBurn ? 6 : 3)
+                }
+            }
+            .frame(height: 6)
         }
-        .offset(x: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0, y: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0)
         .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.danger.opacity(0.3), lineWidth: 1)
+        )
+        .offset(x: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0, y: viewModel.hpBarShake ? CGFloat.random(in: -5...5) : 0)
+        .padding(.horizontal, 14)
     }
     
     @ViewBuilder
@@ -972,5 +982,224 @@ struct ButtonToggleStyle: ToggleStyle {
             )
         }
     }
+}
 
+// MARK: - Spell Combat Animation Models & Shapes
+
+struct CombatSpellEffect: Identifiable {
+    let id = UUID()
+    let type: CharacterClass
+    let startPoint: CGPoint
+    let endPoint: CGPoint
+}
+
+struct SpellEffectView: View {
+    let effect: CombatSpellEffect
+    @State private var currentProgress: CGFloat = 0.0
+    @State private var showSparks: Bool = false
+    
+    var body: some View {
+        ZStack {
+            if !showSparks {
+                ZStack {
+                    if effect.type == .archer {
+                        ArrowProjectileShape()
+                            .stroke(Color.green, lineWidth: 2)
+                            .frame(width: 14, height: 40)
+                            .glow(color: Color.green.opacity(0.8), radius: 6)
+                    } else if effect.type == .swordsman {
+                        SlashEffectShape()
+                            .stroke(Color.white, lineWidth: 3)
+                            .frame(width: 80, height: 80)
+                            .glow(color: Color.blue.opacity(0.6), radius: 8)
+                    } else if effect.type == .mage {
+                        ZStack {
+                            ForEach(0..<3) { idx in
+                                Circle()
+                                    .fill(Color.orange.opacity(0.3 - Double(idx) * 0.1))
+                                    .frame(width: 24 - CGFloat(idx * 4), height: 24 - CGFloat(idx * 4))
+                                    .offset(y: CGFloat(idx * 12))
+                            }
+                            Circle()
+                                .fill(
+                                    RadialGradient(
+                                        colors: [.red, .orange, .clear],
+                                        center: .center,
+                                        startRadius: 0,
+                                        endRadius: 18
+                                    )
+                                )
+                                .frame(width: 36, height: 36)
+                        }
+                        .glow(color: Color.red.opacity(0.8), radius: 10)
+                    } else {
+                        Image(systemName: "sparkles")
+                            .font(.title2)
+                            .foregroundColor(Color.yellow)
+                            .glow(color: Color.yellow.opacity(0.8), radius: 10)
+                    }
+                }
+                .position(
+                    x: lerp(start: effect.startPoint.x, end: effect.endPoint.x, t: currentProgress),
+                    y: lerp(start: effect.startPoint.y, end: effect.endPoint.y, t: currentProgress)
+                )
+                .opacity(currentProgress > 0.85 ? (1.0 - (currentProgress - 0.85) / 0.15) : 1.0)
+            } else {
+                ZStack {
+                    ForEach(0..<6) { idx in
+                        let angle = Double(idx) * (2.0 * .pi / 6.0)
+                        let distance: CGFloat = 45.0
+                        Circle()
+                            .fill(effect.type == .archer ? Color.green : (effect.type == .swordsman ? Color.white : (effect.type == .mage ? Color.orange : Color.yellow)))
+                            .frame(width: 6, height: 6)
+                            .glow(color: (effect.type == .archer ? Color.green : Color.orange).opacity(0.6), radius: 4)
+                            .position(
+                                x: effect.endPoint.x + cos(angle) * distance * currentProgress,
+                                y: effect.endPoint.y + sin(angle) * distance * currentProgress
+                            )
+                    }
+                }
+                .opacity(1.0 - Double(currentProgress))
+            }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.5)) {
+                currentProgress = 1.0
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                showSparks = true
+                currentProgress = 0.0
+                withAnimation(.easeOut(duration: 0.35)) {
+                    currentProgress = 1.0
+                }
+            }
+        }
+    }
+    
+    private func lerp(start: CGFloat, end: CGFloat, t: CGFloat) -> CGFloat {
+        start + (end - start) * t
+    }
+}
+
+struct ArrowProjectileShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY + 10))
+        return path
+    }
+}
+
+struct SlashEffectShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        return path
+    }
+}
+
+// MARK: - Boss Status Effect Debuff Overlay
+
+struct BossDebuffOverlay: View {
+    let debuff: CharacterClass?
+    
+    var body: some View {
+        ZStack {
+            if let debuff = debuff {
+                switch debuff {
+                case .mage:
+                    // Burning fire: orange embers floating up
+                    TimelineView(.animation) { timeline in
+                        Canvas { context, size in
+                            let t = timeline.date.timeIntervalSinceReferenceDate
+                            for i in 0..<8 {
+                                let xPercent = sin(t * 3.0 + Double(i)) * 0.15 + 0.5
+                                let yPercent = 1.0 - (t * 0.4 + Double(i) * 0.15).truncatingRemainder(dividingBy: 1.0)
+                                let currentSize = CGFloat(4 + (i % 3) * 2)
+                                
+                                let rect = CGRect(
+                                    x: xPercent * size.width - currentSize/2,
+                                    y: yPercent * size.height,
+                                    width: currentSize,
+                                    height: currentSize
+                                )
+                                context.drawLayer { ctx in
+                                    ctx.opacity = 0.8
+                                    ctx.addFilter(.shadow(color: .orange, radius: 4, x: 0, y: 0))
+                                    var path = Path()
+                                    path.addEllipse(in: rect)
+                                    ctx.fill(path, with: .color(.orange))
+                                }
+                            }
+                        }
+                    }
+                    .transition(.opacity)
+                    
+                case .archer:
+                    // Poison: green bubbles floating up
+                    TimelineView(.animation) { timeline in
+                        Canvas { context, size in
+                            let t = timeline.date.timeIntervalSinceReferenceDate
+                            for i in 0..<6 {
+                                let xPercent = cos(t * 2.0 + Double(i)) * 0.2 + 0.5
+                                let yPercent = 1.0 - (t * 0.3 + Double(i) * 0.2).truncatingRemainder(dividingBy: 1.0)
+                                let currentSize = CGFloat(5 + (i % 4) * 2)
+                                
+                                let rect = CGRect(
+                                    x: xPercent * size.width - currentSize/2,
+                                    y: yPercent * size.height,
+                                    width: currentSize,
+                                    height: currentSize
+                                )
+                                context.drawLayer { ctx in
+                                    ctx.opacity = 0.7
+                                    var path = Path()
+                                    path.addEllipse(in: rect)
+                                    ctx.stroke(path, with: .color(.green), lineWidth: 1)
+                                }
+                            }
+                        }
+                    }
+                    .transition(.opacity)
+                    
+                case .healer:
+                    // Holy stun: spinning gold star halo overhead
+                    TimelineView(.animation) { timeline in
+                        ZStack {
+                            ForEach(0..<4) { i in
+                                let angle = Double(i) * (.pi / 2.0) + timeline.date.timeIntervalSinceReferenceDate * 3.0
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(.yellow)
+                                    .glow(color: .yellow.opacity(0.7), radius: 3)
+                                    .offset(x: cos(angle) * 16, y: -28 + sin(angle) * 5)
+                            }
+                        }
+                    }
+                    .transition(.opacity)
+                    
+                case .swordsman:
+                    // Bleeding: red cross slash marks
+                    ZStack {
+                        Path { path in
+                            path.move(to: CGPoint(x: 10, y: 10))
+                            path.addLine(to: CGPoint(x: 40, y: 40))
+                            path.move(to: CGPoint(x: 40, y: 10))
+                            path.addLine(to: CGPoint(x: 10, y: 40))
+                        }
+                        .stroke(Color.red, lineWidth: 2)
+                        .glow(color: .red.opacity(0.8), radius: 5)
+                        .frame(width: 50, height: 50)
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+        }
+    }
 }
