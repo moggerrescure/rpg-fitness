@@ -163,10 +163,11 @@ struct FriendBattlePrepSheet: View {
                                     .background(
                                         ZStack {
                                             if isSelected {
-                                                charClass.themeColor.opacity(0.12)
+                                                charClass.themeColor.opacity(0.18)
+                                            } else {
+                                                Theme.cardBackground.opacity(0.45)
                                             }
                                         }
-                                        .background(.thinMaterial)
                                     )
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
                                     .overlay(
@@ -175,7 +176,7 @@ struct FriendBattlePrepSheet: View {
                                     )
                                     .glow(color: isSelected ? charClass.themeColor.opacity(0.3) : .clear, radius: 4)
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                                .buttonStyle(TactileButtonStyle())
                             }
                         }
                         .padding(.horizontal)
@@ -229,10 +230,11 @@ struct FriendBattlePrepSheet: View {
                                     .background(
                                         ZStack {
                                             if isSelected {
-                                                charClass.themeColor.opacity(0.12)
+                                                charClass.themeColor.opacity(0.18)
+                                            } else {
+                                                Theme.cardBackground.opacity(0.45)
                                             }
                                         }
-                                        .background(.thinMaterial)
                                     )
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
                                     .overlay(
@@ -241,7 +243,7 @@ struct FriendBattlePrepSheet: View {
                                     )
                                     .glow(color: isSelected ? charClass.themeColor.opacity(0.3) : .clear, radius: 4)
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                                .buttonStyle(TactileButtonStyle())
                             }
                         }
                         .padding(.horizontal)

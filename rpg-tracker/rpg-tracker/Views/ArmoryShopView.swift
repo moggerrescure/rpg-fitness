@@ -304,10 +304,10 @@ private struct SlotTabRow: View {
                         }
                     )
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(TactileButtonStyle())
             }
         }
-        .background(.thinMaterial)
+        .background(Theme.cardBackground.opacity(0.85))
     }
 
     private func slotIcon(_ slot: EquipmentSlot) -> String {
@@ -588,14 +588,14 @@ private struct ShopItemRow: View {
                 }
             }
         }
-        .buttonStyle(PlainButtonStyle())
         .background(
             ZStack {
                 if isEquipped {
-                    accentColor.opacity(0.06)
+                    accentColor.opacity(0.12)
+                } else {
+                    Theme.cardBackground.opacity(0.7)
                 }
             }
-            .background(.thinMaterial)
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(

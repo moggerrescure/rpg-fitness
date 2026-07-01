@@ -172,7 +172,7 @@ struct TabButton: View {
                     }
                 )
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(TactileButtonStyle())
     }
 }
 
@@ -290,6 +290,7 @@ struct InventoryItemSheet: View {
                         .font(.title2)
                         .foregroundColor(Theme.textMuted)
                 }
+                .buttonStyle(TactileButtonStyle())
             }
             
             Text(item.description)
@@ -348,10 +349,11 @@ struct InventoryItemSheet: View {
                 )
                 .cornerRadius(12)
             }
+            .buttonStyle(TactileButtonStyle())
             .disabled(isEquipped || (item.classRestriction != nil && item.classRestriction != character.selectedClass))
         }
         .padding(24)
-        .background(.thinMaterial)
+        .background(Theme.cardBackground.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(
             RoundedRectangle(cornerRadius: 24)

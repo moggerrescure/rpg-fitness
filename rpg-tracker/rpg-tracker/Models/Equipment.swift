@@ -78,16 +78,22 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
     }
     
     func getAssetImageName() -> String? {
-        if slot == .weapon {
+        switch slot {
+        case .weapon:
             switch classRestriction {
             case .archer:    return "weapon_archer_epic"
             case .mage:      return "weapon_mage_epic"
             case .healer:    return "weapon_healer_epic"
             case .swordsman: return "weapon_swordsman_epic"
-            case .none:      return nil
+            case .none:      return "weapon_swordsman_epic"
             }
+        case .armor:
+            return "shop_armor_epic"
+        case .ring:
+            return "shop_ring_epic"
+        case .amulet:
+            return "shop_amulet_epic"
         }
-        return nil
     }
     
     static func == (lhs: EquipmentItem, rhs: EquipmentItem) -> Bool {
@@ -406,12 +412,17 @@ struct ItemIconView: View {
             if let assetName = item.getAssetImageName() {
                 Image(assetName)
                     .resizable()
-                    .scaledToFit()
+                    .scaledToFill()
+                    .clipped()
             } else {
                 Image(systemName: item.getIconName())
+                    .resizable()
+                    .scaledToFit()
             }
         } else {
             Image(systemName: fallbackIcon)
+                .resizable()
+                .scaledToFit()
         }
     }
 }

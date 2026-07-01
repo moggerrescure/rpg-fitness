@@ -287,7 +287,7 @@ struct CreateClanSheetView: View {
                         }) {
                             ClanEmblemView(emblem: emblem, size: 54, isSelected: isSelected)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(TactileButtonStyle())
                     }
                 }
                 .padding(.horizontal)

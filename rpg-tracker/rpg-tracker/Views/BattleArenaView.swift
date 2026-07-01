@@ -2783,7 +2783,7 @@ struct StoryStageTile: View {
                     .cornerRadius(4)
             }
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(TactileButtonStyle())
         .disabled(!isUnlocked)
     }
 }
@@ -3018,7 +3018,7 @@ struct StoryStagePrepView: View {
                                         .shadow(color: isSelected ? cls.themeColor.opacity(0.2) : .clear, radius: 8, y: 4)
                                         .scaleEffect(isSelected ? 1.02 : 1.0)
                                     }
-                                    .buttonStyle(PlainButtonStyle())
+                                    .buttonStyle(TactileButtonStyle())
                                 }
                             }
                             .padding(.horizontal, 20)
@@ -3282,7 +3282,7 @@ struct MatchmakingClassPickerSheet: View {
                             )
                             .scaleEffect(isSelected ? 1.02 : 0.98)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(TactileButtonStyle())
                     }
                 }
                 .padding(.horizontal, 24)

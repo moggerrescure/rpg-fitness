@@ -136,7 +136,7 @@ struct PlayerProfileView: View {
                                 }
                             }
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(TactileButtonStyle())
                         
                         VStack(spacing: 6) {
                             if isEditingUsername {
