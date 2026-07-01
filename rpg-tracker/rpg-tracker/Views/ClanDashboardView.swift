@@ -308,15 +308,19 @@ struct CreateClanSheetView: View {
                         .foregroundColor(.white)
                         .cornerRadius(12)
                 }
+                .buttonStyle(TactileButtonStyle())
                 .disabled(viewModel.clanNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .opacity(viewModel.clanNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
                 
-                Button("CANCEL") {
+                Button(action: {
                     dismiss()
+                }) {
+                    Text("CANCEL")
+                        .font(.caption)
+                        .foregroundColor(Theme.danger)
+                        .padding(.top, 4)
                 }
-                .font(.caption)
-                .foregroundColor(Theme.danger)
-                .padding(.top, 4)
+                .buttonStyle(PlainButtonStyle())
             }
             .padding(.horizontal)
             .padding(.bottom, 24)
@@ -338,9 +342,11 @@ struct ActiveClanView: View {
     @State private var editedDescription: String = ""
     @State private var showWarBattle: Bool = false
     @State private var showSettings: Bool = false
+    @State private var selectedMemberForDetail: ClanMember? = nil
     
     var body: some View {
-        VStack(spacing: 20) {
+        ZStack {
+            VStack(spacing: 20) {
             // Clan Overview Card
             VStack(spacing: 16) {
                 HStack(spacing: 16) {
@@ -529,6 +535,8 @@ struct ActiveClanView: View {
                 ClanBuffsCard(clan: clan)
                 
                 ClanRaidBossCard(clan: clan)
+                
+                ClanTavernSceneCard(clan: clan, selectedMember: $selectedMemberForDetail)
                 
                 Divider()
                     .background(Theme.border)
@@ -836,7 +844,19 @@ struct ActiveClanView: View {
         .sheet(isPresented: $showSettings) {
             ClanSettingsView(viewModel: viewModel, clan: clan)
         }
+        
+        // Detail popup modal overlay
+        if let member = selectedMemberForDetail {
+            ClanTavernMemberDetailModal(member: member) {
+                withAnimation {
+                    selectedMemberForDetail = nil
+                }
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            .zIndex(10)
+        }
     }
+}
 }
 
 // 3. Leaderboards View list
@@ -1849,5 +1869,378 @@ struct ClanRaidBossCard: View {
         .cornerRadius(14)
         .dndBorder()
         .padding(.horizontal)
+    }
+}
+
+// MARK: - Clan Tavern Scene Components
+
+struct TavernFireplace: View {
+    @State private var flameScale: CGFloat = 1.0
+    @State private var sparks: [SparkParticle] = []
+    
+    struct SparkParticle: Identifiable {
+        let id = UUID()
+        var x: CGFloat
+        var y: CGFloat
+        var scale: CGFloat
+        var opacity: Double
+    }
+    
+    var body: some View {
+        ZStack {
+            // Logs structure
+            HStack(spacing: -3) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color(hex: "4E342E"))
+                    .frame(width: 20, height: 5)
+                    .rotationEffect(.degrees(-15))
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color(hex: "3E2723"))
+                    .frame(width: 20, height: 5)
+                    .rotationEffect(.degrees(15))
+            }
+            .offset(y: 10)
+            
+            // Fire ambient glowing leak
+            Circle()
+                .fill(Color.orange.opacity(0.35))
+                .frame(width: 48, height: 48)
+                .blur(radius: 6)
+                .scaleEffect(flameScale)
+            
+            // Outer fire core
+            Circle()
+                .fill(Color.red.opacity(0.2))
+                .frame(width: 60, height: 60)
+                .blur(radius: 8)
+                .scaleEffect(flameScale * 1.1)
+            
+            // Flame emoji
+            Text("🔥")
+                .font(.title2)
+                .scaleEffect(flameScale)
+                .offset(y: 2)
+            
+            // Rising sparks particle simulation
+            ForEach(sparks) { spark in
+                Circle()
+                    .fill(Color(hex: "FFB300").opacity(spark.opacity))
+                    .frame(width: spark.scale, height: spark.scale)
+                    .offset(x: spark.x, y: spark.y)
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                flameScale = 1.15
+            }
+            
+            // Emit sparks on timer
+            Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { _ in
+                let newSpark = SparkParticle(
+                    x: CGFloat.random(in: -8...8),
+                    y: 8,
+                    scale: CGFloat.random(in: 1.5...3.0),
+                    opacity: 1.0
+                )
+                sparks.append(newSpark)
+                if sparks.count > 12 {
+                    sparks.removeFirst()
+                }
+                
+                if let idx = sparks.firstIndex(where: { $0.id == newSpark.id }) {
+                    withAnimation(.easeOut(duration: 0.75)) {
+                        sparks[idx].y = -CGFloat.random(in: 25...45)
+                        sparks[idx].x += CGFloat.random(in: -12...12)
+                        sparks[idx].opacity = 0.0
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ClanTavernSceneCard: View {
+    let clan: Clan
+    @Binding var selectedMember: ClanMember?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "house.fill")
+                    .foregroundColor(Theme.primary)
+                Text("COZY CLAN TAVERN")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
+                    .tracking(1.5)
+                Spacer()
+                Text("Tap avatar for details")
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundColor(Theme.textMuted)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            
+            ZStack {
+                // Alternating wooden floor panels
+                VStack(spacing: 0) {
+                    ForEach(0..<8) { row in
+                        HStack(spacing: 0) {
+                            ForEach(0..<4) { col in
+                                Rectangle()
+                                    .fill(Color(hex: (row + col) % 2 == 0 ? "17100B" : "1E1510"))
+                                    .overlay(
+                                        Rectangle()
+                                            .stroke(Color.black.opacity(0.2), lineWidth: 0.5)
+                                    )
+                            }
+                        }
+                    }
+                }
+                .frame(height: 200)
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Theme.border, lineWidth: 1.5)
+                )
+                
+                // Hearth brick fireplace at Top Center
+                VStack {
+                    ZStack {
+                        // Hearth stone back
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(hex: "374151")) // stone dark gray
+                            .frame(width: 60, height: 38)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.black, lineWidth: 1))
+                        
+                        TavernFireplace()
+                    }
+                    .offset(y: 8)
+                    Spacer()
+                }
+                
+                let activeMembers = clan.members.filter { $0.repsContributed > 0 }
+                let inactiveMembers = clan.members.filter { $0.repsContributed == 0 }
+                
+                // Active tavern circular table
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: "3E2723")) // mahogany brown
+                        .frame(width: 66, height: 66)
+                        .shadow(color: .black.opacity(0.5), radius: 6, y: 3)
+                        .overlay(Circle().stroke(Color(hex: "271712"), lineWidth: 4))
+                    Text("🍻")
+                        .font(.body)
+                }
+                .offset(y: 15)
+                
+                // Place active members around the table
+                ForEach(0..<activeMembers.count, id: \.self) { idx in
+                    let member = activeMembers[idx]
+                    let angle = Double(idx) * (2.0 * .pi / Double(max(1, activeMembers.count))) + (.pi / 4.0)
+                    let radius: Double = 56.0
+                    let x = cos(angle) * radius
+                    let y = sin(angle) * radius + 15.0
+                    
+                    Button(action: { selectedMember = member }) {
+                        VStack(spacing: 2) {
+                            ZStack(alignment: .bottomTrailing) {
+                                memberAvatarView(member: member, isActive: true)
+                                
+                                // Active indicator spark
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 7))
+                                    .foregroundColor(Theme.warning)
+                                    .padding(2.5)
+                                    .background(Circle().fill(Color.black))
+                            }
+                            
+                            Text(member.username)
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(Theme.textPrimary)
+                                .lineLimit(1)
+                                .frame(width: 44)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .offset(x: CGFloat(x), y: CGFloat(y))
+                }
+                
+                // Place inactive members sleeping in the corners
+                ForEach(0..<inactiveMembers.count, id: \.self) { idx in
+                    let member = inactiveMembers[idx]
+                    let x: CGFloat = idx % 2 == 0 ? -120 + CGFloat(idx / 2 * 32) : 120 - CGFloat(idx / 2 * 32)
+                    let y: CGFloat = -45 + CGFloat(idx / 2 * 20)
+                    
+                    Button(action: { selectedMember = member }) {
+                        VStack(spacing: 2) {
+                            ZStack(alignment: .topTrailing) {
+                                memberAvatarView(member: member, isActive: false)
+                                    .opacity(0.65)
+                                
+                                // sleeping Zzz bubble
+                                Text("💤")
+                                    .font(.system(size: 7))
+                                    .offset(x: 4, y: -4)
+                            }
+                            
+                            Text(member.username)
+                                .font(.system(size: 7))
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(1)
+                                .frame(width: 44)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .offset(x: x, y: y)
+                }
+            }
+            .frame(height: 200)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 14)
+        }
+        .background(Theme.cardBackground.opacity(0.85))
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border, lineWidth: 1))
+        .dndBorder(color: Theme.accent.opacity(0.3), length: 12, lineWidth: 1)
+        .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
+        .padding(.horizontal)
+    }
+    
+    @ViewBuilder
+    private func memberAvatarView(member: ClanMember, isActive: Bool) -> some View {
+        let avatar = avatarName(for: member)
+        ZStack {
+            if let uiImage = loadLocalAvatar(named: avatar) {
+                Image(platformImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(member.characterClass.themeColor.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.caption2)
+                            .foregroundColor(member.characterClass.themeColor)
+                    )
+            }
+        }
+        .overlay(Circle().stroke(isActive ? Color.green.opacity(0.8) : member.characterClass.themeColor.opacity(0.4), lineWidth: 1.5))
+        .glow(color: isActive ? Color.green.opacity(0.4) : member.characterClass.themeColor.opacity(0.2), radius: 3)
+    }
+    
+    private func avatarName(for member: ClanMember) -> String {
+        switch member.characterClass {
+        case .archer: return "avatar_archer"
+        case .mage: return "avatar_mage"
+        case .swordsman: return "avatar_knight"
+        case .healer: return "avatar_healer"
+        }
+    }
+}
+
+struct ClanTavernMemberDetailModal: View {
+    let member: ClanMember
+    let onClose: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .onTapGesture { onClose() }
+            
+            VStack(spacing: 16) {
+                HStack {
+                    Spacer()
+                    Button(action: onClose) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                }
+                
+                // Avatar
+                ZStack {
+                    let avatar = avatarName(for: member)
+                    if let uiImage = loadLocalAvatar(named: avatar) {
+                        Image(platformImage: uiImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 72, height: 72)
+                            .clipShape(Circle())
+                    }
+                    Circle()
+                        .stroke(member.characterClass.themeColor, lineWidth: 2)
+                        .frame(width: 76, height: 76)
+                        .glow(color: member.characterClass.themeColor.opacity(0.4), radius: 6)
+                }
+                
+                VStack(spacing: 4) {
+                    Text(member.username.uppercased())
+                        .font(.title3)
+                        .fontWeight(.black)
+                        .foregroundColor(Theme.textPrimary)
+                    
+                    Text("RANK: \(member.role.rawValue.uppercased())")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(member.characterClass.themeColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(member.characterClass.themeColor.opacity(0.12))
+                        .cornerRadius(6)
+                }
+                
+                Divider()
+                    .background(Theme.border)
+                
+                // Contribution stats
+                VStack(alignment: .leading, spacing: 12) {
+                    detailRow(title: "CHARACTER CLASS", value: member.characterClass.rawValue, color: member.characterClass.themeColor)
+                    detailRow(title: "CHARACTER LEVEL", value: "Lvl \(member.level)", color: Theme.textPrimary)
+                    detailRow(title: "TOTAL REPS CONTRIBUTED", value: "\(member.repsContributed)", color: Theme.success)
+                    detailRow(title: "WAR SCORE CONTRIBUTION", value: "\(member.warScoreContributed)", color: Theme.warning)
+                }
+                .padding(.horizontal, 6)
+            }
+            .padding(24)
+            .frame(width: 300)
+            .background(
+                ZStack {
+                    Color.black.opacity(0.85)
+                    Blur(style: .systemThinMaterialDark)
+                }
+            )
+            .cornerRadius(24)
+            .overlay(
+                RoundedRectangle(cornerRadius: 24)
+                    .stroke(member.characterClass.themeColor.opacity(0.5), lineWidth: 1.5)
+            )
+            .shadow(color: member.characterClass.themeColor.opacity(0.25), radius: 15, y: 8)
+            .dndBorder(color: member.characterClass.themeColor.opacity(0.4), length: 14, lineWidth: 1.5)
+        }
+    }
+    
+    private func detailRow(title: String, value: String, color: Color) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundColor(Theme.textSecondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundColor(color)
+        }
+    }
+    
+    private func avatarName(for member: ClanMember) -> String {
+        switch member.characterClass {
+        case .archer: return "avatar_archer"
+        case .mage: return "avatar_mage"
+        case .swordsman: return "avatar_knight"
+        case .healer: return "avatar_healer"
+        }
     }
 }

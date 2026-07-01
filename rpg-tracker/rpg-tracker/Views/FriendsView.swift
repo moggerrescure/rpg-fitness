@@ -31,6 +31,7 @@ struct FriendsView: View {
                                 .background(.ultraThinMaterial)
                                 .clipShape(Circle())
                         }
+                        .buttonStyle(TactileButtonStyle())
                     } else {
                         // Spacer to keep layout balanced
                         Color.clear.frame(width: 44, height: 44)
@@ -93,6 +94,7 @@ struct FriendsView: View {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(Theme.textSecondary)
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(14)
@@ -290,6 +292,7 @@ struct FriendsView: View {
                         .background(.green)
                         .clipShape(Capsule())
                 }
+                .buttonStyle(TactileButtonStyle())
             } else if alreadyFriend {
                 Label("Friends", systemImage: "checkmark.seal.fill")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))

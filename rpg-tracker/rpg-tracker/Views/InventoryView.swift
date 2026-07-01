@@ -186,7 +186,7 @@ struct InventoryGridCell: View {
             VStack(spacing: 8) {
                 ZStack {
                     ItemIconView(item: item, fallbackIcon: "questionmark")
-                        .aspectRatio(1, contentMode: .fill)
+                        .frame(width: 80, height: 80)
                         .foregroundColor(item.rarity.color)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .overlay(

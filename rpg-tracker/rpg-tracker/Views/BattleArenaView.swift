@@ -780,6 +780,7 @@ struct InviteFriendsSheet: View {
                             .background(Theme.cardBackground)
                             .clipShape(Circle())
                     }
+                    .buttonStyle(TactileButtonStyle())
                     Spacer()
                     Text("INVITE TO 3V3")
                         .font(.system(.headline, design: .monospaced))
@@ -857,6 +858,7 @@ struct InviteFriendsSheet: View {
                                             .background(isInvited ? (hasJoined ? Theme.success : Theme.primary) : Theme.primary.opacity(0.12))
                                             .clipShape(Capsule())
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                     .disabled(isInvited)
                                 }
                                 .padding(14)
@@ -894,6 +896,7 @@ struct InviteFriendsSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                     .shadow(color: Theme.primary.opacity(0.35), radius: 10, y: 4)
                 }
+                .buttonStyle(TactileButtonStyle())
                 .padding()
             }
         }
@@ -983,6 +986,7 @@ struct MatchmakingQueueView: View {
                                 .stroke(Theme.danger.opacity(0.3), lineWidth: 1)
                         )
                 }
+                .buttonStyle(TactileButtonStyle())
                 .padding(.horizontal)
                 .padding(.bottom, 120) // Raised significantly to clear the Tab Bar
             }
@@ -2031,6 +2035,7 @@ struct DuelResultOverlay: View {
                         .background(Theme.primary)
                         .cornerRadius(10)
                 }
+                .buttonStyle(TactileButtonStyle())
                 .padding(.horizontal)
             }
             .padding(24)
@@ -2141,6 +2146,7 @@ struct BossRaidResultOverlay: View {
                         .background(Theme.primary)
                         .cornerRadius(10)
                 }
+                .buttonStyle(TactileButtonStyle())
                 .padding(.horizontal)
             }
             .padding(24)
@@ -2316,6 +2322,7 @@ struct StoryModePromptInlineView: View {
                     .cornerRadius(12)
                     .shadow(color: Theme.primary.opacity(0.3), radius: 8, y: 4)
                 }
+                .buttonStyle(TactileButtonStyle())
                 
                 Button(action: selectCoop) {
                     HStack {
@@ -2331,16 +2338,20 @@ struct StoryModePromptInlineView: View {
                     .cornerRadius(12)
                     .shadow(color: Theme.healerColor.opacity(0.3), radius: 8, y: 4)
                 }
+                .buttonStyle(TactileButtonStyle())
             }
             .padding(.horizontal)
             
-            Button("CANCEL") {
+            Button(action: {
                 onCancel()
+            }) {
+                Text("CANCEL")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(Theme.danger)
+                    .fontWeight(.bold)
+                    .padding(.top, 8)
             }
-            .font(.system(.caption, design: .monospaced))
-            .foregroundColor(Theme.danger)
-            .fontWeight(.bold)
-            .padding(.top, 8)
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(24)
         .background(Theme.cardBackground.opacity(0.85))
@@ -2416,6 +2427,7 @@ struct StoryInviteFriendsInlineView: View {
                                         .background(isOnline ? Theme.primary : Color.gray.opacity(0.3))
                                         .cornerRadius(8)
                                 }
+                                .buttonStyle(TactileButtonStyle())
                                 .disabled(!isOnline)
                             }
                             .padding()
@@ -2431,12 +2443,15 @@ struct StoryInviteFriendsInlineView: View {
                 .frame(maxHeight: 250)
             }
             
-            Button("CANCEL") {
+            Button(action: {
                 onCancel()
+            }) {
+                Text("CANCEL")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(Theme.danger)
+                    .fontWeight(.bold)
             }
-            .font(.system(.caption, design: .monospaced))
-            .foregroundColor(Theme.danger)
-            .fontWeight(.bold)
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(24)
         .background(Theme.cardBackground.opacity(0.85))

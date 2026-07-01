@@ -158,6 +158,7 @@ private struct DungeonIntroView: View {
                                 .clipShape(Circle())
                                 .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
                         }
+                        .buttonStyle(TactileButtonStyle())
                         Spacer()
                         Text("DUNGEON RUN")
                             .font(.system(size: 11, weight: .black, design: .monospaced))
@@ -957,9 +958,12 @@ private struct DungeonWaveClearView: View {
                     }
                     .buttonStyle(TactileButtonStyle())
 
-                    Button("Flee Dungeon", action: onFlee)
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundColor(Theme.danger)
+                    Button(action: onFlee) {
+                        Text("Flee Dungeon")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.danger)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 48)
@@ -981,6 +985,7 @@ private struct DungeonVictoryView: View {
     @State private var appear = false
     @State private var chestScale: CGFloat = 0.0
     @State private var chestOffset: CGFloat = 80.0
+    @State private var chestRotation: Double = 0.0
     @State private var chestOpen: Bool = false
     @State private var showLootCard: Bool = false
     @State private var lightBeamScale: CGFloat = 0.0
@@ -988,11 +993,11 @@ private struct DungeonVictoryView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Color(hex: "1A1200"), Color(hex: "080B12")], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [Color(hex: "120C00"), Color(hex: "060810")], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
 
             // Gold sparkle bg effect
-            RadialGradient(colors: [Theme.healerColor.opacity(0.15), Color.clear], center: .center, startRadius: 0, endRadius: 300)
+            RadialGradient(colors: [Theme.healerColor.opacity(0.12), Color.clear], center: .center, startRadius: 0, endRadius: 300)
                 .ignoresSafeArea()
 
             VStack(spacing: 20) {
@@ -1011,6 +1016,13 @@ private struct DungeonVictoryView: View {
                 
                 // Animated Treasure Chest opening sequence
                 ZStack {
+                    // 1. Spinning Summoning Runes Circle
+                    if !chestOpen {
+                        MagicRuneCircle()
+                            .scaleEffect(chestScale)
+                            .transition(.opacity.combined(with: .scale))
+                    }
+                    
                     // Expanding radial light beam matching item rarity color
                     let glowColor = vm.droppedLoot?.rarity.color ?? Theme.healerColor
                     Circle()
@@ -1026,11 +1038,17 @@ private struct DungeonVictoryView: View {
                         .opacity(lightBeamOpacity)
                         .frame(width: 140, height: 140)
                     
-                    InteractiveTreasureChest(isOpen: chestOpen)
+                    InteractiveTreasureChest(isOpen: chestOpen, rotation: chestRotation)
                         .scaleEffect(chestScale)
                         .offset(y: chestOffset)
+                    
+                    // 2. Exploding physical gold coins emitter
+                    if chestOpen {
+                        GoldCoinParticleEmitter(count: 24)
+                            .frame(width: 140, height: 140)
+                    }
                 }
-                .frame(height: 140)
+                .frame(height: 200)
 
                 // Rewards (XP and GOLD)
                 HStack(spacing: 16) {
@@ -1048,26 +1066,8 @@ private struct DungeonVictoryView: View {
                             .foregroundColor(Theme.textMuted)
                             .tracking(2)
                         
-                        HStack(spacing: 12) {
-                            ItemIconView(item: loot, fallbackIcon: "questionmark")
-                                .frame(width: 32, height: 32)
-                                .foregroundColor(loot.rarity.color)
-                                .glow(color: loot.rarity.color.opacity(0.5), radius: 5)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(loot.name.uppercased())
-                                    .font(.system(size: 13, weight: .black))
-                                    .foregroundColor(loot.rarity.color)
-                                Text(loot.rarity.rawValue.uppercased())
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundColor(loot.rarity.color.opacity(0.7))
-                            }
-                        }
-                        .padding(14)
-                        .background(loot.rarity.color.opacity(0.08))
-                        .cornerRadius(14)
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(loot.rarity.color.opacity(0.35), lineWidth: 1.5))
-                        .glow(color: loot.rarity.color.opacity(0.2), radius: 8)
-                        .dndBorder(color: loot.rarity.color.opacity(0.6), length: 10, lineWidth: 1)
+                        // 3. Glowing holographic item card
+                        HolographicLootCard(loot: loot)
                     }
                     .padding(.horizontal, 32)
                     .scaleEffect(showLootCard ? 1 : 0.4)
@@ -1097,6 +1097,17 @@ private struct DungeonVictoryView: View {
             withAnimation(.spring(response: 0.6, dampingFraction: 0.65)) {
                 chestScale = 1.0
                 chestOffset = 0.0
+            }
+            
+            // Chest vibration shake right before opening
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                withAnimation(.linear(duration: 0.06).repeatCount(6, autoreverses: true)) {
+                    chestRotation = 6.0
+                }
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.72) {
+                chestRotation = 0.0
             }
             
             // Stage 2: Open chest + light beam
@@ -1140,10 +1151,11 @@ private struct DungeonVictoryView: View {
     }
 }
 
-// MARK: - Interactive Treasure Chest Vector component
+// MARK: - Interactive Treasure Chest component
 
 struct InteractiveTreasureChest: View {
     let isOpen: Bool
+    let rotation: Double
     
     var body: some View {
         ZStack {
@@ -1161,6 +1173,197 @@ struct InteractiveTreasureChest: View {
                     .frame(width: 140, height: 140)
                     .shadow(color: .black.opacity(0.5), radius: 10, y: 5)
                     .transition(.opacity)
+            }
+        }
+        .rotationEffect(.degrees(rotation))
+    }
+}
+
+// MARK: - Unboxing Visual Helpers
+
+struct MagicRuneCircle: View {
+    @State private var rotationAngle: Double = 0.0
+    
+    var body: some View {
+        ZStack {
+            // Outer dashed ring
+            Circle()
+                .stroke(
+                    style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round, dash: [8, 12])
+                )
+                .foregroundColor(Theme.healerColor.opacity(0.35))
+                .frame(width: 190, height: 190)
+                .rotationEffect(.degrees(rotationAngle))
+            
+            // Inner dashed ring
+            Circle()
+                .stroke(
+                    style: StrokeStyle(lineWidth: 1.0, lineCap: .round, lineJoin: .round, dash: [4, 6])
+                )
+                .foregroundColor(Theme.healerColor.opacity(0.25))
+                .frame(width: 150, height: 150)
+                .rotationEffect(.degrees(-rotationAngle * 1.5))
+            
+            // Concentric support ring
+            Circle()
+                .stroke(Theme.healerColor.opacity(0.12), lineWidth: 1.0)
+                .frame(width: 170, height: 170)
+            
+            // Runic rays
+            ForEach(0..<8) { idx in
+                Rectangle()
+                    .fill(Theme.healerColor.opacity(0.15))
+                    .frame(width: 2, height: 20)
+                    .offset(y: -85)
+                    .rotationEffect(.degrees(Double(idx) * 45.0 + rotationAngle * 0.5))
+            }
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 8.0).repeatForever(autoreverses: false)) {
+                rotationAngle = 360.0
+            }
+        }
+    }
+}
+
+struct GoldCoinParticleEmitter: View {
+    let count: Int
+    @State private var particles: [CoinParticle] = []
+    
+    struct CoinParticle: Identifiable {
+        let id = UUID()
+        var x: CGFloat
+        var y: CGFloat
+        var scale: CGFloat
+        var opacity: Double
+        var rotation: Double
+    }
+    
+    var body: some View {
+        ZStack {
+            ForEach(particles) { p in
+                Image(systemName: "centsign.circle.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Theme.healerColor)
+                    .glow(color: Theme.healerColor.opacity(0.5), radius: 3)
+                    .scaleEffect(p.scale)
+                    .opacity(p.opacity)
+                    .rotationEffect(.degrees(p.rotation))
+                    .offset(x: p.x, y: p.y)
+            }
+        }
+        .onAppear {
+            triggerExplosion()
+        }
+    }
+    
+    private func triggerExplosion() {
+        var temp: [CoinParticle] = []
+        for _ in 0..<count {
+            temp.append(CoinParticle(
+                x: 0,
+                y: 0,
+                scale: 0.1,
+                opacity: 1.0,
+                rotation: Double.random(in: 0...360)
+            ))
+        }
+        particles = temp
+        
+        for i in 0..<particles.count {
+            let angle = Double.random(in: 0...(2 * .pi))
+            let speed = Double.random(in: 40...140)
+            let targetX = CGFloat(cos(angle) * speed)
+            let targetY = CGFloat(sin(angle) * speed - Double.random(in: 30...80)) // upward trajectory
+            
+            withAnimation(.easeOut(duration: 1.2)) {
+                particles[i].x = targetX
+                particles[i].y = targetY
+                particles[i].scale = Double.random(in: 0.8...1.4)
+                particles[i].rotation += Double.random(in: 180...720)
+            }
+            
+            withAnimation(.easeIn(duration: 0.6).delay(0.6)) {
+                particles[i].opacity = 0.0
+            }
+        }
+    }
+}
+
+struct HolographicLootCard: View {
+    let loot: EquipmentItem
+    @State private var shineOffset: CGFloat = -180.0
+    @State private var rotationAngle: Double = 0.0
+    
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                ItemIconView(item: loot, fallbackIcon: "questionmark")
+                    .frame(width: 52, height: 52)
+                    .foregroundColor(loot.rarity.color)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(loot.rarity.color.opacity(0.5), lineWidth: 1.5)
+                    )
+            }
+            .glow(color: loot.rarity.color.opacity(0.4), radius: 6)
+            
+            VStack(alignment: .leading, spacing: 3) {
+                Text(loot.name.uppercased())
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(loot.rarity.color)
+                Text(loot.rarity.rawValue.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(loot.rarity.color.opacity(0.8))
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(
+            ZStack {
+                Color.black.opacity(0.8)
+                Blur(style: .systemThinMaterialDark)
+                
+                // Rarity radial ambient glow
+                RadialGradient(
+                    colors: [loot.rarity.color.opacity(0.12), Color.clear],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 100
+                )
+                
+                // Holographic reflection shine sweep
+                LinearGradient(
+                    colors: [.clear, loot.rarity.color.opacity(0.2), .clear],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .frame(width: 140)
+                .rotationEffect(.degrees(30))
+                .offset(x: shineOffset)
+            }
+        )
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(
+                    AngularGradient(
+                        colors: [loot.rarity.color, loot.rarity.color.opacity(0.2), loot.rarity.color, loot.rarity.color.opacity(0.2), loot.rarity.color],
+                        center: .center,
+                        angle: .degrees(rotationAngle)
+                    ),
+                    lineWidth: 1.5
+                )
+        )
+        .shadow(color: loot.rarity.color.opacity(0.25), radius: 12, y: 6)
+        .dndBorder(color: loot.rarity.color.opacity(0.6), length: 12, lineWidth: 1.5)
+        .onAppear {
+            withAnimation(.linear(duration: 2.2).repeatForever(autoreverses: false)) {
+                shineOffset = 180.0
+            }
+            withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) {
+                rotationAngle = 360.0
             }
         }
     }

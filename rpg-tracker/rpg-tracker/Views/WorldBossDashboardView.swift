@@ -145,6 +145,7 @@ struct WorldBossDashboardView: View {
                 .cornerRadius(16)
                 .shadow(color: Theme.danger.opacity(0.5), radius: 8)
             }
+            .buttonStyle(TactileButtonStyle())
             .padding(.horizontal, 24)
             .padding(.top, 8)
             

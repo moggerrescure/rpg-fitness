@@ -10,6 +10,7 @@ struct PlayerProfileView: View {
     @State private var usernameInput = ""
     @State private var showAvatarSelector = false
     @State private var showInventory = false
+    @State private var showConstellations = false
     
     init(character: Character) {
         // Direct observation of FirebaseService handles reactivity; signature kept for compatibility.
@@ -35,19 +36,19 @@ struct PlayerProfileView: View {
     
     // Dynamic attributes based on repetition count stats
     var strength: Int {
-        10 + Int(Double(character.stats.totalPullups) * 0.5) + Int(Double(character.stats.totalPushups) * 0.3)
+        character.baseStrength + Int(Double(character.stats.totalPullups) * 0.5) + Int(Double(character.stats.totalPushups) * 0.3)
     }
     
     var dexterity: Int {
-        10 + Int(Double(character.stats.totalSquats) * 0.6)
+        character.baseDexterity + Int(Double(character.stats.totalSquats) * 0.6)
     }
     
     var vitality: Int {
-        10 + Int(Double(character.stats.totalDips) * 0.8)
+        character.baseVitality + Int(Double(character.stats.totalDips) * 0.8)
     }
     
     var intelligence: Int {
-        10 + (character.level * 2)
+        character.baseIntelligence + (character.level * 2)
     }
     
     var body: some View {
@@ -72,6 +73,7 @@ struct PlayerProfileView: View {
                                 .background(Color.black.opacity(0.4))
                                 .clipShape(Circle())
                         }
+                        .buttonStyle(TactileButtonStyle())
                     }
                     .padding(.horizontal)
                     .padding(.top, 16)
@@ -298,6 +300,29 @@ struct PlayerProfileView: View {
                             .shadow(color: Theme.warning.opacity(0.4), radius: 6)
                         }
                         .buttonStyle(TactileButtonStyle())
+                        
+                        Button(action: { showConstellations = true }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "sparkles")
+                                    .glow(color: .white, radius: 4)
+                                Text("SKILL CONSTELLATIONS")
+                            }
+                            .font(.system(size: 12, design: .monospaced))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color(hex: "4F46E5"), Color(hex: "06B6D4")],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(12)
+                            .shadow(color: Color(hex: "4F46E5").opacity(0.4), radius: 6)
+                        }
+                        .buttonStyle(TactileButtonStyle())
                     }
                     .padding(.horizontal)
 
@@ -462,6 +487,9 @@ struct PlayerProfileView: View {
                     firebaseService.syncCharacter(updated)
                 }
             ), accentColor: character.selectedClass.themeColor)
+        }
+        .fullScreenCover(isPresented: $showConstellations) {
+            ConstellationSkillTreeView()
         }
     }
     

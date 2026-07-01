@@ -104,27 +104,33 @@ struct MainHubView: View {
                             .foregroundColor(Theme.textSecondary)
                         
                         HStack(spacing: 20) {
-                            Button("Decline") {
+                            Button(action: {
                                 MultiplayerService.shared.declineDuel(duelTicket)
+                            }) {
+                                Text("Decline")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 24)
+                                    .background(Color.red.opacity(0.8))
+                                    .cornerRadius(12)
                             }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 24)
-                            .background(Color.red.opacity(0.8))
-                            .cornerRadius(12)
+                            .buttonStyle(PlainButtonStyle())
                             
-                            Button("Accept!") {
+                            Button(action: {
                                 MultiplayerService.shared.acceptDuel(duelTicket)
                                 currentTab = 2 // Switch to Battle Arena tab
+                            }) {
+                                Text("Accept!")
+                                    .font(.headline.bold())
+                                    .foregroundColor(.white)
+                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 32)
+                                    .background(Color.green)
+                                    .cornerRadius(12)
+                                    .shadow(color: Color.green.opacity(0.5), radius: 10)
                             }
-                            .font(.headline.bold())
-                            .foregroundColor(.white)
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 32)
-                            .background(Color.green)
-                            .cornerRadius(12)
-                            .shadow(color: Color.green.opacity(0.5), radius: 10)
+                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                     .padding(30)
@@ -170,29 +176,35 @@ struct MainHubView: View {
                         }
                         
                         HStack(spacing: 16) {
-                            Button("Decline") {
+                            Button(action: {
                                 withAnimation(.spring) {
                                     multiplayerService.declineTeamInvite(teamTicket)
                                 }
+                            }) {
+                                Text("Decline")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 28)
+                                    .background(Color.red.opacity(0.75))
+                                    .cornerRadius(14)
                             }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 28)
-                            .background(Color.red.opacity(0.75))
-                            .cornerRadius(14)
+                            .buttonStyle(PlainButtonStyle())
                             
-                            Button("Join Team!") {
+                            Button(action: {
                                 multiplayerService.acceptTeamInvite(teamTicket)
                                 currentTab = 1
+                            }) {
+                                Text("Join Team!")
+                                    .font(.headline.bold())
+                                    .foregroundColor(.black)
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 28)
+                                    .background(Color.green)
+                                    .cornerRadius(14)
+                                    .shadow(color: Color.green.opacity(0.4), radius: 10)
                             }
-                            .font(.headline.bold())
-                            .foregroundColor(.black)
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 28)
-                            .background(Color.green)
-                            .cornerRadius(14)
-                            .shadow(color: Color.green.opacity(0.4), radius: 10)
+                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                     .padding(28)

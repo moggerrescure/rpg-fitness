@@ -52,6 +52,7 @@ struct CameraTrackingView: View {
                                 .background(Color.black.opacity(0.4))
                                 .clipShape(Circle())
                         }
+                        .buttonStyle(TactileButtonStyle())
                         Spacer()
                     }
                     .padding(.horizontal)
@@ -326,6 +327,7 @@ struct CameraTrackingView: View {
                                                 .background(Color.black.opacity(0.4))
                                                 .clipShape(Circle())
                                         }
+                                        .buttonStyle(TactileButtonStyle())
                                         Spacer()
                                         
                                         // Timer overlay if battle is present
@@ -398,6 +400,7 @@ struct CameraTrackingView: View {
                                                 .background(Color.black.opacity(0.4))
                                                 .clipShape(Circle())
                                         }
+                                        .buttonStyle(TactileButtonStyle())
                                         
                                         Spacer()
                                         
@@ -730,6 +733,7 @@ struct CameraTrackingView: View {
                     .background(Color.black.opacity(0.4))
                     .clipShape(Circle())
             }
+            .buttonStyle(TactileButtonStyle())
             
             Spacer()
             
