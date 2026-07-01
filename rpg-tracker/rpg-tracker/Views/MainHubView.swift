@@ -1129,18 +1129,19 @@ struct QuestRow: View {
 struct CustomBottomNavBar: View {
     @Binding var currentTab: Int
     let activeColor: Color
+    @Namespace private var activeTabNamespace
     
     var body: some View {
         HStack {
-            NavBarItem(icon: "house.fill", label: "HOME", tab: 0, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "house.fill", label: "HOME", tab: 0, currentTab: $currentTab, color: activeColor, namespace: activeTabNamespace)
             Spacer()
-            NavBarItem(icon: "figure.cross.training", label: "TRAIN", tab: 1, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "figure.cross.training", label: "TRAIN", tab: 1, currentTab: $currentTab, color: activeColor, namespace: activeTabNamespace)
             Spacer()
-            NavBarItem(icon: "trophy.fill", label: "ARENA", tab: 2, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "trophy.fill", label: "ARENA", tab: 2, currentTab: $currentTab, color: activeColor, namespace: activeTabNamespace)
             Spacer()
-            NavBarItem(icon: "shield.lefthalf.filled", label: "CLAN", tab: 3, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "shield.lefthalf.filled", label: "CLAN", tab: 3, currentTab: $currentTab, color: activeColor, namespace: activeTabNamespace)
             Spacer()
-            NavBarItem(icon: "flame.fill", label: "RAIDS", tab: 4, currentTab: $currentTab, color: activeColor)
+            NavBarItem(icon: "flame.fill", label: "RAIDS", tab: 4, currentTab: $currentTab, color: activeColor, namespace: activeTabNamespace)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 10)
@@ -1166,10 +1167,16 @@ struct NavBarItem: View {
     let tab: Int
     @Binding var currentTab: Int
     let color: Color
+    let namespace: Namespace.ID
     
     var body: some View {
         Button(action: {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            #if canImport(UIKit)
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.prepare()
+            generator.impactOccurred()
+            #endif
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
                 currentTab = tab
             }
         }) {
@@ -1184,6 +1191,24 @@ struct NavBarItem: View {
             }
             .foregroundColor(currentTab == tab ? color : Theme.textSecondary)
             .frame(width: 60, height: 44)
+            .background(
+                ZStack {
+                    if currentTab == tab {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(color.opacity(0.12))
+                            .matchedGeometryEffect(id: "activeTabBackground", in: namespace)
+                        
+                        VStack {
+                            Spacer()
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(color)
+                                .frame(width: 24, height: 3)
+                                .glow(color: color.opacity(0.5), radius: 3)
+                                .matchedGeometryEffect(id: "activeTabLine", in: namespace)
+                        }
+                    }
+                }
+            )
         }
         .buttonStyle(TactileButtonStyle())
     }
