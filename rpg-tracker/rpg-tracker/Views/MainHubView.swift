@@ -537,7 +537,7 @@ struct DashboardNavBar: View {
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 7)
-            .background(.thinMaterial)
+            .background(Color.black.opacity(0.4))
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.healerColor.opacity(0.25), lineWidth: 1))
 
@@ -556,7 +556,7 @@ struct DashboardNavBar: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundColor(color)
                 .frame(width: 36, height: 36)
-                .background(.thinMaterial)
+                .background(Color.black.opacity(0.4))
                 .clipShape(Circle())
                 .overlay(Circle().stroke(Theme.border, lineWidth: 1))
         }
@@ -716,7 +716,7 @@ struct HeroCard: View {
                 }
                 .padding(.vertical, 12)
             }
-            .background(.thinMaterial)
+            .background(Theme.cardBackground.opacity(0.85))
             .clipShape(RoundedRectangle(cornerRadius: 22))
             .overlay(
                 RoundedRectangle(cornerRadius: 22)
@@ -966,10 +966,11 @@ struct DailyQuestCard: View {
         .background(
             ZStack {
                 if isComplete {
-                    quest.iconColor.opacity(0.06)
+                    quest.iconColor.opacity(0.12)
+                } else {
+                    Theme.cardBackground.opacity(0.7)
                 }
             }
-            .background(.thinMaterial)
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
@@ -1067,7 +1068,7 @@ struct SlotCard: View {
                 }
             }
             .padding(.vertical, 16).padding(.horizontal, 10).frame(maxWidth: .infinity)
-            .background(.thinMaterial)
+            .background(Theme.cardBackground.opacity(0.85))
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(LinearGradient(colors: [color.opacity(0.35), Color.clear], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.5))
             .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
@@ -1104,7 +1105,7 @@ struct QuestRow: View {
                 .background(completed ? Theme.success.opacity(0.1) : Theme.secondaryCard.opacity(0.5)).cornerRadius(6)
         }
         .padding()
-        .background(.thinMaterial)
+        .background(Theme.cardBackground.opacity(0.85))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(completed ? Theme.success.opacity(0.3) : Theme.border, lineWidth: 1))
     }
@@ -1239,10 +1240,11 @@ struct ClassSwitcherPanel: View {
                         .background(
                             ZStack {
                                 if isSelected {
-                                    charClass.themeColor.opacity(0.12)
+                                    charClass.themeColor.opacity(0.18)
+                                } else {
+                                    Theme.cardBackground.opacity(0.4)
                                 }
                             }
-                            .background(.thinMaterial)
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
@@ -1251,7 +1253,7 @@ struct ClassSwitcherPanel: View {
                         )
                         .scaleEffect(isSelected ? 1.02 : 0.98)
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(TactileButtonStyle())
                 }
             }
             .padding(.horizontal)
