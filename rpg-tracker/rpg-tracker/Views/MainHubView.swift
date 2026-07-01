@@ -764,24 +764,26 @@ struct GearSlotStrip: View {
                             .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: isPulsing)
                     }
 
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill((item?.rarity.color ?? accentColor).opacity(item != nil ? 0.18 : 0.07))
-                        .frame(width: 40, height: 40)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(
-                                    item?.rarity.color ?? accentColor,
-                                    lineWidth: item != nil ? 1.5 : 0.5
-                                )
-                                .opacity(item != nil ? 0.6 : 0)
-                        )
-
                     if let item = item {
                         ItemIconView(item: item, fallbackIcon: "questionmark")
-                            .frame(width: 20, height: 20)
-                            .font(.system(size: 17, weight: .bold))
+                            .frame(width: 40, height: 40)
                             .foregroundColor(item.rarity.color)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(item.rarity.color, lineWidth: 1.5)
+                                    .opacity(0.6)
+                            )
                     } else {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(accentColor.opacity(0.07))
+                            .frame(width: 40, height: 40)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(accentColor, lineWidth: 0.5)
+                                    .opacity(0)
+                            )
+                        
                         // "+" icon for empty slots
                         Image(systemName: "plus")
                             .font(.system(size: 13, weight: .light))

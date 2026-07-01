@@ -453,20 +453,15 @@ private struct ShopItemRow: View {
             VStack(spacing: 0) {
                 // ── Main row ──────────────────────────────────────────
                 HStack(spacing: 14) {
-                    // Icon
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(item.rarity.color.opacity(0.14))
+                        ItemIconView(item: item, fallbackIcon: "questionmark")
                             .frame(width: 52, height: 52)
+                            .foregroundColor(item.rarity.color)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
                                     .stroke(isEquipped ? item.rarity.color : item.rarity.color.opacity(0.3), lineWidth: isEquipped ? 2 : 1)
                             )
-
-                        ItemIconView(item: item, fallbackIcon: "questionmark")
-                            .frame(width: 32, height: 32)
-                            .font(.title3)
-                            .foregroundColor(item.rarity.color)
                     }
                     .glow(color: isEquipped ? item.rarity.color.opacity(0.45) : .clear, radius: 7)
 

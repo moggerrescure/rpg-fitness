@@ -185,21 +185,15 @@ struct InventoryGridCell: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(item.rarity.color.opacity(0.1))
-                        .background(.thinMaterial)
+                    ItemIconView(item: item, fallbackIcon: "questionmark")
+                        .aspectRatio(1, contentMode: .fill)
+                        .foregroundColor(item.rarity.color)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .aspectRatio(1, contentMode: .fit)
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
                                 .stroke(isEquipped ? Theme.success : item.rarity.color.opacity(0.3), lineWidth: isEquipped ? 2 : 1)
                         )
-                    
-                    ItemIconView(item: item, fallbackIcon: "questionmark")
-                        .frame(width: 44, height: 44)
-                        .font(.system(size: 36))
-                        .foregroundColor(item.rarity.color)
-                        .glow(color: item.rarity.color.opacity(0.5), radius: 8)
+                        .glow(color: item.rarity.color.opacity(0.3), radius: 6)
                     
                     if isEquipped {
                         VStack {
@@ -241,18 +235,14 @@ struct InventoryItemSheet: View {
             // Header
             HStack(alignment: .top) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(item.rarity.color.opacity(0.15))
+                    ItemIconView(item: item, fallbackIcon: "questionmark")
                         .frame(width: 80, height: 80)
+                        .foregroundColor(item.rarity.color)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(item.rarity.color.opacity(0.5), lineWidth: 1.5)
                         )
-                    
-                    ItemIconView(item: item, fallbackIcon: "questionmark")
-                        .frame(width: 56, height: 56)
-                        .font(.system(size: 40))
-                        .foregroundColor(item.rarity.color)
                         .glow(color: item.rarity.color.opacity(0.6), radius: 10)
                 }
                 
