@@ -66,7 +66,9 @@ widget_target.build_configurations.each do |config|
   config.build_settings['WRAPPER_EXTENSION'] = 'appex'
   config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = widget_bundle_id
   config.build_settings['INFOPLIST_FILE'] = 'FitRPGWidget/FitRPGWidget-Info.plist'
-  config.build_settings['GENERATE_INFOPLIST'] = 'NO'
+  config.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
+  config.build_settings['CURRENT_PROJECT_VERSION'] = '1'
+  config.build_settings['MARKETING_VERSION'] = '1.0'
   config.build_settings['SKIP_INSTALL'] = 'YES'
   config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
   config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.2'

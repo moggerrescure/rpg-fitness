@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		009D58E12B1874F82A0427B0 /* FitRPGWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = E17EF1D2C58DAEDDB74FBADD /* FitRPGWidget.appex */; };
 		5DE1D6C17416B44F14E90709 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5FB13102CFD3F5C27BFC044 /* Foundation.framework */; };
+		8E806396EF342D6A3044CC3D /* FitRPGWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6449F96403895101857D41DF /* FitRPGWidget.swift */; };
+		AC0CD1C52FF7C1FF00165755 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = AC0CD1C42FF7C1FF00165755 /* FirebaseAnalytics */; };
+		AC0CD1C72FF7C20D00165755 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = AC0CD1C62FF7C20D00165755 /* FirebaseCrashlytics */; };
 		AC365FCD2FE97A13006D8C07 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = AC365FCC2FE97A13006D8C07 /* FirebaseAppCheck */; };
 		AC7766A12FE736EE0067B7D3 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE90E3BE538AFF14CF764E5 /* FirebaseAuth */; };
 		AC7766A22FE736EE0067B7D3 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = EBEC446B8D30AE874EF05AB9 /* FirebaseFirestore */; };
@@ -16,8 +19,7 @@
 		AC7766A52FE736EE0067B7D3 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 5F7203E8C8463C592AFE691E /* GoogleSignIn */; };
 		AC7766A62FE736EE0067B7D3 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 8EB1AEBA9744F78D8CB919FC /* GoogleSignInSwift */; };
 		AC7769E92FE73D970067B7D3 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = AC7769E82FE73D970067B7D3 /* FirebaseFunctions */; };
-		B1B38D9BB942BD8869B32D31 /* FitRPGWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29668CC25D2FDCCFB1B5D440 /* FitRPGWidget.swift */; };
-		DB824B20C187E0E5A3B6E690 /* LiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D55F58F0C714DC8271F0A3CF /* LiveActivityAttributes.swift */; };
+		F8C4E889E7C344B7086CCE31 /* LiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64891D2319AF89FD8223E730 /* LiveActivityAttributes.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,19 +47,17 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		29668CC25D2FDCCFB1B5D440 /* FitRPGWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FitRPGWidget.swift; path = FitRPGWidget/FitRPGWidget.swift; sourceTree = "<group>"; };
-		369EDC20DA83884C858CE1FF /* FitRPGWidget-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "FitRPGWidget-Info.plist"; path = "FitRPGWidget/FitRPGWidget-Info.plist"; sourceTree = "<group>"; };
+		14FCF11A86FEFA7A2C6674C2 /* FitRPGWidget-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "FitRPGWidget-Info.plist"; path = "FitRPGWidget/FitRPGWidget-Info.plist"; sourceTree = "<group>"; };
+		6449F96403895101857D41DF /* FitRPGWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FitRPGWidget.swift; path = FitRPGWidget/FitRPGWidget.swift; sourceTree = "<group>"; };
+		64891D2319AF89FD8223E730 /* LiveActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveActivityAttributes.swift; path = "rpg-tracker/Models/LiveActivityAttributes.swift"; sourceTree = "<group>"; };
 		93E04F1A2FE41A0700C2384D /* rpg-tracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "rpg-tracker.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5FB13102CFD3F5C27BFC044 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		D55F58F0C714DC8271F0A3CF /* LiveActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveActivityAttributes.swift; path = "rpg-tracker/Models/LiveActivityAttributes.swift"; sourceTree = "<group>"; };
 		E17EF1D2C58DAEDDB74FBADD /* FitRPGWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FitRPGWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		93E04F1C2FE41A0700C2384D /* rpg-tracker */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = "rpg-tracker";
 			sourceTree = "<group>";
 		};
@@ -78,9 +78,11 @@
 			files = (
 				AC7766A62FE736EE0067B7D3 /* GoogleSignInSwift in Frameworks */,
 				AC7766A52FE736EE0067B7D3 /* GoogleSignIn in Frameworks */,
+				AC0CD1C52FF7C1FF00165755 /* FirebaseAnalytics in Frameworks */,
 				AC7766A42FE736EE0067B7D3 /* FirebaseRemoteConfig in Frameworks */,
 				AC7769E92FE73D970067B7D3 /* FirebaseFunctions in Frameworks */,
 				AC365FCD2FE97A13006D8C07 /* FirebaseAppCheck in Frameworks */,
+				AC0CD1C72FF7C20D00165755 /* FirebaseCrashlytics in Frameworks */,
 				AC7766A22FE736EE0067B7D3 /* FirebaseFirestore in Frameworks */,
 				AC7766A12FE736EE0067B7D3 /* FirebaseAuth in Frameworks */,
 			);
@@ -103,7 +105,7 @@
 				93E04F1C2FE41A0700C2384D /* rpg-tracker */,
 				AC7769582FE73A9B0067B7D3 /* Frameworks */,
 				93E04F1B2FE41A0700C2384D /* Products */,
-				CAFD1AAB42480204E0D9B878 /* FitRPGWidgetSources */,
+				94999E9769E42475B26538D0 /* FitRPGWidgetSources */,
 			);
 			sourceTree = "<group>";
 		};
@@ -116,22 +118,22 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		94999E9769E42475B26538D0 /* FitRPGWidgetSources */ = {
+			isa = PBXGroup;
+			children = (
+				6449F96403895101857D41DF /* FitRPGWidget.swift */,
+				64891D2319AF89FD8223E730 /* LiveActivityAttributes.swift */,
+				14FCF11A86FEFA7A2C6674C2 /* FitRPGWidget-Info.plist */,
+			);
+			name = FitRPGWidgetSources;
+			sourceTree = "<group>";
+		};
 		AC7769582FE73A9B0067B7D3 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				2B69A47AEBE848E2D8CE088F /* iOS */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		CAFD1AAB42480204E0D9B878 /* FitRPGWidgetSources */ = {
-			isa = PBXGroup;
-			children = (
-				29668CC25D2FDCCFB1B5D440 /* FitRPGWidget.swift */,
-				D55F58F0C714DC8271F0A3CF /* LiveActivityAttributes.swift */,
-				369EDC20DA83884C858CE1FF /* FitRPGWidget-Info.plist */,
-			);
-			name = FitRPGWidgetSources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -163,6 +165,8 @@
 				8EB1AEBA9744F78D8CB919FC /* GoogleSignInSwift */,
 				AC7769E82FE73D970067B7D3 /* FirebaseFunctions */,
 				AC365FCC2FE97A13006D8C07 /* FirebaseAppCheck */,
+				AC0CD1C42FF7C1FF00165755 /* FirebaseAnalytics */,
+				AC0CD1C62FF7C20D00165755 /* FirebaseCrashlytics */,
 			);
 			productName = "rpg-tracker";
 			productReference = 93E04F1A2FE41A0700C2384D /* rpg-tracker.app */;
@@ -261,8 +265,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B1B38D9BB942BD8869B32D31 /* FitRPGWidget.swift in Sources */,
-				DB824B20C187E0E5A3B6E690 /* LiveActivityAttributes.swift in Sources */,
+				8E806396EF342D6A3044CC3D /* FitRPGWidget.swift in Sources */,
+				F8C4E889E7C344B7086CCE31 /* LiveActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -283,7 +287,9 @@
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST = NO;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "FitRPGWidget/FitRPGWidget-Info.plist";
 				INFOPLIST_KEY_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -292,6 +298,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.borisdev.rpg-tracker.FitRPGWidget";
 				PRODUCT_NAME = FitRPGWidget;
 				SDKROOT = iphoneos;
@@ -529,7 +536,9 @@
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST = NO;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "FitRPGWidget/FitRPGWidget-Info.plist";
 				INFOPLIST_KEY_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -538,6 +547,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.borisdev.rpg-tracker.FitRPGWidget";
 				PRODUCT_NAME = FitRPGWidget;
 				SDKROOT = iphoneos;
@@ -618,6 +628,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 42F411DD04724776A5C041AF /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseRemoteConfig;
+		};
+		AC0CD1C42FF7C1FF00165755 /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 42F411DD04724776A5C041AF /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		AC0CD1C62FF7C20D00165755 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 42F411DD04724776A5C041AF /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
 		};
 		AC365FCC2FE97A13006D8C07 /* FirebaseAppCheck */ = {
 			isa = XCSwiftPackageProductDependency;

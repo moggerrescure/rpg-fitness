@@ -238,7 +238,7 @@ class MultiplayerService: ObservableObject {
     /// Fills remaining team slots with bots, creates opponent team, sets battle to active.
     private func startTeamBattle(battleId: String) {
         teamLobbyListener?.remove()
-        let ticketIdToDelete = currentTicketId
+ % ;        let ticketIdToDelete = currentTicketId
         teamLobbyTicketId = nil
         isInTeamLobby = false
         
@@ -1186,9 +1186,16 @@ class MultiplayerService: ObservableObject {
         let myUid = char.id
         let serverBattleRef = db.collection("battles").document(battle.id)
         
-        Task {
-            let doc = try? await serverBattleRef.getDocument()
-            guard var serverBattle = try? doc?.data(as: Battle.self) else { return }
+        db.runTransaction({ (transaction, errorPointer) -> Any? in
+            let doc: DocumentSnapshot
+            do {
+                doc = try transaction.getDocument(serverBattleRef)
+            } catch let fetchError as NSError {
+                errorPointer?.pointee = fetchError
+                return nil
+            }
+            
+            guard var serverBattle = try? doc.data(as: Battle.self) else { return nil }
             
             let isHost = serverBattle.localTeam.contains { $0.id == myUid }
             var myTeamRef = isHost ? serverBattle.localTeam : serverBattle.opponentTeam
@@ -1227,7 +1234,16 @@ class MultiplayerService: ObservableObject {
                 serverBattle.localTeam = oppTeamRef
             }
             
-            try? serverBattleRef.setData(from: serverBattle)
+            do {
+                try transaction.setData(from: serverBattle, forDocument: serverBattleRef)
+            } catch let error as NSError {
+                errorPointer?.pointee = error
+            }
+            return nil
+        }) { (object, error) in
+            if let error = error {
+                print("Transaction failed: \(error)")
+            }
         }
     }
     
