@@ -1,5 +1,5 @@
 // CONFIGURATION
-const DISCORD_INVITE_URL = "https://discord.gg/TnfdNJd9a";
+const DISCORD_INVITE_URL = "https://discord.gg/3szy9qUKwT";
 
 // WIZARD STATE
 let selectedPreference = null;
