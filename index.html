@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход в комьюнити Kennsora</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Rubik+Mono+One&family=Sofia+Sans:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Canvas for 3D starfield particles -->
+    <canvas id="starfield"></canvas>
+
+    <!-- Interactive Ambient Glow Orb -->
+    <div class="cursor-glow" id="cursor-glow"></div>
+
+    <!-- Main Wizard Card Container -->
+    <div class="container" id="tilt-card-container">
+        <!-- Neon Progress Bar -->
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar-fill"></div>
+        </div>
+
+        <!-- STEP 1: WELCOME SCREEN -->
+        <div class="card active" id="step-1">
+            <div class="banner-wrapper">
+                <img src="genshin_banner.jpg" alt="Kennsora Banner" class="banner-img">
+            </div>
+            <div class="card-content">
+                <h1 class="glow-text">KENNSORA</h1>
+                <p class="subtitle">Официальное интерактивное вступление в гильдию</p>
+                <div class="divider"></div>
+                <p class="desc-text">Привет, путник! Прежде чем попасть в наше доброе комьюнити, тебе предстоит пройти небольшое испытание на верность гильдии.</p>
+                <button class="btn btn-primary btn-glow" onclick="nextStep(1, 2)">Начать испытание ⚔️</button>
+            </div>
+        </div>
+
+        <!-- STEP 2: LOVE METER (SLIDER) -->
+        <div class="card" id="step-2">
+            <div class="card-content">
+                <h2 class="glow-text-gold">Испытание 1: Шкала Верности</h2>
+                <p class="desc-text">Насколько сильно ты любишь стримы, треки и творчество Kennsora?</p>
+                
+                <div class="love-meter-box">
+                    <div class="smiley-face" id="smiley-indicator">😢</div>
+                    <div class="slider-wrapper">
+                        <input type="range" min="1" max="10" value="3" class="slider" id="love-slider" oninput="updateLoveSlider(this.value)">
+                        <div class="slider-val-box">
+                            <span class="slider-value" id="slider-val-label">3</span>/10
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert-box error" id="love-alert">
+                    ⚠️ Значение слишком мало! Покажи более искреннюю любовь к Kennsora!
+                </div>
+                <div class="alert-box success" id="love-success">
+                    ✅ Отлично! Настоящие герои ценят Kennsora! Проход открыт.
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="nextStep(2, 1)">Назад</button>
+                    <button class="btn btn-primary" id="btn-love-next" onclick="nextStep(2, 3)" disabled>Далее</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 3: PREFERENCES -->
+        <div class="card" id="step-3">
+            <div class="card-content">
+                <h2 class="glow-text">Испытание 2: Выбор Пути</h2>
+                <p class="desc-text">Что тебе ближе всего по душе? (Выбери свою специализацию)</p>
+                
+                <div class="preferences-grid">
+                    <div class="pref-card" onclick="selectPref(this, 'valorant')">
+                        <div class="pref-icon">🔫</div>
+                        <div class="pref-title">Valorant</div>
+                        <div class="pref-desc">Ищу жесткие катки, ранки и тиммейтов</div>
+                    </div>
+                    <div class="pref-card" onclick="selectPref(this, 'cs')">
+                        <div class="pref-icon">💣</div>
+                        <div class="pref-title">CS 2</div>
+                        <div class="pref-desc">Премьер-режим, напарники и хайлайты</div>
+                    </div>
+                    <div class="pref-card" onclick="selectPref(this, 'genshin')">
+                        <div class="pref-icon">✨</div>
+                        <div class="pref-title">Genshin</div>
+                        <div class="pref-desc">Лор, бездна, помощь с боссами и фармом</div>
+                    </div>
+                    <div class="pref-card" onclick="selectPref(this, 'music')">
+                        <div class="pref-icon">🎵</div>
+                        <div class="pref-title">Музыка</div>
+                        <div class="pref-desc">Обсуждение треков и новые дропы песен</div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="nextStep(3, 2)">Назад</button>
+                    <button class="btn btn-primary" id="btn-pref-next" onclick="nextStep(3, 4)" disabled>Далее</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 4: FINAL REDIRECT GATE -->
+        <div class="card" id="step-4">
+            <div class="card-content">
+                <h2 class="glow-text-gold">Испытание Пройдено!</h2>
+                <p class="desc-text">Все преграды позади. Готов ли ты присоединиться к самому доброму, ламповому и веселому комьюнити в Discord?</p>
+                
+                <div class="final-card-decoration">
+                    🚀 Тебя ждут уютные гостиные, мемы и совместные игры!
+                </div>
+
+                <div class="btn-group-vertical">
+                    <button class="btn btn-primary btn-large btn-glow-gold" onclick="triggerWarpSpeed()">ДА, ВСТУПИТЬ В ГИЛЬДИЮ! 🛡️</button>
+                    <button class="btn btn-link" onclick="nextStep(4, 3)">Изменить предпочтения</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 5: REDIRECTING EFFECT SCREEN (HIDDEN ON START) -->
+        <div class="card card-hidden" id="step-5">
+            <div class="card-content centered">
+                <div class="warp-loader"></div>
+                <h2 class="warp-text">Инициализация гиперпрыжка...</h2>
+                <p class="warp-subtext">Телепортация на сервер Kennsora</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript logic -->
+    <script src="app.js"></script>
+</body>
+</html>
