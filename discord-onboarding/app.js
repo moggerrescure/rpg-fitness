@@ -44,7 +44,7 @@ function playClickSound(volumeMultiplier = 1.0) {
         snapOsc.frequency.setValueAtTime(1600, time);
         snapOsc.frequency.exponentialRampToValueAtTime(900, time + 0.01);
         
-        snapGain.gain.setValueAtTime(0.02 * volumeMultiplier, time); 
+        snapGain.gain.setValueAtTime(0.035 * volumeMultiplier, time); 
         snapGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.01);
         
         snapOsc.connect(snapGain);
@@ -57,7 +57,7 @@ function playClickSound(volumeMultiplier = 1.0) {
         bodyOsc.frequency.setValueAtTime(140, time);
         bodyOsc.frequency.linearRampToValueAtTime(60, time + 0.03);
         
-        bodyGain.gain.setValueAtTime(0.025 * volumeMultiplier, time); 
+        bodyGain.gain.setValueAtTime(0.045 * volumeMultiplier, time); 
         bodyGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
         
         bodyOsc.connect(bodyGain);
@@ -252,7 +252,7 @@ function updateProgressBar(step) {
 // NAVIGATION
 function nextStep(current, next) {
     if (current === 1) {
-        playClickSound(0.15); // Make the first button click sound softer!
+        playClickSound(0.1); // Make the first button click sound softer!
     } else {
         playClickSound(1.0);
     }
