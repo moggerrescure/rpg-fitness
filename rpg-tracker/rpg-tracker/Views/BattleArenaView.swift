@@ -25,6 +25,7 @@ enum BattleArenaSheetType: Identifiable, Equatable {
 }
 
 enum StorySetupStep: Equatable {
+    case modePrompt       // solo vs co-op chooser
     case warpAnimation    // github-like warp animation
     case activeMap        // actual map view
 }
@@ -52,6 +53,7 @@ struct BattleArenaView: View {
     @State private var selectedStoryBossMaxHP: Int = 0
     @State private var selectedStoryDamagePerRep: Int = 0
     @State private var showStoryWinOverlay: Bool = false
+    @State private var showStoryCoopUnavailable: Bool = false
     
     var body: some View {
         ZStack {
@@ -87,6 +89,27 @@ struct BattleArenaView: View {
                         }, searchAction: {
                             showMatchmakingClassPicker = true
                         })
+                    } else if storySetupStep == .modePrompt {
+                        ZStack {
+                            AnimatedBackgroundView(backgroundType: .arena)
+                            Color.black.opacity(0.55).ignoresSafeArea()
+                            StoryModePromptInlineView(
+                                selectSolo: {
+                                    isStoryCoop = false
+                                    storyCoopFriend = nil
+                                    withAnimation(.easeInOut(duration: 0.5)) {
+                                        storySetupStep = .warpAnimation
+                                    }
+                                },
+                                selectCoop: {
+                                    // Co-op story path is not wired end-to-end — gate with honest UX.
+                                    showStoryCoopUnavailable = true
+                                },
+                                onCancel: {
+                                    withAnimation { storySetupStep = nil }
+                                }
+                            )
+                        }
                     } else if storySetupStep == .warpAnimation {
                         WarpTransitionView {
                             withAnimation(.easeInOut(duration: 0.8)) {
@@ -129,8 +152,8 @@ struct BattleArenaView: View {
                                 selectStory: {
                                     isStoryCoop = false
                                     storyCoopFriend = nil
-                                    withAnimation(.easeInOut(duration: 0.5)) {
-                                        storySetupStep = .warpAnimation
+                                    withAnimation(.easeInOut(duration: 0.35)) {
+                                        storySetupStep = .modePrompt
                                     }
                                 },
                                 selectBossRaid: {
@@ -277,6 +300,18 @@ struct BattleArenaView: View {
                     viewModel.cancelQueue()
                 }
             }
+        }
+        .alert("Story Co-op Unavailable", isPresented: $showStoryCoopUnavailable) {
+            Button("OK", role: .cancel) {}
+            Button("Play Solo") {
+                isStoryCoop = false
+                storyCoopFriend = nil
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    storySetupStep = .warpAnimation
+                }
+            }
+        } message: {
+            Text("Co-op story campaigns aren't available yet. Play solo to conquer the islands.")
         }
         .navigationTitle("ARENA & ARENAS")
         .navigationBarTitleDisplayMode(.inline)
@@ -2335,18 +2370,26 @@ struct StoryModePromptInlineView: View {
                 .buttonStyle(TactileButtonStyle())
                 
                 Button(action: selectCoop) {
-                    HStack {
-                        Image(systemName: "person.2.fill")
-                        Text("CO-OP WITH A FRIEND")
-                            .fontWeight(.bold)
+                    VStack(spacing: 6) {
+                        HStack {
+                            Image(systemName: "person.2.fill")
+                            Text("CO-OP WITH A FRIEND")
+                                .fontWeight(.bold)
+                        }
+                        Text("Coming soon — solo only for now")
+                            .font(.caption2)
+                            .opacity(0.85)
                     }
                     .font(.system(.subheadline, design: .monospaced))
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Theme.healerColor)
+                    .background(Theme.healerColor.opacity(0.55))
                     .foregroundColor(.white)
                     .cornerRadius(12)
-                    .shadow(color: Theme.healerColor.opacity(0.3), radius: 8, y: 4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Theme.border.opacity(0.5), lineWidth: 1)
+                    )
                 }
                 .buttonStyle(TactileButtonStyle())
             }

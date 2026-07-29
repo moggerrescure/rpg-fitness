@@ -288,6 +288,11 @@ struct MainHubView: View {
                 guard let err, !err.isEmpty else { return }
                 withAnimation { toastMessage = err }
             }
+            .onChange(of: firebaseService.lastActionError) { err in
+                guard let err, !err.isEmpty else { return }
+                withAnimation { toastMessage = err }
+                firebaseService.lastActionError = nil
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowDungeonRun"))) { _ in
                 showDungeonRun = true
             }

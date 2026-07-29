@@ -1439,6 +1439,10 @@ struct FriendsSocialView: View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                     currentTab = 1 // Switch automatically to PvP Arena tab
                 }
+            } else {
+                let msg = MultiplayerService.shared.matchmakingError
+                    ?? "Couldn't challenge \(friendName). Try again when they're online."
+                showToast(msg, isError: true)
             }
         }
     }

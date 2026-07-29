@@ -14,6 +14,8 @@ class FirebaseService: ObservableObject {
     @Published var activeWorldBoss: WorldBoss?
     /// Distinguishes first load vs confirmed empty vs listener error.
     @Published var worldBossStatus: WorldBossLoadStatus = .loading
+    /// Surfaced to UI toasts for clan/war CF failures (no silent print-only fails).
+    @Published var lastActionError: String? = nil
 
     enum WorldBossLoadStatus: Equatable {
         case loading
@@ -584,7 +586,8 @@ class FirebaseService: ObservableObject {
     }
     
     func startFriendDuel(playerClass: CharacterClass, friendName: String, friendClass: CharacterClass, completion: @escaping (Bool) -> Void) {
-        // Look up friend's UID in Firestore by username, then challenge them
+        // Look up friend's UID in Firestore by username, then challenge them.
+        // Never fall back to bot matchmaking — that fakes a successful friend duel.
         Task {
             let db = Firestore.firestore()
             do {
@@ -600,18 +603,18 @@ class FirebaseService: ObservableObject {
                         completion(true)
                     }
                 } else {
-                    // Friend not found in Firestore — fall back to local bot duel with friend's stats
                     await MainActor.run {
-                        // Start a regular 1v1 with bot using friend class
-                        MultiplayerService.shared.startMatchmaking(for: playerClass, type: .duel1v1)
-                        completion(true)
+                        MultiplayerService.shared.matchmakingError =
+                            "Couldn't find \(friendName) online. Ask them to open FitRPG, then try again."
+                        completion(false)
                     }
                 }
             } catch {
                 print("startFriendDuel error: \(error)")
                 await MainActor.run {
-                    MultiplayerService.shared.startMatchmaking(for: playerClass, type: .duel1v1)
-                    completion(true)
+                    MultiplayerService.shared.matchmakingError =
+                        "Couldn't start duel with \(friendName). Check your connection and try again."
+                    completion(false)
                 }
             }
         }
@@ -859,6 +862,9 @@ class FirebaseService: ObservableObject {
                 // Clan listener picks up server-written activeWar state
             } catch {
                 print("Error starting clan war: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.lastActionError = "Couldn't start clan war. Try again in a moment."
+                }
             }
         }
     }
@@ -872,6 +878,9 @@ class FirebaseService: ObservableObject {
                 // Clan listener clears activeWar from server write
             } catch {
                 print("Error canceling clan war search: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.lastActionError = "Couldn't cancel war search. Try again."
+                }
             }
         }
     }
@@ -889,6 +898,9 @@ class FirebaseService: ObservableObject {
                 // Clan listener reflects server-updated scores and member stats
             } catch {
                 print("Error recording clan war attack: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.lastActionError = "War attack failed. No score was recorded — try again."
+                }
             }
         }
     }

@@ -16,6 +16,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         
         #if DEBUG
         AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
+        #else
+        AppCheck.setAppCheckProviderFactory(FitRPGAppCheckProviderFactory())
         #endif
         
         FirebaseApp.configure()
@@ -41,6 +43,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         #if canImport(FirebaseMessaging)
         Messaging.messaging().apnsToken = deviceToken
         #endif
+    }
+}
+
+/// Release App Check: App Attest (iOS 14+) with DeviceCheck fallback.
+final class FitRPGAppCheckProviderFactory: NSObject, AppCheckProviderFactory {
+    func createProvider(with app: FirebaseApp) -> (any AppCheckProvider)? {
+        if #available(iOS 14.0, *) {
+            return AppAttestProvider(app: app)
+        }
+        return DeviceCheckProvider(app: app)
     }
 }
 

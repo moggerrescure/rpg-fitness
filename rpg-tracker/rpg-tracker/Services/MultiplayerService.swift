@@ -184,6 +184,9 @@ class MultiplayerService: ObservableObject {
             listenToTeamLobby(docRef: docRef, battleId: battleId, hostPlayer: myPlayer)
         } catch {
             print("Failed to init team lobby: \(error)")
+            refundPendingMatchEnergy()
+            matchmakingError = "Could not open 3v3 lobby. Check your connection."
+            isInTeamLobby = false
         }
     }
     
@@ -284,12 +287,19 @@ class MultiplayerService: ObservableObject {
         }
     }
     
-    /// Acceptor joins the team directly on the battle document.
+    /// Acceptor joins the 3v3 lobby via `joinTeam` CF (updates ticket.team + battle.localTeam).
     func acceptTeamInvite(_ ticket: MatchmakingTicket) {
         guard let char = FirebaseService.shared.currentCharacter else { return }
-        guard let battleId = ticket.battleId else {
+        guard let ticketId = ticket.id else {
+            print("acceptTeamInvite: no ticket id")
+            self.incomingTeamInvite = nil
+            matchmakingError = "Invite expired. Ask your teammate to invite again."
+            return
+        }
+        guard ticket.battleId != nil else {
             print("acceptTeamInvite: no battleId on ticket")
             self.incomingTeamInvite = nil
+            matchmakingError = "Invite is incomplete. Ask your teammate to invite again."
             return
         }
         
@@ -305,17 +315,18 @@ class MultiplayerService: ObservableObject {
         
         Task {
             do {
-                // Add self to localTeam on the battle document
-                let playerData = try Firestore.Encoder().encode(myPlayer)
-                try await db.collection("battles").document(battleId).updateData([
-                    "localTeam": FieldValue.arrayUnion([playerData])
+                let guestsData = [try Firestore.Encoder().encode(myPlayer)]
+                let result = try await Functions.functions().httpsCallable("joinTeam").call([
+                    "ticketId": ticketId,
+                    "guests": guestsData
                 ])
-                
-                // Remove self from pendingInvites on ticket
-                if let ticketId = ticket.id {
-                    try? await db.collection("matchmaking").document(ticketId).updateData([
-                        "pendingInvites": FieldValue.arrayRemove([char.id])
-                    ])
+                guard let data = result.data as? [String: Any],
+                      data["success"] as? Bool == true,
+                      let battleId = (data["battleId"] as? String) ?? ticket.battleId else {
+                    await MainActor.run {
+                        self.matchmakingError = "Could not join team. The invite may have expired."
+                    }
+                    return
                 }
                 
                 // Listen for battle to become active (host will trigger startTeamBattle)
@@ -328,11 +339,9 @@ class MultiplayerService: ObservableObject {
                         self.matchmakingListener?.remove()
                         self.isSearching = false
                         
-                        // Build acceptor-perspective battle (my player is in localTeam from server)
                         self.startFriendBattleCountdown(battle: battle)
                     }
                 
-                // Timeout after 30s: just cancel
                 DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
                     guard let self = self else { return }
                     self.matchmakingListener?.remove()
@@ -340,6 +349,9 @@ class MultiplayerService: ObservableObject {
                 }
             } catch {
                 print("acceptTeamInvite failed: \(error)")
+                await MainActor.run {
+                    self.matchmakingError = "Could not join team. Try again."
+                }
             }
         }
     }
@@ -652,8 +664,13 @@ class MultiplayerService: ObservableObject {
                         return
                     }
                 }
+                createOwnTicket(myChar: char, myClass: characterClass, type: type, myTeam: localTeam, initialStatus: initialStatus)
             } else if initialStatus == .searchingOpponent {
-                // Helper to scan for opponents and try to match
+                // Always create our ticket first so matchWithOpponent always has myTicketId
+                // (server rejects calls without it — the old pre-ticket fast path always failed).
+                createOwnTicket(myChar: char, myClass: characterClass, type: type, myTeam: localTeam, initialStatus: initialStatus)
+                guard let myTicketId = self.currentTicketId, self.isSearching else { return }
+
                 func tryMatchWithExistingOpponent() async -> Bool {
                     let snapshot = try? await db.collection("matchmaking")
                         .whereField("status", isEqualTo: MatchmakingStatus.searchingOpponent.rawValue)
@@ -662,7 +679,7 @@ class MultiplayerService: ObservableObject {
                         .getDocuments()
                     
                     let potentialMatches = snapshot?.documents.compactMap { try? $0.data(as: MatchmakingTicket.self) }
-                        .filter { $0.uid != char.id } ?? []
+                        .filter { $0.uid != char.id && $0.id != myTicketId } ?? []
                     
                     if let opponentTicket = potentialMatches.first, let opponentTicketId = opponentTicket.id {
                         let success = try? await matchWithOpponent(opponentTicketId: opponentTicketId, opponent: opponentTicket, myTeam: localTeam)
@@ -671,23 +688,31 @@ class MultiplayerService: ObservableObject {
                     return false
                 }
                 
-                // First scan — fast path for when an opponent is already waiting
-                if await tryMatchWithExistingOpponent() { return }
+                if await tryMatchWithExistingOpponent() {
+                    self.opponentFallbackTimer?.invalidate()
+                    self.opponentFallbackTimer = nil
+                    self.matchmakingListener?.remove()
+                    let ticketToDelete = myTicketId
+                    self.currentTicketId = nil
+                    Task { try? await self.db.collection("matchmaking").document(ticketToDelete).delete() }
+                    return
+                }
                 
-                // Race condition: if matchWithOpponent failed (two players found each other simultaneously
-                // but only one transaction wins), add random jitter then try once more before
-                // creating our own ticket. This breaks the symmetric race.
                 let jitter = Double.random(in: 0.5...1.5)
                 try? await Task.sleep(nanoseconds: UInt64(jitter * 1_000_000_000))
-                
-                // Guard: if we were cancelled while waiting, stop.
-                guard self.isSearching else { return }
-                
-                // Second scan after jitter — catches opponents who just created their ticket
-                if await tryMatchWithExistingOpponent() { return }
+                guard self.isSearching, self.currentTicketId == myTicketId else { return }
+                if await tryMatchWithExistingOpponent() {
+                    self.opponentFallbackTimer?.invalidate()
+                    self.opponentFallbackTimer = nil
+                    self.matchmakingListener?.remove()
+                    let ticketToDelete = myTicketId
+                    self.currentTicketId = nil
+                    Task { try? await self.db.collection("matchmaking").document(ticketToDelete).delete() }
+                }
+                // Host listener + bot fallback continue if still unmatched
+            } else {
+                createOwnTicket(myChar: char, myClass: characterClass, type: type, myTeam: localTeam, initialStatus: initialStatus)
             }
-            
-            createOwnTicket(myChar: char, myClass: characterClass, type: type, myTeam: localTeam, initialStatus: initialStatus)
         }
     }
     
