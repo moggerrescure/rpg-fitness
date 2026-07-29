@@ -3,6 +3,7 @@ import Combine
 import FirebaseFunctions
 import FirebaseFirestore
 import FirebaseAuth
+import WidgetKit
 
 class FirebaseService: ObservableObject {
     @Published var currentCharacter: Character?
@@ -201,6 +202,7 @@ class FirebaseService: ObservableObject {
         var updated = character
         updated.currentLevel = updated.level
         self.currentCharacter = updated
+        writeWidgetSnapshot(from: updated)
         // Write to Firestore — the snapshot listener will update currentCharacter reactively
         // Also write usernameLower for server-side prefix search
         if var data = try? Firestore.Encoder().encode(updated) as? [String: Any] {
@@ -209,6 +211,18 @@ class FirebaseService: ObservableObject {
         } else {
             try? Firestore.firestore().collection("users").document(updated.id).setData(from: updated)
         }
+    }
+
+    private func writeWidgetSnapshot(from character: Character) {
+        WidgetSharedData.write(
+            level: character.level,
+            xp: character.xp,
+            nextLevelXp: character.xpForNextLevel,
+            gold: character.gold,
+            username: character.username,
+            className: character.selectedClass.rawValue.uppercased()
+        )
+        WidgetCenter.shared.reloadAllTimelines()
     }
     
     func syncClan(_ clan: Clan) {
@@ -236,6 +250,7 @@ class FirebaseService: ObservableObject {
                 let current = dict[cls] ?? 0
                 if isWinner {
                     char.pvpWins = char.unwrappedPvPWins + 1
+                    DailyQuestProgressStore.record(.pvpMatch)
                     dict[cls] = current + 50
                 } else {
                     dict[cls] = max(0, current - 50)
@@ -810,9 +825,38 @@ class FirebaseService: ObservableObject {
                     "itemId": itemId,
                     "slot": slot.rawValue
                 ])
+                DailyQuestProgressStore.record(.equipItem)
                 // Character listener refreshes equipped ids from Firestore
             } catch {
                 print("Error equipping item: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// FitRPG UGC report — writes to shared `reports` collection (rules: app == fitrpg).
+    func submitUserReport(targetUid: String, reason: String, completion: @escaping (Bool, String?) -> Void) {
+        guard let reporterUid = Auth.auth().currentUser?.uid else {
+            completion(false, "Sign in to submit a report.")
+            return
+        }
+        guard reporterUid != targetUid else {
+            completion(false, "You cannot report yourself.")
+            return
+        }
+
+        let payload: [String: Any] = [
+            "reporterUid": reporterUid,
+            "targetUid": targetUid,
+            "reason": reason,
+            "createdAt": FieldValue.serverTimestamp(),
+            "app": "fitrpg"
+        ]
+
+        Firestore.firestore().collection("reports").addDocument(data: payload) { error in
+            if let error {
+                completion(false, error.localizedDescription)
+            } else {
+                completion(true, nil)
             }
         }
     }

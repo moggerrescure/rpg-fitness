@@ -235,65 +235,29 @@ class MultiplayerService: ObservableObject {
         }
     }
     
-    /// Fills remaining team slots with bots, creates opponent team, sets battle to active.
+    /// Fills ally slots via Cloud Function, then enters real opponent matchmaking queue.
     private func startTeamBattle(battleId: String) {
+        guard let ticketId = currentTicketId else { return }
         teamLobbyListener?.remove()
-        let ticketIdToDelete = currentTicketId
         teamLobbyTicketId = nil
         isInTeamLobby = false
-        
+
         Task {
-            // Read current battle to get who has joined
-            guard let doc = try? await db.collection("battles").document(battleId).getDocument(),
-                  var battle = try? doc.data(as: Battle.self) else { return }
-            
-            // Fill localTeam to 3 with bots
-            let botNames = ["IronBot", "StoneBot", "SwiftBot"]
-            let botClasses: [CharacterClass] = [.healer, .mage, .archer]
-            var idx = 0
-            while battle.localTeam.count < 3 {
-                let cls = botClasses[idx % botClasses.count]
-                battle.localTeam.append(BattlePlayer(
-                    id: "bot_ally_\(UUID().uuidString)", name: botNames[idx % botNames.count],
-                    characterClass: cls, health: 110, maxHealth: 110,
-                    avatarName: "avatar_\(cls.rawValue.lowercased())"
-                ))
-                idx += 1
+            guard let battleDoc = try? await db.collection("battles").document(battleId).getDocument(),
+                  let battle = try? battleDoc.data(as: Battle.self) else { return }
+
+            // Sync human teammates from the battle doc into the matchmaking ticket before bot fill.
+            if let teamData = try? Firestore.Encoder().encode(battle.localTeam) {
+                try? await db.collection("matchmaking").document(ticketId).updateData([
+                    "team": teamData
+                ])
             }
-            
-            // Build opponent team of 3 bots
-            let oppNames = ["ShadowFiend", "DoomBringer", "NightStalker"]
-            let oppClasses: [CharacterClass] = [.swordsman, .mage, .archer]
-            let opponentTeam = (0..<3).map { i in
-                BattlePlayer(
-                    id: "bot_opp_\(UUID().uuidString)", name: oppNames[i],
-                    characterClass: oppClasses[i],
-                    health: 110 + (i * 10), maxHealth: 110 + (i * 10),
-                    avatarName: "avatar_\(oppClasses[i].rawValue.lowercased())"
-                )
-            }
-            
-            // Build the final complete battle and write it to Firestore
-            let finalBattle = Battle(
-                id: battleId, type: .team3v3, status: .active,
-                localTeam: battle.localTeam, opponentTeam: opponentTeam,
-                secondsRemaining: 60
-            )
-            
-            do {
-                try db.collection("battles").document(battleId).setData(from: finalBattle)
-            } catch {
-                print("Failed to start 3v3 battle: \(error)")
-                return
-            }
-            
-            if let tId = ticketIdToDelete {
-                try? await db.collection("matchmaking").document(tId).delete()
-            }
-            
-            self.currentTicketId = nil
-            self.isSearching = false
-            self.startFriendBattleCountdown(battle: finalBattle)
+
+            self.isSearching = true
+            await fillTeammatesWithBots(ticketId: ticketId)
+
+            let docRef = db.collection("matchmaking").document(ticketId)
+            self.listenToTicketAsHost(docRef: docRef, type: .team3v3)
         }
     }
     

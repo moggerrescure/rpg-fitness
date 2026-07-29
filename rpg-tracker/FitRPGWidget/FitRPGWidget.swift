@@ -24,27 +24,53 @@ extension View {
 
 struct CharacterProgressProvider: TimelineProvider {
     func placeholder(in context: Context) -> CharacterProgressEntry {
-        CharacterProgressEntry(date: Date(), level: 5, xp: 250, nextLevelXp: 500, gold: 120, className: "MAGE", color: .blue)
+        CharacterProgressEntry(date: Date(), level: 5, xp: 250, nextLevelXp: 500, gold: 120, className: "MAGE", username: "Hero", color: .blue)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (CharacterProgressEntry) -> Void) {
-        let entry = CharacterProgressEntry(date: Date(), level: 5, xp: 250, nextLevelXp: 500, gold: 120, className: "MAGE", color: .blue)
+        let entry = CharacterProgressEntry(date: Date(), level: 5, xp: 250, nextLevelXp: 500, gold: 120, className: "MAGE", username: "Hero", color: .blue)
         completion(entry)
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<CharacterProgressEntry>) -> Void) {
-        // AppGroup user defaults should be used here, but we will use placeholders until configured
-        let entry = CharacterProgressEntry(
-            date: Date(),
-            level: 1,
-            xp: 0,
-            nextLevelXp: 100,
-            gold: 0,
-            className: "HERO",
-            color: .green
-        )
-        let timeline = Timeline(entries: [entry], policy: .atEnd)
+        let snapshot = WidgetSharedData.read()
+        let entry: CharacterProgressEntry
+        if let snapshot {
+            entry = CharacterProgressEntry(
+                date: Date(),
+                level: snapshot.level,
+                xp: snapshot.xp,
+                nextLevelXp: snapshot.nextLevelXp,
+                gold: snapshot.gold,
+                className: snapshot.className,
+                username: snapshot.username,
+                color: classColor(for: snapshot.className)
+            )
+        } else {
+            entry = CharacterProgressEntry(
+                date: Date(),
+                level: 1,
+                xp: 0,
+                nextLevelXp: 150,
+                gold: 0,
+                className: "HERO",
+                username: "Hero",
+                color: .green
+            )
+        }
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) ?? Date().addingTimeInterval(1800)
+        let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
         completion(timeline)
+    }
+
+    private func classColor(for className: String) -> Color {
+        switch className.lowercased() {
+        case "archer": return .green
+        case "mage": return .purple
+        case "swordsman": return .orange
+        case "healer": return .pink
+        default: return .cyan
+        }
     }
 }
 
@@ -55,6 +81,7 @@ struct CharacterProgressEntry: TimelineEntry {
     let nextLevelXp: Int
     let gold: Int
     let className: String
+    let username: String
     let color: Color
 }
 
@@ -63,6 +90,10 @@ struct CharacterProgressWidgetEntryView : View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            Text(entry.username.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundColor(.gray)
+                .lineLimit(1)
             Text("LEVEL \(entry.level) \(entry.className)")
                 .font(.system(size: 14, weight: .black, design: .monospaced))
                 .foregroundColor(.white)

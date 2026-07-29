@@ -88,17 +88,114 @@ struct DailyQuestEngine {
         return tomorrow.timeIntervalSince(now)
     }
 
-    /// Returns progress 0…1 for a quest based on character stats (best-effort)
+    /// Returns progress 0…1 for a quest using today's tracked counters.
     static func progress(for quest: DailyQuest, character: Character) -> Double {
-        let done: Double
-        switch quest.questType {
-        case .squats:     done = Double(character.stats.totalSquats)
-        case .pushups:    done = Double(character.stats.totalPushups)
-        case .pullups:    done = Double(character.stats.totalPullups)
-        case .dips:       done = Double(character.stats.totalDips)
-        default:          return 0 // other types tracked externally
-        }
+        let done = Double(currentCount(for: quest))
         return min(done / Double(quest.targetCount), 1.0)
+    }
+
+    static func currentCount(for quest: DailyQuest) -> Int {
+        switch quest.questType {
+        case .squats:     return DailyQuestProgressStore.count(for: .squats)
+        case .pushups:    return DailyQuestProgressStore.count(for: .pushups)
+        case .pullups:    return DailyQuestProgressStore.count(for: .pullups)
+        case .dips:       return DailyQuestProgressStore.count(for: .dips)
+        case .pvpMatch:   return DailyQuestProgressStore.count(for: .pvpMatch)
+        case .visitShop:  return DailyQuestProgressStore.count(for: .visitShop)
+        case .equipItem:  return DailyQuestProgressStore.count(for: .equipItem)
+        case .generic where quest.id == "q_mix_20":
+            return DailyQuestProgressStore.count(for: .pushups) + DailyQuestProgressStore.count(for: .squats)
+        default:
+            return 0
+        }
+    }
+
+    static func isComplete(_ quest: DailyQuest, character: Character) -> Bool {
+        progress(for: quest, character: character) >= 1.0
+    }
+
+    static func canClaim(_ quest: DailyQuest, character: Character) -> Bool {
+        isComplete(quest, character: character) && !DailyQuestProgressStore.isClaimed(questId: quest.id)
+    }
+
+    @MainActor
+    static func claim(_ quest: DailyQuest) {
+        guard let character = FirebaseService.shared.currentCharacter else { return }
+        guard canClaim(quest, character: character) else { return }
+        FirebaseService.shared.awardBattleRewards(xp: quest.xpReward, gold: quest.goldReward)
+        DailyQuestProgressStore.markClaimed(questId: quest.id)
+    }
+}
+
+// MARK: – Daily progress persistence (resets at local midnight)
+
+enum DailyQuestProgressStore {
+    static let progressChangedNotification = Notification.Name("DailyQuestProgressChanged")
+
+    private static let dateKey = "dailyQuestProgressDate"
+    private static let countsKey = "dailyQuestProgressCounts"
+    private static let claimedKey = "dailyQuestClaimedIds"
+
+    static func record(_ type: DailyQuest.QuestType, amount: Int = 1) {
+        guard amount > 0 else { return }
+        ensureToday()
+        var counts = UserDefaults.standard.dictionary(forKey: countsKey) as? [String: Int] ?? [:]
+        counts[type.rawValue, default: 0] += amount
+        UserDefaults.standard.set(counts, forKey: countsKey)
+        notifyChange()
+    }
+
+    static func recordExercise(for characterClass: CharacterClass, amount: Int = 1) {
+        let type: DailyQuest.QuestType
+        switch characterClass {
+        case .archer: type = .squats
+        case .mage: type = .pushups
+        case .swordsman: type = .pullups
+        case .healer: type = .dips
+        }
+        record(type, amount: amount)
+    }
+
+    static func count(for type: DailyQuest.QuestType) -> Int {
+        ensureToday()
+        let counts = UserDefaults.standard.dictionary(forKey: countsKey) as? [String: Int] ?? [:]
+        return counts[type.rawValue] ?? 0
+    }
+
+    static func isClaimed(questId: String) -> Bool {
+        ensureToday()
+        return (UserDefaults.standard.stringArray(forKey: claimedKey) ?? []).contains(questId)
+    }
+
+    static func markClaimed(questId: String) {
+        ensureToday()
+        var claimed = UserDefaults.standard.stringArray(forKey: claimedKey) ?? []
+        if !claimed.contains(questId) {
+            claimed.append(questId)
+            UserDefaults.standard.set(claimed, forKey: claimedKey)
+        }
+        notifyChange()
+    }
+
+    private static func ensureToday() {
+        let defaults = UserDefaults.standard
+        let today = dayString(Date())
+        if defaults.string(forKey: dateKey) != today {
+            defaults.set(today, forKey: dateKey)
+            defaults.set([String: Int](), forKey: countsKey)
+            defaults.set([String](), forKey: claimedKey)
+        }
+    }
+
+    private static func dayString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    private static func notifyChange() {
+        NotificationCenter.default.post(name: progressChangedNotification, object: nil)
     }
 }
 

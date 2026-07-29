@@ -1177,7 +1177,8 @@ struct FriendsSocialView: View {
         ZStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Search & Add Friend Box
+#if DEBUG
+                    // Legacy username add — DEBUG only; production uses Friends tab search + friend requests.
                     VStack(alignment: .leading, spacing: 12) {
                         Text("ADD NEW FIT ALLY")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -1230,6 +1231,7 @@ struct FriendsSocialView: View {
                     )
                     .padding(.horizontal)
                     .padding(.top, 16)
+#endif
                     
                     // Friends List Header
                     HStack {
@@ -1411,6 +1413,7 @@ struct FriendsSocialView: View {
         }
     }
     
+    #if DEBUG
     private func performAddFriend() {
         let name = searchName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -1423,6 +1426,7 @@ struct FriendsSocialView: View {
             showToast("Ally \(name) is already in your friends list.", isError: true)
         }
     }
+    #endif
     
     private func triggerBattleInvite(friendName: String) {
         showToast("Challenging \(friendName) to a 1v1 Duel...", isError: false)

@@ -134,10 +134,10 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
     
-    // World Bosses Collection (client sometimes writes local fallback)
+    // World Bosses — client read-only; Cloud Functions (Admin SDK) write
     match /world_bosses/{bossId} {
-      // Anyone can read and update the active world boss
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if false;
     }
     
     // Battles Collection
@@ -152,6 +152,28 @@ service cloud.firestore {
       // Anyone can read tickets
       allow read: if request.auth != null;
       allow create, update, delete: if request.auth != null;
+    }
+
+    // FitRPG UGC reports (minimal App Store moderation)
+    match /reports/{reportId} {
+      allow create: if request.auth != null
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.keys().hasAll(['reporterUid', 'targetUid', 'reason', 'createdAt', 'app']);
+      allow read: if request.auth != null && request.auth.uid == resource.data.reporterUid;
+      allow update, delete: if false;
+    }
+
+    // =====================================================
+    // YOGA (client collections; CF yogaDeleteUserData uses Admin SDK)
+    // =====================================================
+    match /yoga_users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /yoga_leaderboard/{entryId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null
+                                    && request.auth.uid == entryId;
     }
 
     // === Default deny for everything else ===

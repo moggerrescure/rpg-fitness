@@ -840,6 +840,8 @@ struct DailyQuestsSection: View {
     let character: Character
     let animated: Bool
 
+    @State private var refreshToken = UUID()
+
     private var resetLabel: String {
         let secs = Int(DailyQuestEngine.secondsUntilReset)
         let h = secs / 3600
@@ -879,13 +881,29 @@ struct DailyQuestsSection: View {
             VStack(spacing: 10) {
                 ForEach(Array(quests.enumerated()), id: \.element.id) { idx, quest in
                     let progress = DailyQuestEngine.progress(for: quest, character: character)
-                    DailyQuestCard(quest: quest, progress: progress, index: idx, animated: animated)
+                    DailyQuestCard(
+                        quest: quest,
+                        progress: progress,
+                        index: idx,
+                        animated: animated,
+                        isClaimed: DailyQuestProgressStore.isClaimed(questId: quest.id),
+                        canClaim: DailyQuestEngine.canClaim(quest, character: character),
+                        currentCount: DailyQuestEngine.currentCount(for: quest),
+                        onClaim: {
+                            DailyQuestEngine.claim(quest)
+                            refreshToken = UUID()
+                        }
+                    )
+                    .id("\(quest.id)-\(refreshToken)")
                 }
             }
             .padding(.horizontal)
+            .onReceive(NotificationCenter.default.publisher(for: DailyQuestProgressStore.progressChangedNotification)) { _ in
+                refreshToken = UUID()
+            }
 
             let completedCount = quests.filter {
-                DailyQuestEngine.progress(for: $0, character: character) >= 1.0
+                DailyQuestEngine.isComplete($0, character: character)
             }.count
             if completedCount > 0 {
                 HStack(spacing: 6) {
@@ -908,6 +926,10 @@ struct DailyQuestCard: View {
     let progress: Double
     let index: Int
     let animated: Bool
+    let isClaimed: Bool
+    let canClaim: Bool
+    let currentCount: Int
+    let onClaim: () -> Void
 
     private var isComplete: Bool { progress >= 1.0 }
 
@@ -921,7 +943,11 @@ struct DailyQuestCard: View {
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(quest.iconColor.opacity(isComplete ? 0.6 : 0.25), lineWidth: 1.5)
                     )
-                if isComplete {
+                if isClaimed {
+                    Image(systemName: "gift.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(Theme.success)
+                } else if isComplete {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 22, weight: .bold))
                         .foregroundColor(quest.iconColor)
@@ -937,13 +963,19 @@ struct DailyQuestCard: View {
                 Text(quest.title)
                     .font(.system(size: 13, weight: .black))
                     .foregroundColor(isComplete ? Theme.textSecondary : Theme.textPrimary)
-                    .strikethrough(isComplete, color: Theme.textMuted)
+                    .strikethrough(isClaimed, color: Theme.textMuted)
                     .lineLimit(1)
 
                 Text(quest.description)
                     .font(.system(size: 10, design: .default))
                     .foregroundColor(Theme.textMuted)
                     .lineLimit(1)
+
+                if quest.targetCount > 1 {
+                    Text("\(min(currentCount, quest.targetCount)) / \(quest.targetCount)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                }
 
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
@@ -962,18 +994,35 @@ struct DailyQuestCard: View {
             }
 
             VStack(alignment: .trailing, spacing: 4) {
-                Text("+\(quest.xpReward) XP")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundColor(Theme.primary)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(Theme.primary.opacity(0.12))
-                    .cornerRadius(6)
-                Text("+\(quest.goldReward)g")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundColor(Theme.healerColor)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(Theme.healerColor.opacity(0.12))
-                    .cornerRadius(6)
+                if canClaim {
+                    Button(action: onClaim) {
+                        Text("CLAIM")
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(Theme.warning)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                } else if isClaimed {
+                    Text("CLAIMED")
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .foregroundColor(Theme.success)
+                } else {
+                    Text("+\(quest.xpReward) XP")
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .foregroundColor(Theme.primary)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Theme.primary.opacity(0.12))
+                        .cornerRadius(6)
+                    Text("+\(quest.goldReward)g")
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .foregroundColor(Theme.healerColor)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Theme.healerColor.opacity(0.12))
+                        .cornerRadius(6)
+                }
             }
         }
         .padding(14)

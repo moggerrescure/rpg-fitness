@@ -11,6 +11,7 @@
 		009D58E12B1874F82A0427B0 /* FitRPGWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = E17EF1D2C58DAEDDB74FBADD /* FitRPGWidget.appex */; };
 		5DE1D6C17416B44F14E90709 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5FB13102CFD3F5C27BFC044 /* Foundation.framework */; };
 		8E806396EF342D6A3044CC3D /* FitRPGWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6449F96403895101857D41DF /* FitRPGWidget.swift */; };
+		B1WIDGET001SHARED0000000001 /* WidgetSharedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1WIDGET001SHARED0000000002 /* WidgetSharedData.swift */; };
 		AC0CD1C52FF7C1FF00165755 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = AC0CD1C42FF7C1FF00165755 /* FirebaseAnalytics */; };
 		AC0CD1C72FF7C20D00165755 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = AC0CD1C62FF7C20D00165755 /* FirebaseCrashlytics */; };
 		AC365FCD2FE97A13006D8C07 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = AC365FCC2FE97A13006D8C07 /* FirebaseAppCheck */; };
@@ -51,6 +52,8 @@
 		ACPIV1E82FF7D100165755 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = "rpg-tracker/PrivacyInfo.xcprivacy"; sourceTree = "<group>"; };
 		14FCF11A86FEFA7A2C6674C2 /* FitRPGWidget-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "FitRPGWidget-Info.plist"; path = "FitRPGWidget/FitRPGWidget-Info.plist"; sourceTree = "<group>"; };
 		6449F96403895101857D41DF /* FitRPGWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FitRPGWidget.swift; path = FitRPGWidget/FitRPGWidget.swift; sourceTree = "<group>"; };
+		B1WIDGET001SHARED0000000002 /* WidgetSharedData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetSharedData.swift; path = FitRPGWidget/WidgetSharedData.swift; sourceTree = "<group>"; };
+		B1WIDGET001ENTIT0000000003 /* FitRPGWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = FitRPGWidget.entitlements; path = FitRPGWidget/FitRPGWidget.entitlements; sourceTree = "<group>"; };
 		64891D2319AF89FD8223E730 /* LiveActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveActivityAttributes.swift; path = "rpg-tracker/Models/LiveActivityAttributes.swift"; sourceTree = "<group>"; };
 		93E04F1A2FE41A0700C2384D /* rpg-tracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "rpg-tracker.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5FB13102CFD3F5C27BFC044 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
@@ -125,7 +128,9 @@
 			isa = PBXGroup;
 			children = (
 				6449F96403895101857D41DF /* FitRPGWidget.swift */,
+				B1WIDGET001SHARED0000000002 /* WidgetSharedData.swift */,
 				64891D2319AF89FD8223E730 /* LiveActivityAttributes.swift */,
+				B1WIDGET001ENTIT0000000003 /* FitRPGWidget.entitlements */,
 				14FCF11A86FEFA7A2C6674C2 /* FitRPGWidget-Info.plist */,
 			);
 			name = FitRPGWidgetSources;
@@ -270,6 +275,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8E806396EF342D6A3044CC3D /* FitRPGWidget.swift in Sources */,
+				B1WIDGET001SHARED0000000001 /* WidgetSharedData.swift in Sources */,
 				F8C4E889E7C344B7086CCE31 /* LiveActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -290,6 +296,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = FitRPGWidget/FitRPGWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST = NO;
@@ -537,6 +544,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = FitRPGWidget/FitRPGWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST = NO;

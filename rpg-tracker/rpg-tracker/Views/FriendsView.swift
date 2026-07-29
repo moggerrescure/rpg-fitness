@@ -8,6 +8,8 @@ struct FriendsView: View {
     
     @State private var showTeamLobby = false
     @State private var pendingTeamInviteUids: [String] = []
+    @State private var reportTarget: Character? = nil
+    @State private var reportFeedback: String? = nil
     @FocusState private var searchFocused: Bool
     
     var isEmbedded: Bool = false
@@ -139,6 +141,33 @@ struct FriendsView: View {
             TeamLobbyView(onBattleStarted: { dismiss() })
                 .environmentObject(multiplayerService)
                 .environmentObject(firebaseService)
+        }
+        .sheet(item: $reportTarget) { target in
+            ReportUserSheet(
+                targetUsername: target.username,
+                onSubmit: { reason in
+                    firebaseService.submitUserReport(targetUid: target.id, reason: reason) { success, error in
+                        reportFeedback = success ? "Report submitted. Thank you." : (error ?? "Could not submit report.")
+                    }
+                }
+            )
+        }
+        .overlay(alignment: .bottom) {
+            if let reportFeedback {
+                Text(reportFeedback)
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.85))
+                    .clipShape(Capsule())
+                    .padding(.bottom, 24)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            if self.reportFeedback == reportFeedback { self.reportFeedback = nil }
+                        }
+                    }
+            }
         }
         .onChange(of: multiplayerService.activeBattle) { _, battle in
             if battle != nil { dismiss() }
@@ -280,6 +309,21 @@ struct FriendsView: View {
             }
             
             Spacer()
+            
+            Menu {
+                if !alreadyFriend {
+                    Button { vm.sendFriendRequest(to: player.id) } label: {
+                        Label("Add Friend", systemImage: "person.badge.plus")
+                    }
+                }
+                Button(role: .destructive) { reportTarget = player } label: {
+                    Label("Report", systemImage: "exclamationmark.bubble")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .foregroundStyle(Theme.textSecondary)
+            }
             
             // Action button
             if incomingReq {
@@ -465,6 +509,20 @@ struct FriendsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(TactileButtonStyle())
+
+                Menu {
+                    Button(role: .destructive) { reportTarget = char } label: {
+                        Label("Report", systemImage: "exclamationmark.bubble")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.caption.bold())
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 9)
+                        .background(Theme.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
             }
         }
         .padding(14)
@@ -474,5 +532,65 @@ struct FriendsView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Theme.border, lineWidth: 1)
         )
+    }
+}
+
+private struct ReportUserSheet: View {
+    let targetUsername: String
+    let onSubmit: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedReason = "harassment"
+    @State private var details = ""
+
+    private let reasons: [(id: String, label: String)] = [
+        ("harassment", "Harassment"),
+        ("spam", "Spam"),
+        ("hate", "Hate speech"),
+        ("sexual", "Sexual content"),
+        ("violence", "Violence"),
+        ("other", "Other")
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Report \(targetUsername)")
+                        .font(.headline)
+                }
+                Section("Reason") {
+                    Picker("Reason", selection: $selectedReason) {
+                        ForEach(reasons, id: \.id) { reason in
+                            Text(reason.label).tag(reason.id)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                }
+                Section("Details (optional)") {
+                    TextField("What happened?", text: $details, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+            }
+            .navigationTitle("Report Player")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Submit") {
+                        var reason = selectedReason
+                        let trimmed = details.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            reason += ": \(trimmed)"
+                        }
+                        onSubmit(reason)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

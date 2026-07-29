@@ -51,7 +51,10 @@ struct ArmoryShopView: View {
                     onAction: handleItemAction
                 )
             }
-            .onAppear { selectedSlot = initialSlot }
+            .onAppear {
+                selectedSlot = initialSlot
+                DailyQuestProgressStore.record(.visitShop)
+            }
 
             // ── Toast ────────────────────────────────────────────────────
             if let msg = toastMessage {
@@ -112,6 +115,7 @@ struct ArmoryShopView: View {
             case .amulet: char.equippedAmuletId = item.id
             }
             firebaseService.syncCharacter(char)
+            DailyQuestProgressStore.record(.equipItem)
             showToast("Equipped \(item.name)!", success: true)
 
         case .unequip:
