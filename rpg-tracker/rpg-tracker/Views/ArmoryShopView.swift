@@ -84,8 +84,6 @@ struct ArmoryShopView: View {
     // MARK: – Action handler
 
     private func handleItemAction(_ action: ItemAction, _ item: EquipmentItem) {
-        guard var char = firebaseService.currentCharacter else { return }
-
         switch action {
         case .buy:
             guard item.cost > 0 else {
@@ -104,19 +102,26 @@ struct ArmoryShopView: View {
             }
 
         case .equip:
-            firebaseService.equipItem(itemId: item.id, slot: item.slot)
-            DailyQuestProgressStore.record(.equipItem)
-            showToast("Equipped \(item.name)!", success: true)
+            firebaseService.equipItem(itemId: item.id, slot: item.slot) { ok, message in
+                DispatchQueue.main.async {
+                    if ok {
+                        showToast("Equipped \(item.name)!", success: true)
+                    } else {
+                        showToast(message ?? "Couldn't equip", success: false)
+                    }
+                }
+            }
 
         case .unequip:
-            switch item.slot {
-            case .weapon: char.equippedWeaponId = nil
-            case .armor:  char.equippedArmorId  = nil
-            case .ring:   char.equippedRingId   = nil
-            case .amulet: char.equippedAmuletId = nil
+            firebaseService.unequipItem(slot: item.slot) { ok, message in
+                DispatchQueue.main.async {
+                    if ok {
+                        showToast("\(item.name) unequipped", success: true)
+                    } else {
+                        showToast(message ?? "Couldn't unequip", success: false)
+                    }
+                }
             }
-            firebaseService.syncCharacter(char)
-            showToast("\(item.name) unequipped", success: true)
         }
     }
 

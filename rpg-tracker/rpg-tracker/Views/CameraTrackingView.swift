@@ -8,6 +8,7 @@ struct CameraTrackingView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isWorkoutStarted: Bool
     @State private var workoutCompletionRewards: (xp: Int, gold: Int, energy: Int)? = nil
+    @State private var isFinishingWorkout = false
     
     @State private var combatEffects: [CombatSpellEffect] = []
     @State private var screenShake: Bool = false
@@ -1192,17 +1193,29 @@ struct CameraTrackingView: View {
     private var finishWorkoutCTA: some View {
         if viewModel.bossMaxHP == 0 && FirebaseService.shared.activeBattle == nil {
             Button(action: {
-                // Cap applied inside awardWorkoutRewards against daily remaining (counter advanced there).
-                let earned = FirebaseService.shared.awardWorkoutRewards(reps: viewModel.repCount)
-                withAnimation {
-                    workoutCompletionRewards = earned
+                guard !isFinishingWorkout else { return }
+                isFinishingWorkout = true
+                // Cap applied inside awardWorkoutRewards; +ENERGY only after adjustEnergy CF succeeds.
+                FirebaseService.shared.awardWorkoutRewards(reps: viewModel.repCount) { xp, gold, energy in
+                    isFinishingWorkout = false
+                    withAnimation {
+                        workoutCompletionRewards = (xp, gold, energy)
+                    }
                 }
             }) {
                 HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("FINISH WORKOUT")
-                        .fontWeight(.black)
-                        .tracking(1)
+                    if isFinishingWorkout {
+                        ProgressView()
+                            .tint(.white)
+                        Text("SAVING…")
+                            .fontWeight(.black)
+                            .tracking(1)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("FINISH WORKOUT")
+                            .fontWeight(.black)
+                            .tracking(1)
+                    }
                 }
                 .font(.system(.subheadline, design: .monospaced))
                 .padding(.vertical, 14)
@@ -1217,6 +1230,7 @@ struct CameraTrackingView: View {
                 .glow(color: Theme.success.opacity(0.4), radius: 8)
             }
             .buttonStyle(TactileButtonStyle())
+            .disabled(isFinishingWorkout)
             .padding(.bottom, 20)
         }
     }

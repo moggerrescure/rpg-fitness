@@ -6,6 +6,8 @@ struct InventoryView: View {
     
     @State private var selectedTab: EquipmentSlot = .weapon
     @State private var selectedItem: EquipmentItem? = nil
+    @State private var toastMessage: String? = nil
+    @State private var toastIsSuccess = true
     
     private var character: Character {
         firebaseService.currentCharacter ?? Character(id: "local", username: "Hero", selectedClass: .archer)
@@ -140,12 +142,46 @@ struct InventoryView: View {
                         Spacer()
                         InventoryItemSheet(item: item, character: character) {
                             withAnimation { selectedItem = nil }
+                        } onEquipResult: { ok, message in
+                            showToast(message ?? (ok ? "Equipped!" : "Couldn't equip"), success: ok)
                         }
                         .transition(.move(edge: .bottom))
                     }
                 }
                 .zIndex(100)
             }
+
+            if let msg = toastMessage {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: toastIsSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundColor(toastIsSuccess ? Theme.success : Theme.danger)
+                        Text(msg)
+                            .font(.system(.caption, design: .monospaced))
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.85))
+                    .cornerRadius(20)
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke((toastIsSuccess ? Theme.success : Theme.danger).opacity(0.4), lineWidth: 1))
+                    .padding(.bottom, 32)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(200)
+            }
+        }
+    }
+
+    private func showToast(_ msg: String, success: Bool) {
+        withAnimation(.spring()) {
+            toastMessage = msg
+            toastIsSuccess = success
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation { toastMessage = nil }
         }
     }
 }
@@ -224,7 +260,9 @@ struct InventoryItemSheet: View {
     var item: EquipmentItem
     var character: Character
     var onClose: () -> Void
+    var onEquipResult: ((Bool, String?) -> Void)? = nil
     @ObservedObject var firebaseService = FirebaseService.shared
+    @State private var isEquipping = false
     
     var isEquipped: Bool {
         character.equippedWeaponId == item.id || character.equippedArmorId == item.id || character.equippedRingId == item.id || character.equippedAmuletId == item.id
@@ -304,12 +342,27 @@ struct InventoryItemSheet: View {
                 if let restriction = item.classRestriction, restriction != character.selectedClass {
                     return
                 }
-                
-                firebaseService.equipItem(itemId: item.id, slot: item.slot)
-                onClose()
+                guard !isEquipped, !isEquipping else { return }
+
+                isEquipping = true
+                firebaseService.equipItem(itemId: item.id, slot: item.slot) { ok, message in
+                    DispatchQueue.main.async {
+                        isEquipping = false
+                        if ok {
+                            onEquipResult?(true, "Equipped \(item.name)!")
+                            onClose()
+                        } else {
+                            onEquipResult?(false, message ?? "Couldn't equip")
+                        }
+                    }
+                }
             }) {
                 HStack {
-                    if isEquipped {
+                    if isEquipping {
+                        ProgressView()
+                            .tint(.white)
+                        Text("EQUIPPING…")
+                    } else if isEquipped {
                         Image(systemName: "checkmark")
                         Text("EQUIPPED")
                     } else {

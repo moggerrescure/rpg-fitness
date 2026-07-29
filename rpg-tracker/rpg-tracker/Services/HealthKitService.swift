@@ -86,11 +86,12 @@ class HealthKitService: ObservableObject {
         
         // Rules:
         // 10 steps = 1 XP
-        // 1 kcal = 5 XP + 1 Energy
-        // 1 min workout = 10 XP + 5 Energy + 1 Gold
+        // 1 kcal = 5 XP
+        // 1 min workout = 10 XP + 1 Gold
+        // Energy is CF-only — Health Sync must NEVER grant energy.
         
         let xpGained = Int(totalSteps / 10.0) + Int(totalCalories * 5.0) + (totalMins * 10)
-        let energyGained = Int(totalCalories) + (totalMins * 5)
+        let energyGained = 0
         let goldGained = totalMins
         let damageDealt = Int(totalSteps) + (Int(totalCalories) * 10)
         

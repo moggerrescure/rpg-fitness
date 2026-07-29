@@ -15,6 +15,7 @@ import {
     applyXpToProgression,
     clampActivityRewards,
     clampPvERewards,
+    computePassiveRegen,
     computeTrainEnergyGrant,
     consumeEnergyChargeForRefund,
     FITRPG_USER_FIELD_KEYS,
@@ -37,6 +38,16 @@ import {
     mergeTeamGuests,
     requireMyTicketId,
 } from "./matchmakingHelpers";
+import {
+    CLAN_WAR_BOT_CLAN_ID,
+    buildActiveWarVsBot,
+    buildActiveWarVsOpponent,
+    buildSearchingWar,
+    clanWarToFirestoreFields,
+    isBotClanId,
+    shouldAssignBotAfterSearch,
+    shouldSkipBotScoreUpdate,
+} from "./clanWarHelpers";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -44,6 +55,14 @@ const db = admin.firestore();
 /** FitRPG callables — App Check required. Shared Food/Workout endpoints stay separate (v2/onRequest). */
 const fitRpgOnCall = (handler: (data: any, context: functions.https.CallableContext) => any | Promise<any>) =>
     functions.runWith({ enforceAppCheck: true }).https.onCall(handler);
+
+function timestampFromSeconds(seconds: number): admin.firestore.Timestamp {
+    return new admin.firestore.Timestamp(seconds, 0);
+}
+
+function firestoreWarFromState(war: ReturnType<typeof buildSearchingWar>) {
+    return clanWarToFirestoreFields(war, timestampFromSeconds);
+}
 
 function resetMembersWarCounters(members: any[] = []) {
     return members.map((m: any) => ({
@@ -77,14 +96,14 @@ async function sendPushNotification(uid: string, title: string, body: string, da
 // 1. HTTP Callable: Matchmake Clan War
 // -------------------------------------------------------------------
 export const matchmakeClanWar = fitRpgOnCall(async (data, context) => {
-    // Ensure user is authenticated
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
     }
 
     const uid = context.auth.uid;
+    const acceptBot = data?.acceptBot === true;
+    const preferImmediateBot = data?.immediateBot === true;
 
-    // Get user's clan
     const userDoc = await db.collection("users").doc(uid).get();
     const userData = userDoc.data();
     if (!userData || !userData.clanId) {
@@ -93,98 +112,146 @@ export const matchmakeClanWar = fitRpgOnCall(async (data, context) => {
 
     const clanId = userData.clanId;
     const clanRef = db.collection("clans").doc(clanId);
-    
-    // We use a transaction to safely try and lock two clans together
+
     return await db.runTransaction(async (transaction) => {
         const myClanDoc = await transaction.get(clanRef);
         if (!myClanDoc.exists) {
             throw new functions.https.HttpsError("not-found", "Clan not found.");
         }
-        
+
         const myClanData = myClanDoc.data()!;
-        
-        // Prevent starting if already searching or in an active war cycle
-        const existingPhase = myClanData.activeWar?.phase;
-        if (existingPhase === "searching" || existingPhase === "preparation" || existingPhase === "active") {
-            throw new functions.https.HttpsError("already-exists", "Clan is already in a war or searching.");
+        if (myClanData.leaderId !== uid) {
+            throw new functions.https.HttpsError("permission-denied", "Only the clan leader can start a war.");
         }
 
-        // Try to find another clan that is currently 'searching'
-        // Note: Firestore transactions require all reads before writes.
-        // Doing a query inside a transaction is allowed in Admin SDK.
+        const now = admin.firestore.Timestamp.now();
+        const existingWar = myClanData.activeWar;
+        const existingPhase = existingWar?.phase;
+
+        // Claim bot after search timeout (client or cron), or force immediate bot for solo play.
+        if (existingPhase === "searching") {
+            const endsAt = existingWar?.phaseEndsAt;
+            const endsMs = endsAt && typeof endsAt.toMillis === "function" ? endsAt.toMillis() : null;
+            const timedOut = shouldAssignBotAfterSearch(
+                { phase: "searching", phaseEndsAtMs: endsMs },
+                now.toMillis()
+            );
+            if (!acceptBot && !timedOut && !preferImmediateBot) {
+                throw new functions.https.HttpsError("already-exists", "Clan is already searching for a war.");
+            }
+            const botWar = firestoreWarFromState(buildActiveWarVsBot(now.seconds));
+            transaction.update(clanRef, {
+                activeWar: botWar,
+                members: resetMembersWarCounters(myClanData.members || []),
+            });
+            return {
+                success: true,
+                opponentName: botWar.opponentClanName,
+                isBot: true,
+                searching: false,
+                phase: "active",
+            };
+        }
+
+        if (existingPhase === "preparation" || existingPhase === "active") {
+            // Allow leader to force-activate a stuck preparation war (legacy 24h prep).
+            if (existingPhase === "preparation" && (acceptBot || data?.forceActive === true)) {
+                const war = existingWar || {};
+                const oppId = war.opponentClanId || CLAN_WAR_BOT_CLAN_ID;
+                const oppName = war.opponentClanName || "Rival Clan";
+                const activeWar = isBotClanId(oppId)
+                    ? firestoreWarFromState(buildActiveWarVsBot(now.seconds))
+                    : firestoreWarFromState(buildActiveWarVsOpponent(now.seconds, oppId, oppName));
+                (activeWar as any).myClanScore = war.myClanScore || 0;
+                (activeWar as any).opponentClanScore = war.opponentClanScore || 0;
+                transaction.update(clanRef, { activeWar });
+                return {
+                    success: true,
+                    opponentName: oppName,
+                    isBot: isBotClanId(oppId),
+                    searching: false,
+                    phase: "active",
+                };
+            }
+            throw new functions.https.HttpsError("already-exists", "Clan is already in a war.");
+        }
+
+        // Immediate bot path (screenshots / solo): skip queue entirely.
+        if (preferImmediateBot) {
+            const botWar = firestoreWarFromState(buildActiveWarVsBot(now.seconds));
+            transaction.update(clanRef, {
+                activeWar: botWar,
+                members: resetMembersWarCounters(myClanData.members || []),
+            });
+            return {
+                success: true,
+                opponentName: botWar.opponentClanName,
+                isBot: true,
+                searching: false,
+                phase: "active",
+            };
+        }
+
+        // Try to find another clan currently searching.
         const searchingClansSnapshot = await transaction.get(
             db.collection("clans")
-              .where("activeWar.phase", "==", "searching")
-              .limit(1)
+                .where("activeWar.phase", "==", "searching")
+                .limit(5)
         );
 
         let opponentId: string | null = null;
         let opponentName: string | null = null;
         let opponentMembers: any[] = [];
 
-        // Found a real clan?
-        if (!searchingClansSnapshot.empty) {
-            const oppDoc = searchingClansSnapshot.docs[0];
+        for (const oppDoc of searchingClansSnapshot.docs) {
             if (oppDoc.id !== clanId) {
                 opponentId = oppDoc.id;
-                opponentName = oppDoc.data().name;
+                opponentName = oppDoc.data().name || "Rival Clan";
                 opponentMembers = oppDoc.data().members || [];
+                break;
             }
         }
 
-        const now = admin.firestore.Timestamp.now();
-        // 24 hours from now for preparation
-        const prepEndDate = new admin.firestore.Timestamp(now.seconds + 24 * 3600, now.nanoseconds);
-
         if (opponentId && opponentName) {
-            // MATCH FOUND: Link both clans
             const oppRef = db.collection("clans").doc(opponentId);
-            
-            const myWar = {
-                phase: "preparation",
-                phaseEndsAt: prepEndDate,
-                opponentClanId: opponentId,
-                opponentClanName: opponentName,
-                myClanScore: 0,
-                opponentClanScore: 0
-            };
-            
-            const oppWar = {
-                phase: "preparation",
-                phaseEndsAt: prepEndDate,
-                opponentClanId: clanId,
-                opponentClanName: myClanData.name,
-                myClanScore: 0,
-                opponentClanScore: 0
-            };
+            const myWar = firestoreWarFromState(
+                buildActiveWarVsOpponent(now.seconds, opponentId, opponentName)
+            );
+            const oppWar = firestoreWarFromState(
+                buildActiveWarVsOpponent(now.seconds, clanId, myClanData.name || "Clan")
+            );
 
             transaction.update(clanRef, {
                 activeWar: myWar,
-                members: resetMembersWarCounters(myClanData.members || [])
+                members: resetMembersWarCounters(myClanData.members || []),
             });
             transaction.update(oppRef, {
                 activeWar: oppWar,
-                members: resetMembersWarCounters(opponentMembers)
+                members: resetMembersWarCounters(opponentMembers),
             });
 
-            return { success: true, opponentName: opponentName, isBot: false };
-        } else {
-            // NO MATCH: enter searching queue (cron pairs clans or assigns bot after ~2 min)
-            const searchEndDate = new admin.firestore.Timestamp(now.seconds + 120, now.nanoseconds);
-
-            const myWar = {
-                phase: "searching",
-                phaseEndsAt: searchEndDate,
-                opponentClanId: null,
-                opponentClanName: null,
-                myClanScore: 0,
-                opponentClanScore: 0
+            return {
+                success: true,
+                opponentName,
+                isBot: false,
+                searching: false,
+                phase: "active",
             };
-
-            transaction.update(clanRef, { activeWar: myWar });
-
-            return { success: true, opponentName: null, isBot: false, searching: true };
         }
+
+        // No human opponent: enter short search queue (bot claim after timeout).
+        const searching = buildSearchingWar(now.seconds);
+        const myWar = firestoreWarFromState(searching);
+        transaction.update(clanRef, { activeWar: myWar });
+
+        return {
+            success: true,
+            opponentName: null,
+            isBot: false,
+            searching: true,
+            phase: "searching",
+            searchSeconds: searching.phaseEndsAtSeconds - now.seconds,
+        };
     });
 });
 
@@ -230,10 +297,10 @@ export const cancelClanWarSearch = fitRpgOnCall(async (data, context) => {
 // 2. PubSub Cron: Process Clan War Phases
 // -------------------------------------------------------------------
 // Runs every 5 minutes
-export const processClanWarPhases = functions.pubsub.schedule("*/5 * * * *").onRun(async (context) => {
+export const processClanWarPhases = functions.pubsub.schedule("*/5 * * * *").onRun(async () => {
     const now = admin.firestore.Timestamp.now();
 
-    // 0a. Pair searching clans with each other (real PvP)
+    // 0a. Pair searching clans with each other → active immediately
     const allSearching = await db.collection("clans")
         .where("activeWar.phase", "==", "searching")
         .get();
@@ -245,56 +312,41 @@ export const processClanWarPhases = functions.pubsub.schedule("*/5 * * * *").onR
     while (searchingDocs.length >= 2) {
         const a = searchingDocs.shift()!;
         const b = searchingDocs.shift()!;
-        const prepEndDate = new admin.firestore.Timestamp(now.seconds + 24 * 3600, now.nanoseconds);
         const aName = a.data().name || "Clan";
         const bName = b.data().name || "Clan";
         pairBatch.update(a.ref, {
-            activeWar: {
-                phase: "preparation",
-                phaseEndsAt: prepEndDate,
-                opponentClanId: b.id,
-                opponentClanName: bName,
-                myClanScore: 0,
-                opponentClanScore: 0
-            },
-            members: resetMembersWarCounters(a.data().members || [])
+            activeWar: firestoreWarFromState(
+                buildActiveWarVsOpponent(now.seconds, b.id, bName)
+            ),
+            members: resetMembersWarCounters(a.data().members || []),
         });
         pairBatch.update(b.ref, {
-            activeWar: {
-                phase: "preparation",
-                phaseEndsAt: prepEndDate,
-                opponentClanId: a.id,
-                opponentClanName: aName,
-                myClanScore: 0,
-                opponentClanScore: 0
-            },
-            members: resetMembersWarCounters(b.data().members || [])
+            activeWar: firestoreWarFromState(
+                buildActiveWarVsOpponent(now.seconds, a.id, aName)
+            ),
+            members: resetMembersWarCounters(b.data().members || []),
         });
         pairedCount += 2;
     }
     unpaired.push(...searchingDocs);
     if (pairedCount > 0) {
         await pairBatch.commit();
-        console.log(`Paired ${pairedCount} clans into clan wars.`);
+        console.log(`Paired ${pairedCount} clans into active clan wars.`);
     }
 
-    // 0b. Searching timeout → assign Shadow Bot and enter preparation
+    // 0b. Searching timeout → bot opponent, start active (skip 24h prep)
     const searchBatch = db.batch();
     let botAssigned = 0;
     for (const doc of unpaired) {
         const war = doc.data().activeWar;
         const endsAt = war?.phaseEndsAt;
-        if (!endsAt || endsAt.toMillis() > now.toMillis()) continue;
-        const botId = "bot_" + Math.random().toString(36).substring(7);
-        const prepEndDate = new admin.firestore.Timestamp(now.seconds + 24 * 3600, now.nanoseconds);
+        const endsMs = endsAt && typeof endsAt.toMillis === "function" ? endsAt.toMillis() : null;
+        if (!shouldAssignBotAfterSearch({ phase: war?.phase, phaseEndsAtMs: endsMs }, now.toMillis())) {
+            continue;
+        }
         searchBatch.update(doc.ref, {
-            "activeWar.phase": "preparation",
-            "activeWar.phaseEndsAt": prepEndDate,
-            "activeWar.opponentClanId": botId,
-            "activeWar.opponentClanName": "ShadowFiend (Bot)",
-            "activeWar.myClanScore": 0,
-            "activeWar.opponentClanScore": 0,
-            members: resetMembersWarCounters(doc.data().members || [])
+            activeWar: firestoreWarFromState(buildActiveWarVsBot(now.seconds)),
+            members: resetMembersWarCounters(doc.data().members || []),
         });
         botAssigned++;
     }
@@ -303,91 +355,104 @@ export const processClanWarPhases = functions.pubsub.schedule("*/5 * * * *").onR
         console.log(`Assigned bot opponents to ${botAssigned} clans after search timeout.`);
     }
 
-    // 1. Find all clans in 'preparation' where phaseEndsAt <= now
+    // 1. Legacy preparation → active (older wars may still be in prep)
     const prepSnapshot = await db.collection("clans")
         .where("activeWar.phase", "==", "preparation")
         .where("activeWar.phaseEndsAt", "<=", now)
         .get();
 
-    const batch = db.batch();
-
+    const prepBatch = db.batch();
     const clansToNotify: any[] = [];
-
     prepSnapshot.docs.forEach((doc) => {
-        // Transition to 'active'
-        const activeEndDate = new admin.firestore.Timestamp(now.seconds + 24 * 3600, now.nanoseconds);
-        batch.update(doc.ref, {
-            "activeWar.phase": "active",
-            "activeWar.phaseEndsAt": activeEndDate
-        });
+        const war = doc.data().activeWar || {};
+        const oppId = war.opponentClanId || CLAN_WAR_BOT_CLAN_ID;
+        const oppName = war.opponentClanName || "Rival Clan";
+        const activeWar = isBotClanId(oppId)
+            ? firestoreWarFromState(buildActiveWarVsBot(now.seconds))
+            : firestoreWarFromState(buildActiveWarVsOpponent(now.seconds, oppId, oppName));
+        // Preserve scores if any
+        (activeWar as any).myClanScore = war.myClanScore || 0;
+        (activeWar as any).opponentClanScore = war.opponentClanScore || 0;
+        prepBatch.update(doc.ref, { activeWar });
         clansToNotify.push(doc.data());
     });
+    if (prepSnapshot.size > 0) {
+        await prepBatch.commit();
+        console.log(`Transitioned ${prepSnapshot.size} clans from preparation to active.`);
+    }
 
-    // 2. Find all clans in 'active' where phaseEndsAt <= now
-    const activeSnapshot = await db.collection("clans")
+    // 2. End active wars past phaseEndsAt (separate batch from bot scoring)
+    const activeEndingSnapshot = await db.collection("clans")
         .where("activeWar.phase", "==", "active")
         .where("activeWar.phaseEndsAt", "<=", now)
         .get();
 
-    activeSnapshot.docs.forEach((doc) => {
+    const endingIds = new Set(activeEndingSnapshot.docs.map((d) => d.id));
+    const endBatch = db.batch();
+    activeEndingSnapshot.docs.forEach((doc) => {
         const clanData = doc.data();
         const war = clanData.activeWar;
-        
-        let myScore = war.myClanScore || 0;
-        let oppScore = war.opponentClanScore || 0;
-
-        // If opponent is a bot, simulate their score here if needed,
-        // or rely on client-side simulation during the active phase.
-        // For server safety, let's just use whatever score is recorded.
-
+        const myScore = war?.myClanScore || 0;
+        const oppScore = war?.opponentClanScore || 0;
         const won = myScore > oppScore;
         const tied = myScore === oppScore;
-
-        // Distribute rewards? (In a full app we'd iterate over clan members)
         const trophyChange = won ? 50 : (tied ? 0 : -25);
-        
-        batch.update(doc.ref, {
+        endBatch.update(doc.ref, {
             trophies: admin.firestore.FieldValue.increment(trophyChange),
-            activeWar: admin.firestore.FieldValue.delete() // Reset war
+            activeWar: admin.firestore.FieldValue.delete(),
         });
     });
+    if (activeEndingSnapshot.size > 0) {
+        await endBatch.commit();
+        console.log(`Completed ${activeEndingSnapshot.size} clan wars.`);
+    }
 
-    // 3. Find all clans in 'active' to simulate bot scores
+    // 3. Bot score simulation — never write the same doc as an ending war (Firestore batch rule)
     const activeOngoingSnapshot = await db.collection("clans")
         .where("activeWar.phase", "==", "active")
         .get();
-        
-    activeOngoingSnapshot.docs.forEach((doc) => {
-        const clanData = doc.data();
-        const war = clanData.activeWar;
-        
-        if (war && war.opponentClanId && war.opponentClanId.startsWith("bot_")) {
-            // It's a bot opponent. Give them random points (e.g. 10 to 50 every 5 minutes)
-            const randomPoints = Math.floor(Math.random() * 41) + 10;
-            batch.update(doc.ref, {
-                "activeWar.opponentClanScore": admin.firestore.FieldValue.increment(randomPoints)
-            });
-        }
-    });
 
-    if (prepSnapshot.size > 0 || activeSnapshot.size > 0 || activeOngoingSnapshot.size > 0) {
-        await batch.commit();
-        console.log(`Processed ${prepSnapshot.size} preparation transitions, ${activeSnapshot.size} active completions, and updated bots in ${activeOngoingSnapshot.size} clans.`);
-        
-        // Send push notifications for clans that transitioned to 'active'
-        for (const clan of clansToNotify) {
-            const members = clan.members || [];
-            const opponentName = clan.activeWar?.opponentClanName || "an enemy";
-            for (const member of members) {
-                if (member.id) {
-                    await sendPushNotification(member.id, "Clan War Started! ⚔️", `Your clan is now at war with ${opponentName}! Attack now!`);
-                }
+    const botBatch = db.batch();
+    let botScoreUpdates = 0;
+    activeOngoingSnapshot.docs.forEach((doc) => {
+        if (shouldSkipBotScoreUpdate(doc.id, endingIds)) return;
+        const war = doc.data().activeWar;
+        if (!war || !isBotClanId(war.opponentClanId)) return;
+        const randomPoints = Math.floor(Math.random() * 41) + 10;
+        botBatch.update(doc.ref, {
+            "activeWar.opponentClanScore": admin.firestore.FieldValue.increment(randomPoints),
+        });
+        botScoreUpdates++;
+    });
+    if (botScoreUpdates > 0) {
+        await botBatch.commit();
+        console.log(`Updated bot scores in ${botScoreUpdates} active wars.`);
+    }
+
+    for (const clan of clansToNotify) {
+        const members = clan.members || [];
+        const opponentName = clan.activeWar?.opponentClanName || "an enemy";
+        for (const member of members) {
+            if (member.id) {
+                await sendPushNotification(
+                    member.id,
+                    "Clan War Started!",
+                    `Your clan is now at war with ${opponentName}! Attack now!`
+                );
             }
         }
-    } else {
+    }
+
+    if (
+        pairedCount === 0 &&
+        botAssigned === 0 &&
+        prepSnapshot.size === 0 &&
+        activeEndingSnapshot.size === 0 &&
+        botScoreUpdates === 0
+    ) {
         console.log("No clan wars to transition.");
     }
-    
+
     return null;
 });
 
@@ -437,7 +502,7 @@ export const recordClanWarAttack = fitRpgOnCall(async (data, context) => {
         const opponentClanId = clanData.activeWar.opponentClanId || null;
         let oppRef: admin.firestore.DocumentReference | null = null;
         let oppDoc: admin.firestore.DocumentSnapshot | null = null;
-        if (opponentClanId && !String(opponentClanId).startsWith("bot_")) {
+        if (opponentClanId && !isBotClanId(opponentClanId)) {
             oppRef = db.collection("clans").doc(opponentClanId);
             oppDoc = await transaction.get(oppRef);
         }
@@ -483,7 +548,7 @@ export const recordClanWarAttack = fitRpgOnCall(async (data, context) => {
         return { success: true, scoreAdded: scoreToAdd, won, opponentClanId, myName: userData.name || userData.username || "A rival" };
     });
 
-    if (result.success && result.won && result.opponentClanId && !result.opponentClanId.startsWith("bot_")) {
+    if (result.success && result.won && result.opponentClanId && !isBotClanId(result.opponentClanId)) {
         const oppClanDoc = await db.collection("clans").doc(result.opponentClanId).get();
         if (oppClanDoc.exists) {
             const oppClan = oppClanDoc.data() || {};
@@ -1240,11 +1305,27 @@ export const equipItem = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const uid = context.auth.uid;
-    const itemId = data.itemId;
-    const slot = data.slot; // "Weapon" or "Armor"
+    const itemId = typeof data.itemId === "string" ? data.itemId : "";
+    const slot = typeof data.slot === "string" ? data.slot : "";
+    const unequip = data.unequip === true;
     
-    if (!itemId || !slot) {
+    if (!slot) {
+        throw new functions.https.HttpsError("invalid-argument", "Missing slot.");
+    }
+    if (!unequip && !itemId) {
         throw new functions.https.HttpsError("invalid-argument", "Missing itemId or slot.");
+    }
+    
+    const slotKey = (() => {
+        const s = slot.toLowerCase();
+        if (s === "weapon") return "equippedWeaponId";
+        if (s === "armor") return "equippedArmorId";
+        if (s === "ring") return "equippedRingId";
+        if (s === "amulet") return "equippedAmuletId";
+        return null;
+    })();
+    if (!slotKey) {
+        throw new functions.https.HttpsError("invalid-argument", "Invalid slot.");
     }
     
     const userRef = db.collection("users").doc(uid);
@@ -1255,40 +1336,22 @@ export const equipItem = fitRpgOnCall(async (data, context) => {
         
         const userData = userDoc.data();
         if (!userData) return;
+
+        if (unequip) {
+            transaction.update(userRef, { [slotKey]: admin.firestore.FieldValue.delete() });
+            return;
+        }
         
         const ownedIds = userData.ownedEquipmentIds || [];
-        // Optional: Ensure the user actually owns the item.
-        // Even starter gear should be explicitly in ownedEquipmentIds,
-        // but to be safe, we allow any equip request IF the user owns it.
-        // Wait, starter armors are dynamically loaded based on selectedClass.
-        // We will just enforce that the user's `ownedEquipmentIds` contains it,
-        // or it's one of the basic starters (e.g. w_arch_1).
-        
-        // Let's just trust that the client added starter weapons to ownedEquipmentIds upon creation.
-        // Actually, if we look at ClassSelectionVM, it sets equippedWeaponId but doesn't put them in ownedEquipmentIds?
-        // Wait, we need to be careful not to lock users out of their starter gear.
-        // Let's just update the equipped ID. The client UI does the ownership check.
-        // If we want to be strict:
         const isStarter = ["w_arch_1", "w_mage_1", "w_swor_1", "w_heal_1", "a_arch_1", "a_mage_1", "a_swor_1", "a_heal_1"].includes(itemId);
         if (!isStarter && !ownedIds.includes(itemId)) {
              throw new functions.https.HttpsError("failed-precondition", "User does not own this item.");
         }
         
-        const updates: any = {};
-        if (slot.toLowerCase() === "weapon") {
-            updates.equippedWeaponId = itemId;
-        } else if (slot.toLowerCase() === "armor") {
-            updates.equippedArmorId = itemId;
-        } else if (slot.toLowerCase() === "ring") {
-            updates.equippedRingId = itemId;
-        } else if (slot.toLowerCase() === "amulet") {
-            updates.equippedAmuletId = itemId;
-        }
-        
-        transaction.update(userRef, updates);
+        transaction.update(userRef, { [slotKey]: itemId });
     });
     
-    return { success: true };
+    return { success: true, unequip };
 });
 
 // -------------------------------------------------------------------
@@ -1513,17 +1576,21 @@ export const adjustEnergy = fitRpgOnCall(async (data, context) => {
             ? userData.lastEnergyRegenAt.toMillis()
             : Number(userData.lastEnergyRegenAt || 0);
 
-        // Always apply pending regen first
-        if (energy < maxEnergy && lastMs > 0) {
-            const points = Math.floor((nowMs - lastMs) / (ENERGY_REGEN_INTERVAL_SEC * 1000));
-            if (points > 0) {
-                energy = Math.min(maxEnergy, energy + points);
-            }
-        }
+        // Always apply pending regen first. Preserve fractional interval on pure regen;
+        // spend/refund/train snap the clock to `now` after the action.
+        const regen = computePassiveRegen({
+            energy,
+            maxEnergy,
+            lastRegenAtMs: lastMs,
+            nowMs,
+            intervalMs: ENERGY_REGEN_INTERVAL_SEC * 1000,
+        });
+        energy = regen.energy;
+        const regenPoints = regen.points;
 
         const updates: any = {
             energy,
-            lastEnergyRegenAt: now,
+            lastEnergyRegenAt: admin.firestore.Timestamp.fromMillis(regen.nextRegenAtMs),
         };
         let chargeIdOut: string | undefined;
         let trainAwarded = 0;
@@ -1538,6 +1605,7 @@ export const adjustEnergy = fitRpgOnCall(async (data, context) => {
                 throw new functions.https.HttpsError("invalid-argument", "chargeId required.");
             }
             updates.energy = energy;
+            updates.lastEnergyRegenAt = now;
             updates.pendingEnergyCharges = registerEnergySpend(
                 userData.pendingEnergyCharges,
                 chargeId,
@@ -1564,6 +1632,7 @@ export const adjustEnergy = fitRpgOnCall(async (data, context) => {
             }
             energy = Math.min(maxEnergy, energy + consumed.refundAmount);
             updates.energy = energy;
+            updates.lastEnergyRegenAt = now;
             updates.pendingEnergyCharges = consumed.remaining;
         } else if (op === "train") {
             // Camera free-train session complete → +5 energy, max +40/day (UTC).
@@ -1581,14 +1650,81 @@ export const adjustEnergy = fitRpgOnCall(async (data, context) => {
             const used = sameDay ? Math.max(0, Math.floor(Number(userData.trainEnergyAwardedToday) || 0)) : 0;
             energy = Math.min(maxEnergy, energy + trainAwarded);
             updates.energy = energy;
+            updates.lastEnergyRegenAt = now;
             updates.lastTrainEnergyDay = todayKey;
             // Only count energy actually granted (full bar does not burn daily budget).
             updates.trainEnergyAwardedToday = used + trainAwarded;
         }
-        // regen: energy already topped up above
+        // regen: energy / lastEnergyRegenAt already set above (remainder preserved)
 
         transaction.update(userRef, updates);
-        return { energy, maxEnergy, chargeId: chargeIdOut, trainAwarded };
+        return { energy, maxEnergy, chargeId: chargeIdOut, trainAwarded, regenPoints };
+    });
+
+    return { success: true, ...result };
+});
+
+// -------------------------------------------------------------------
+// 10b3. HTTP Callable: Fill gold/energy for App Store screenshots (gated)
+// Gate: auth + (uid allowlist OR config/fitrpg.screenshotFillEnabled OR RC fitrpg_screenshot_fill)
+// -------------------------------------------------------------------
+const SCREENSHOT_FILL_GOLD = 9999;
+const SCREENSHOT_FILL_MIN_MAX_ENERGY = 100;
+
+async function assertScreenshotFillAllowed(uid: string): Promise<void> {
+    const allowlist = String(process.env.SCREENSHOT_FILL_UIDS || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    if (allowlist.includes(uid)) return;
+
+    const cfg = await db.collection("config").doc("fitrpg").get();
+    if (cfg.exists && cfg.data()?.screenshotFillEnabled === true) return;
+
+    try {
+        const template = await admin.remoteConfig().getTemplate();
+        const param = template.parameters?.["fitrpg_screenshot_fill"];
+        const defaultValue = param?.defaultValue;
+        if (
+            defaultValue &&
+            "value" in defaultValue &&
+            String(defaultValue.value).toLowerCase() === "true"
+        ) {
+            return;
+        }
+    } catch (e) {
+        console.warn("screenshot fill RC check failed", e);
+    }
+
+    throw new functions.https.HttpsError(
+        "permission-denied",
+        "Screenshot fill is disabled. Enable fitrpg_screenshot_fill RC or config/fitrpg.screenshotFillEnabled."
+    );
+}
+
+export const fillScreenshotWallet = fitRpgOnCall(async (_data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+    const uid = context.auth.uid;
+    await assertScreenshotFillAllowed(uid);
+
+    const userRef = db.collection("users").doc(uid);
+    const result = await db.runTransaction(async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists) throw new functions.https.HttpsError("not-found", "User not found.");
+        const userData = userDoc.data()!;
+
+        const prevMax = Number(userData.maxEnergy) || 0;
+        const maxEnergy = Math.max(prevMax, SCREENSHOT_FILL_MIN_MAX_ENERGY);
+        const gold = SCREENSHOT_FILL_GOLD;
+        const energy = maxEnergy;
+
+        transaction.update(userRef, {
+            gold,
+            energy,
+            maxEnergy,
+            lastEnergyRegenAt: admin.firestore.Timestamp.now(),
+        });
+        return { gold, energy, maxEnergy };
     });
 
     return { success: true, ...result };

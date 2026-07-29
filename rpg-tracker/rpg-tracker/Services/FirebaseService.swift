@@ -433,15 +433,20 @@ class FirebaseService: ObservableObject {
     }
     
     /// Free-train session complete rewards. Energy via CF `adjustEnergy` op `train` only (+5, +40/day).
-    func awardWorkoutRewards(reps: Int) -> (xp: Int, gold: Int, energy: Int) {
-        guard var char = currentCharacter else { return (0, 0, 0) }
+    /// Completion reports confirmed energy (0 if CF failed / rolled back). Callers must not toast +ENERGY before completion.
+    func awardWorkoutRewards(reps: Int, completion: @escaping (_ xp: Int, _ gold: Int, _ energy: Int) -> Void) {
+        guard var char = currentCharacter else {
+            completion(0, 0, 0)
+            return
+        }
 
         let used = CameraTrackingVM.freeTrainingRepsUsedToday()
         let remaining = max(0, CameraTrackingVM.freeTrainingDailyCapPublic - used)
         let cappedReps = min(reps, remaining, 50)
         if cappedReps <= 0 {
             lastActionError = "Daily practice limit reached (50 reps)."
-            return (0, 0, 0)
+            completion(0, 0, 0)
+            return
         }
         let baseXP = cappedReps > 0 ? 10 : 0
         let baseGold = cappedReps > 0 ? 3 : 0
@@ -455,6 +460,7 @@ class FirebaseService: ObservableObject {
         }
         
         _ = char.addXP(xpReward)
+        let goldBeforeReward = char.gold
         char.gold += goldReward
         
         switch char.selectedClass {
@@ -466,7 +472,12 @@ class FirebaseService: ObservableObject {
         
         self.currentCharacter = char
         writeWidgetSnapshot(from: char)
-        syncCharacter(char) // stats only — gold/xp/energy via CF below
+        // Rules reject gold increases — sync stats with pre-reward gold; mint via CF.
+        var statsSync = char
+        statsSync.gold = goldBeforeReward
+        syncCharacter(statsSync)
+        self.currentCharacter = char
+        writeWidgetSnapshot(from: char)
 
         // Advance daily free-train counter once at FINISH (not mid-session).
         CameraTrackingVM.recordFreeTrainingRepsAwarded(cappedReps)
@@ -490,15 +501,31 @@ class FirebaseService: ObservableObject {
 
         // Persist train energy via adjustEnergy (rules block client energy increases).
         Task {
+            var confirmedEnergy = 0
             do {
                 let result = try await Functions.functions().httpsCallable("adjustEnergy").call([
                     "op": "train"
                 ])
-                if let data = result.data as? [String: Any], let serverEnergy = data["energy"] as? Int {
-                    await MainActor.run {
-                        if var c = self.currentCharacter {
-                            c.energy = serverEnergy
-                            self.currentCharacter = c
+                if let data = result.data as? [String: Any] {
+                    if let awarded = data["trainAwarded"] as? Int {
+                        confirmedEnergy = awarded
+                    } else if let awarded = data["trainAwarded"] as? Double {
+                        confirmedEnergy = Int(awarded)
+                    }
+                    if let serverEnergy = data["energy"] as? Int {
+                        await MainActor.run {
+                            if var c = self.currentCharacter {
+                                c.energy = serverEnergy
+                                self.currentCharacter = c
+                            }
+                        }
+                    } else if confirmedEnergy == 0, trainEnergyPreview > 0 {
+                        // No server energy stamp and no grant — drop optimistic bump.
+                        await MainActor.run {
+                            if var c = self.currentCharacter {
+                                c.energy = max(0, c.energy - trainEnergyPreview)
+                                self.currentCharacter = c
+                            }
                         }
                     }
                 }
@@ -511,6 +538,10 @@ class FirebaseService: ObservableObject {
                     self.lastActionError = "Couldn't save training energy."
                 }
                 print("awardWorkoutRewards train energy CF failed: \(error)")
+                confirmedEnergy = 0
+            }
+            await MainActor.run {
+                completion(xpReward, goldReward, confirmedEnergy)
             }
         }
         
@@ -531,8 +562,6 @@ class FirebaseService: ObservableObject {
                 self.userClan = updatedClan
             }
         }
-        
-        return (xpReward, goldReward, trainEnergyPreview)
     }
     
     // MARK: - Matchmaking & Real-Time PvP
@@ -871,24 +900,62 @@ class FirebaseService: ObservableObject {
         guard var char = currentCharacter else { return }
         let chargeId = lastEnergyChargeId
         lastEnergyChargeId = nil
-        char.energy = min(char.maxEnergy, char.energy + amount)
-        self.currentCharacter = char
         guard let chargeId else {
             lastActionError = "Couldn't refund energy (no spend charge)."
             return
         }
+        let preview = min(amount, max(0, char.maxEnergy - char.energy))
+        char.energy = min(char.maxEnergy, char.energy + preview)
+        self.currentCharacter = char
         Task {
             do {
-                var payload: [String: Any] = ["op": "refund", "amount": amount, "chargeId": chargeId]
+                let payload: [String: Any] = ["op": "refund", "amount": amount, "chargeId": chargeId]
                 let result = try await Functions.functions().httpsCallable("adjustEnergy").call(payload)
                 if let data = result.data as? [String: Any], let energy = data["energy"] as? Int {
                     await MainActor.run { self.currentCharacter?.energy = energy }
                 }
             } catch {
                 await MainActor.run {
+                    if preview > 0, var c = self.currentCharacter {
+                        // Roll back optimistic refund; restore charge id for a retry if needed.
+                        c.energy = max(0, c.energy - preview)
+                        self.currentCharacter = c
+                    }
+                    self.lastEnergyChargeId = chargeId
                     self.lastActionError = "Couldn't refund energy."
                 }
             }
+        }
+    }
+
+    /// App Store screenshot helper — CF-only gold/energy top-up (gated server-side).
+    func fillScreenshotWallet() async -> (Bool, String?) {
+        do {
+            let result = try await Functions.functions().httpsCallable("fillScreenshotWallet").call([:])
+            if let data = result.data as? [String: Any] {
+                await MainActor.run {
+                    if let gold = data["gold"] as? Int {
+                        self.currentCharacter?.gold = gold
+                    }
+                    if let energy = data["energy"] as? Int {
+                        self.currentCharacter?.energy = energy
+                    }
+                    if let maxEnergy = data["maxEnergy"] as? Int {
+                        self.currentCharacter?.maxEnergy = maxEnergy
+                    }
+                    if let char = self.currentCharacter {
+                        self.writeWidgetSnapshot(from: char)
+                    }
+                }
+            }
+            return (true, nil)
+        } catch {
+            let message = (error as NSError).localizedDescription
+            await MainActor.run {
+                self.lastActionError = "Screenshot fill failed."
+            }
+            print("fillScreenshotWallet failed: \(message)")
+            return (false, message)
         }
     }
     
@@ -908,33 +975,62 @@ class FirebaseService: ObservableObject {
             return
         }
         
-        let lastTick = UserDefaults.standard.object(forKey: key) as? Date ?? now
+        let storedLast = UserDefaults.standard.object(forKey: key) as? Date
+        // Missing local clock → still ask CF (Firestore `lastEnergyRegenAt` is source of truth).
+        let forceServerSync = storedLast == nil
+        let lastTick = storedLast ?? now
         let elapsed = now.timeIntervalSince(lastTick)
         let pointsToAdd = Int(elapsed / Self.energyRegenInterval)
-        guard pointsToAdd > 0 else { return }
+        guard pointsToAdd > 0 || forceServerSync else { return }
         
-        // Local preview only — persist via adjustEnergy regen
-        char.energy = min(char.maxEnergy, char.energy + pointsToAdd)
-        let advancedLastTick = lastTick.addingTimeInterval(Double(pointsToAdd) * Self.energyRegenInterval)
-        UserDefaults.standard.set(advancedLastTick, forKey: key)
-        self.currentCharacter = char
+        let energyBefore = char.energy
+        let previewAmount = pointsToAdd > 0
+            ? min(pointsToAdd, max(0, char.maxEnergy - char.energy))
+            : 0
+        let advancedLastTick = pointsToAdd > 0
+            ? lastTick.addingTimeInterval(Double(pointsToAdd) * Self.energyRegenInterval)
+            : lastTick
+        
+        // Local preview only — must roll back if adjustEnergy regen fails.
+        if previewAmount > 0 {
+            char.energy = min(char.maxEnergy, char.energy + previewAmount)
+            UserDefaults.standard.set(advancedLastTick, forKey: key)
+            self.currentCharacter = char
+        }
         
         Task {
             do {
                 let result = try await Functions.functions().httpsCallable("adjustEnergy").call(["op": "regen"])
                 if let data = result.data as? [String: Any], let energy = data["energy"] as? Int {
-                    await MainActor.run { self.currentCharacter?.energy = energy }
+                    await MainActor.run {
+                        if var c = self.currentCharacter {
+                            c.energy = energy
+                            self.currentCharacter = c
+                            // Align local throttle with server stamp (CF sets lastEnergyRegenAt).
+                            UserDefaults.standard.set(Date(), forKey: key)
+                            if c.energy < c.maxEnergy {
+                                let remaining = c.maxEnergy - c.energy
+                                NotificationManager.shared.scheduleEnergyRestored(
+                                    inSeconds: TimeInterval(remaining) * Self.energyRegenInterval
+                                )
+                            }
+                        }
+                    }
                 }
             } catch {
-                print("adjustEnergy regen failed: \(error)")
+                await MainActor.run {
+                    if previewAmount > 0, var c = self.currentCharacter {
+                        c.energy = max(energyBefore, c.energy - previewAmount)
+                        self.currentCharacter = c
+                    }
+                    if let storedLast {
+                        UserDefaults.standard.set(storedLast, forKey: key)
+                    } else {
+                        UserDefaults.standard.removeObject(forKey: key)
+                    }
+                    print("adjustEnergy regen failed: \(error)")
+                }
             }
-        }
-        
-        if char.energy < char.maxEnergy {
-            let secondsUntilNext = Self.energyRegenInterval - now.timeIntervalSince(advancedLastTick)
-            NotificationManager.shared.scheduleEnergyRestored(
-                inSeconds: max(1, secondsUntilNext + Double(char.maxEnergy - char.energy - 1) * Self.energyRegenInterval)
-            )
         }
     }
     
@@ -1179,26 +1275,57 @@ class FirebaseService: ObservableObject {
         syncCharacter(updatedChar)
     }
     
-    func startClanWar() {
+    func startClanWar(acceptBot: Bool = false, immediateBot: Bool = false) {
         guard userClan != nil else { return }
 
         Task {
             do {
                 let functions = Functions.functions()
-                let result = try await functions.httpsCallable("matchmakeClanWar").call()
+                var payload: [String: Any] = [:]
+                if acceptBot { payload["acceptBot"] = true }
+                if immediateBot { payload["immediateBot"] = true }
+                // Unstick legacy 24h preparation wars
+                if userClan?.activeWar?.phase == .preparation {
+                    payload["forceActive"] = true
+                    payload["acceptBot"] = true
+                }
+                let result = try await functions.httpsCallable("matchmakeClanWar").call(payload.isEmpty ? nil : payload)
                 if let data = result.data as? [String: Any] {
                     let opponent = data["opponentName"] as? String ?? "Unknown"
                     let isBot = data["isBot"] as? Bool ?? false
-                    print("Clan war started vs \(opponent) (bot: \(isBot))")
+                    let searching = data["searching"] as? Bool ?? false
+                    print("Clan war: opponent=\(opponent) bot=\(isBot) searching=\(searching)")
                 }
                 // Clan listener picks up server-written activeWar state
             } catch {
                 print("Error starting clan war: \(error.localizedDescription)")
+                let message: String
+                let ns = error as NSError
+                if ns.domain == FunctionsErrorDomain {
+                    switch FunctionsErrorCode(rawValue: ns.code) {
+                    case .alreadyExists:
+                        message = "Your clan is already in a war or searching."
+                    case .permissionDenied:
+                        message = "Only the clan leader can start or cancel a war."
+                    case .failedPrecondition:
+                        message = "Join or create a clan before starting a war."
+                    default:
+                        message = "Couldn't start clan war. Try again in a moment."
+                    }
+                } else {
+                    message = "Couldn't start clan war. Try again in a moment."
+                }
                 await MainActor.run {
-                    self.lastActionError = "Couldn't start clan war. Try again in a moment."
+                    self.lastActionError = message
                 }
             }
         }
+    }
+
+    /// After search timeout, claim ShadowFiend bot so war becomes active without waiting for cron.
+    func claimClanWarBotOpponent() {
+        guard userClan?.activeWar?.phase == .searching else { return }
+        startClanWar(acceptBot: true)
     }
 
     func cancelClanWarSearch() {
@@ -1307,19 +1434,105 @@ class FirebaseService: ObservableObject {
         }
     }
     
-    func equipItem(itemId: String, slot: EquipmentSlot) {
+    func equipItem(itemId: String, slot: EquipmentSlot, completion: ((Bool, String?) -> Void)? = nil) {
+        guard var char = currentCharacter else {
+            completion?(false, "No hero loaded.")
+            return
+        }
+        let previous = equippedSnapshot(from: char)
+        applyEquippedId(itemId, slot: slot, on: &char)
+        currentCharacter = char
+        writeWidgetSnapshot(from: char)
+
         Task {
             do {
-                let functions = Functions.functions()
-                _ = try await functions.httpsCallable("equipItem").call([
+                _ = try await Functions.functions().httpsCallable("equipItem").call([
                     "itemId": itemId,
                     "slot": slot.rawValue
                 ])
-                DailyQuestProgressStore.record(.equipItem)
-                // Character listener refreshes equipped ids from Firestore
+                await MainActor.run {
+                    DailyQuestProgressStore.record(.equipItem)
+                    completion?(true, nil)
+                }
             } catch {
-                print("Error equipping item: \(error.localizedDescription)")
+                await MainActor.run {
+                    if var rolled = self.currentCharacter {
+                        restoreEquipped(previous, on: &rolled)
+                        self.currentCharacter = rolled
+                    }
+                    let message = (error as NSError).localizedDescription
+                    let friendly = message.lowercased().contains("own")
+                        ? "You don't own this item."
+                        : "Couldn't equip. Try again."
+                    self.lastActionError = friendly
+                    print("Error equipping item: \(message)")
+                    completion?(false, friendly)
+                }
             }
+        }
+    }
+
+    func unequipItem(slot: EquipmentSlot, completion: ((Bool, String?) -> Void)? = nil) {
+        guard var char = currentCharacter else {
+            completion?(false, "No hero loaded.")
+            return
+        }
+        let previous = equippedSnapshot(from: char)
+        applyEquippedId(nil, slot: slot, on: &char)
+        currentCharacter = char
+        writeWidgetSnapshot(from: char)
+
+        Task {
+            do {
+                _ = try await Functions.functions().httpsCallable("equipItem").call([
+                    "slot": slot.rawValue,
+                    "unequip": true
+                ])
+                await MainActor.run { completion?(true, nil) }
+            } catch {
+                await MainActor.run {
+                    if var rolled = self.currentCharacter {
+                        restoreEquipped(previous, on: &rolled)
+                        self.currentCharacter = rolled
+                    }
+                    let friendly = "Couldn't unequip. Try again."
+                    self.lastActionError = friendly
+                    print("Error unequipping item: \(error.localizedDescription)")
+                    completion?(false, friendly)
+                }
+            }
+        }
+    }
+
+    private struct EquippedSnapshot {
+        var weapon: String?
+        var armor: String?
+        var ring: String?
+        var amulet: String?
+    }
+
+    private func equippedSnapshot(from char: Character) -> EquippedSnapshot {
+        EquippedSnapshot(
+            weapon: char.equippedWeaponId,
+            armor: char.equippedArmorId,
+            ring: char.equippedRingId,
+            amulet: char.equippedAmuletId
+        )
+    }
+
+    private func restoreEquipped(_ snap: EquippedSnapshot, on char: inout Character) {
+        char.equippedWeaponId = snap.weapon
+        char.equippedArmorId = snap.armor
+        char.equippedRingId = snap.ring
+        char.equippedAmuletId = snap.amulet
+    }
+
+    private func applyEquippedId(_ itemId: String?, slot: EquipmentSlot, on char: inout Character) {
+        switch slot {
+        case .weapon: char.equippedWeaponId = itemId
+        case .armor: char.equippedArmorId = itemId
+        case .ring: char.equippedRingId = itemId
+        case .amulet: char.equippedAmuletId = itemId
         }
     }
 
