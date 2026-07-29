@@ -60,14 +60,16 @@
 
 **Code:** `FitRPGApp.swift` — Release `AppAttestProvider`, DEBUG `AppCheckDebugProviderFactory`. All FitRPG callables use `enforceAppCheck: true`.
 
+**Incident 2026-07-29 (Simulator):** Shop `purchaseItem` + matchmaking (`adjustEnergy`, `triggerOpponentBotFallback`, …) returned **401**. Cloud Logs: `AppCheck token was rejected` / `app=INVALID; auth=VALID`. **Server was up; Auth OK.** Cause: DEBUG/Simulator App Check debug token not registered (after FitRPG callables gained `enforceAppCheck`). Fix: Xcode console → copy `Firebase App Check Debug Token: <UUID>` → Console → App Check → FitRPG iOS → Manage debug tokens → Add. Restart app; retest buy + Find Match. Do **not** disable App Check globally.
+
 **Checklist:**
 - [ ] FitRPG iOS app registered in App Check  
 - [ ] App Attest attestation enrolled for Release  
 - [ ] DeviceCheck available as fallback  
-- [ ] Debug token(s) registered for local/dev devices  
+- [ ] Debug token(s) registered for local/dev devices / Simulator  
 - [ ] Metrics show successful tokens after TF smoke (not all “missing”)  
 
-**RU:** Без App Attest Release-сборки CF будут отклонять вызовы → «не работает сеть/энергия/матч».
+**RU:** Без App Attest Release-сборки CF будут отклонять вызовы → «не работает сеть/энергия/матч». На Simulator без debug-токена — то же (Purchase failed / матч не стартует).
 
 ---
 

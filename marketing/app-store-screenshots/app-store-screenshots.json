@@ -1,0 +1,424 @@
+{
+  "schemaVersion": 2,
+  "appName": "FitRPG",
+  "themeId": "fitrpg-dark-fantasy",
+  "connectedCanvas": false,
+  "locales": [
+    "en"
+  ],
+  "locale": "en",
+  "device": "iphone",
+  "orientation": "portrait",
+  "appIcon": "/app-icon.png",
+  "slidesByDevice": {
+    "iphone": [
+      {
+        "id": "fitrpg_iphone_01",
+        "layout": "hero",
+        "label": {
+          "en": "DAILY MISSIONS"
+        },
+        "headline": {
+          "en": "Level up with\nreal workouts."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/01-home.png",
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 168,
+            "width": 1148,
+            "height": 620,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "device": {
+            "x": 79,
+            "y": 900,
+            "width": 1162,
+            "height": 2366,
+            "rotation": 0,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "fitrpg_iphone_02",
+        "layout": "device-bottom",
+        "label": {
+          "en": "HERO PROFILE"
+        },
+        "headline": {
+          "en": "Gear that makes\nyou stronger."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/02-profile.png",
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 200,
+            "width": 1148,
+            "height": 580,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "device": {
+            "x": 145,
+            "y": 860,
+            "width": 1030,
+            "height": 2097,
+            "rotation": -2.5,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "fitrpg_iphone_03",
+        "layout": "device-top",
+        "label": {
+          "en": "TRAINING GROUNDS"
+        },
+        "headline": {
+          "en": "Workouts power\nyour hero."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/03-train.png",
+        "inverted": true,
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 1980,
+            "width": 1148,
+            "height": 620,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "device": {
+            "x": 106,
+            "y": -280,
+            "width": 1109,
+            "height": 2259,
+            "rotation": 0,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "fitrpg_iphone_04",
+        "layout": "hero",
+        "label": {
+          "en": "ARENA"
+        },
+        "headline": {
+          "en": "Every battle\nstarts here."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/04-arena.png",
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 168,
+            "width": 1148,
+            "height": 580,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "device": {
+            "x": 145,
+            "y": 860,
+            "width": 1030,
+            "height": 2097,
+            "rotation": 3,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "fitrpg_iphone_05",
+        "layout": "device-bottom",
+        "label": {
+          "en": "STORY MAP"
+        },
+        "headline": {
+          "en": "Conquer 40\nfitness islands."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/05-islands.png",
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 190,
+            "width": 1148,
+            "height": 580,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "device": {
+            "x": 106,
+            "y": 820,
+            "width": 1109,
+            "height": 2259,
+            "rotation": -1.5,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "fitrpg_iphone_06",
+        "layout": "two-devices",
+        "label": {
+          "en": "RANKED MATCH"
+        },
+        "headline": {
+          "en": "Race your reps.\nClimb ranks."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/06-matchmaking.png",
+        "screenshotSecondary": "/screenshots/apple/iphone/{locale}/04-arena.png",
+        "inverted": true,
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 150,
+            "width": 1148,
+            "height": 560,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "deviceSecondary": {
+            "x": 24,
+            "y": 940,
+            "width": 820,
+            "height": 1670,
+            "rotation": -7,
+            "zIndex": 2
+          },
+          "device": {
+            "x": 380,
+            "y": 800,
+            "width": 900,
+            "height": 1833,
+            "rotation": 3.5,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "fitrpg_iphone_07",
+        "layout": "device-top",
+        "label": {
+          "en": "BOSS RAID"
+        },
+        "headline": {
+          "en": "Epic bosses.\nReal reps."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/07-boss.png",
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 1980,
+            "width": 1148,
+            "height": 620,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "device": {
+            "x": 79,
+            "y": -220,
+            "width": 1162,
+            "height": 2366,
+            "rotation": 0,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "fitrpg_iphone_08",
+        "layout": "device-bottom",
+        "label": {
+          "en": "CLAN"
+        },
+        "headline": {
+          "en": "Train with\nyour guild."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/08-clan.png",
+        "inverted": true,
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 200,
+            "width": 1148,
+            "height": 560,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "device": {
+            "x": 145,
+            "y": 880,
+            "width": 1030,
+            "height": 2097,
+            "rotation": 2,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "fitrpg_iphone_09",
+        "layout": "hero",
+        "label": {
+          "en": "WORLD BOSS"
+        },
+        "headline": {
+          "en": "Hit hard.\nRaid together."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/09-worldboss.png",
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 160,
+            "width": 1148,
+            "height": 560,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "device": {
+            "x": 53,
+            "y": 820,
+            "width": 1214,
+            "height": 2474,
+            "rotation": 0,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "fitrpg_iphone_10",
+        "layout": "device-bottom",
+        "label": {
+          "en": "DUNGEON RUN"
+        },
+        "headline": {
+          "en": "Camera tracks\nevery rep."
+        },
+        "screenshot": "/screenshots/apple/iphone/{locale}/10-dungeon.png",
+        "inverted": true,
+        "transforms": {
+          "caption": {
+            "x": 86,
+            "y": 190,
+            "width": 1148,
+            "height": 580,
+            "rotation": 0,
+            "zIndex": 5
+          },
+          "device": {
+            "x": 106,
+            "y": 840,
+            "width": 1109,
+            "height": 2259,
+            "rotation": -3,
+            "zIndex": 3
+          }
+        }
+      }
+    ],
+    "android": [],
+    "ipad": [
+      {
+        "id": "fitrpg_ipad_01",
+        "layout": "hero",
+        "label": {
+          "en": "CHOOSE YOUR CLASS"
+        },
+        "headline": {
+          "en": "Workouts power\nyour combat."
+        },
+        "screenshot": "/screenshots/apple/ipad/{locale}/01-hero.png"
+      },
+      {
+        "id": "fitrpg_ipad_02",
+        "layout": "device-bottom",
+        "label": {
+          "en": "DAILY MISSIONS"
+        },
+        "headline": {
+          "en": "Level up with\nreal workouts."
+        },
+        "screenshot": "/screenshots/apple/ipad/{locale}/02-home.png"
+      },
+      {
+        "id": "fitrpg_ipad_03",
+        "layout": "device-top",
+        "label": {
+          "en": "ARENA"
+        },
+        "headline": {
+          "en": "Choose your\nbattlefield."
+        },
+        "screenshot": "/screenshots/apple/ipad/{locale}/03-arena.png",
+        "inverted": true
+      },
+      {
+        "id": "fitrpg_ipad_04",
+        "layout": "device-bottom",
+        "label": {
+          "en": "1v1 RANKED"
+        },
+        "headline": {
+          "en": "Climb the\nranks."
+        },
+        "screenshot": "/screenshots/apple/ipad/{locale}/04-leaderboard.png"
+      },
+      {
+        "id": "fitrpg_ipad_05",
+        "layout": "hero",
+        "label": {
+          "en": "COMBAT"
+        },
+        "headline": {
+          "en": "Every rep\nis damage."
+        },
+        "screenshot": "/screenshots/apple/ipad/{locale}/05-battle.png"
+      },
+      {
+        "id": "fitrpg_ipad_06",
+        "layout": "device-top",
+        "label": {
+          "en": "CLAN"
+        },
+        "headline": {
+          "en": "Train with\nyour guild."
+        },
+        "screenshot": "/screenshots/apple/ipad/{locale}/06-clan.png"
+      },
+      {
+        "id": "fitrpg_ipad_07",
+        "layout": "device-bottom",
+        "label": {
+          "en": "STORY MAP"
+        },
+        "headline": {
+          "en": "Conquer fitness\nislands."
+        },
+        "screenshot": "/screenshots/apple/ipad/{locale}/07-islands.png",
+        "inverted": true
+      },
+      {
+        "id": "fitrpg_ipad_08",
+        "layout": "hero",
+        "label": {
+          "en": "BOSS RAIDS"
+        },
+        "headline": {
+          "en": "Face epic\nbosses."
+        },
+        "screenshot": "/screenshots/apple/ipad/{locale}/08-boss.png"
+      }
+    ],
+    "android-7": [],
+    "android-10": [],
+    "feature-graphic": []
+  },
+  "crossScreenMockupsByDevice": {
+    "iphone": [],
+    "ipad": [],
+    "android": [],
+    "android-7": [],
+    "android-10": [],
+    "feature-graphic": []
+  }
+}

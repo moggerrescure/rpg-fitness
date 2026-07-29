@@ -792,7 +792,10 @@ class MultiplayerService: ObservableObject {
         } catch {
             print("Match with opponent failed: \(error)")
             await MainActor.run {
-                self.matchmakingError = "Match failed. Still searching…"
+                self.matchmakingError = FirebaseService.userFacingCallableError(
+                    error,
+                    fallback: "Match failed. Still searching…"
+                )
             }
         }
         return false

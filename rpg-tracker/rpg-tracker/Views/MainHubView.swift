@@ -321,6 +321,8 @@ struct MainHubView: View {
                 DungeonRunView()
             }
         }
+        // iPad/Mac default NavigationView is split-column; stack keeps hub + class select full-bleed.
+        .navigationViewStyle(.stack)
     }
 
     private func dismissHubToast() {

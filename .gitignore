@@ -30,3 +30,9 @@ firebase-debug.log
 .codebase-memory/
 .code-review-graph/
 
+
+# macOS
+.DS_Store
+
+# Root npm noise (no root package)
+/package-lock.json

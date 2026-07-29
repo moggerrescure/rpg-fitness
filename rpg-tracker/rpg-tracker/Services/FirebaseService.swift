@@ -1545,14 +1545,37 @@ class FirebaseService: ObservableObject {
                 let already = data?["alreadyOwned"] as? Bool ?? false
                 completion(true, already ? "Already owned" : "Purchase complete!")
             } catch {
-                let message = (error as NSError).localizedDescription
-                if message.lowercased().contains("gold") {
-                    completion(false, "Not enough gold!")
-                } else {
-                    completion(false, "Purchase failed. Try again.")
-                }
+                completion(false, Self.userFacingCallableError(error, fallback: "Purchase failed. Try again."))
             }
         }
+    }
+
+    /// Maps Cloud Functions / App Check failures to a short UI string.
+    static func userFacingCallableError(_ error: Error, fallback: String) -> String {
+        let ns = error as NSError
+        let desc = ns.localizedDescription.lowercased()
+        if desc.contains("gold") {
+            return "Not enough gold!"
+        }
+        // enforceAppCheck rejects Simulator/DEBUG until the debug token is registered.
+        if ns.domain == FunctionsErrorDomain {
+            let code = FunctionsErrorCode(rawValue: ns.code)
+            if code == .unauthenticated || code == .permissionDenied || code == .unavailable {
+                #if DEBUG
+                return "App Check blocked this action. Register the Simulator debug token in Firebase Console."
+                #else
+                return "Secure connection failed. Try again."
+                #endif
+            }
+        }
+        if desc.contains("app check") || desc.contains("appcheck") || desc.contains("401") {
+            #if DEBUG
+            return "App Check blocked this action. Register the Simulator debug token in Firebase Console."
+            #else
+            return "Secure connection failed. Try again."
+            #endif
+        }
+        return fallback
     }
 
     /// FitRPG UGC report — writes to shared `reports` collection (rules: app == fitrpg).

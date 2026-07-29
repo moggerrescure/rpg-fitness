@@ -21,6 +21,20 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         #endif
         
         FirebaseApp.configure()
+
+        #if DEBUG
+        // FitRPG callables use enforceAppCheck — Simulator needs a registered debug token.
+        // Xcode console prints: "Firebase App Check Debug Token: <UUID>"
+        // Register it: Firebase Console → App Check → Apps → FitRPG iOS → Manage debug tokens.
+        Task {
+            do {
+                _ = try await AppCheck.appCheck().token(forcingRefresh: false)
+                print("[FitRPG] App Check debug token fetch OK. If shop/match CF return 401, register the Debug Token UUID from this console in Firebase App Check.")
+            } catch {
+                print("[FitRPG] App Check debug token fetch FAILED: \(error). Register Simulator debug token or set FirebaseAppCheckDebugToken in the Run scheme.")
+            }
+        }
+        #endif
         
         #if canImport(FirebaseMessaging)
         Messaging.messaging().delegate = self

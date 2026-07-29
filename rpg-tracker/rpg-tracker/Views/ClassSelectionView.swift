@@ -9,14 +9,26 @@ struct ClassStat {
 struct ClassSelectionView: View {
     @StateObject private var viewModel = ClassSelectionVM()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var onSelectionComplete: () -> Void
+
+    /// Readable measure on iPad / Mac; full width on phone.
+    private var contentMaxWidth: CGFloat {
+        horizontalSizeClass == .regular ? 640 : .infinity
+    }
+
+    private var canCreate: Bool {
+        !viewModel.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     
     var body: some View {
         ZStack {
-            // Animated background representing start of journey in Cozy Tavern
+            // Full-bleed tavern backdrop (must fill window, not a phone-width column)
             AnimatedBackgroundView(backgroundType: .tavern)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             
             Color.black.opacity(0.55)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
             
             ScrollView {
@@ -28,6 +40,7 @@ struct ClassSelectionView: View {
                             .fontWeight(.black)
                             .foregroundColor(Theme.textPrimary)
                             .tracking(2)
+                            .multilineTextAlignment(.center)
                             .glow(color: Theme.primary.opacity(0.3), radius: 8)
                         
                         Text("Your real workouts will power their combat moves")
@@ -36,6 +49,7 @@ struct ClassSelectionView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                     }
+                    .frame(maxWidth: .infinity)
                     .padding(.top, 24)
                     
                     // Name Input
@@ -238,26 +252,35 @@ struct ClassSelectionView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(
-                            viewModel.username.isEmpty
-                            ? Color.gray.opacity(0.2)
-                            : viewModel.selectedClass.themeColor
+                            canCreate
+                            ? viewModel.selectedClass.themeColor
+                            : Theme.secondaryCard
                         )
-                        .foregroundColor(viewModel.username.isEmpty ? Theme.textMuted : .white)
+                        .foregroundColor(canCreate ? .white : Theme.textSecondary)
                         .cornerRadius(14)
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
-                                .stroke(viewModel.username.isEmpty ? Color.clear : Color.white.opacity(0.15), lineWidth: 1)
+                                .stroke(
+                                    canCreate
+                                    ? Color.white.opacity(0.15)
+                                    : Color.white.opacity(0.22),
+                                    lineWidth: 1
+                                )
                         )
-                        .glow(color: viewModel.username.isEmpty ? .clear : viewModel.selectedClass.themeColor.opacity(0.4), radius: 8)
+                        .glow(color: canCreate ? viewModel.selectedClass.themeColor.opacity(0.4) : .clear, radius: 8)
                     }
-                    .disabled(viewModel.username.isEmpty || viewModel.isSubmitting)
+                    .disabled(!canCreate || viewModel.isSubmitting)
                     .buttonStyle(TactileButtonStyle())
                     .padding(.horizontal)
                     .padding(.top, 10)
                     .padding(.bottom, 32)
                 }
+                .frame(maxWidth: contentMaxWidth)
+                .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.background.ignoresSafeArea())
         .alert(isPresented: $viewModel.showError) {
             Alert(title: Text("Error"), message: Text(viewModel.errorMessage), dismissButton: .default(Text("OK")))
         }

@@ -11,9 +11,11 @@
 | [KI-app-store-compliance.md](./KI-app-store-compliance.md) | App Store Review, блокеры, privacy/deletion/UGC |
 | [KI-feature-reality.md](./KI-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN матрица, моки, CF bypass (historical counts — prefer LAST audit) |
 | [KI-audit-FINAL-DROP-2026-07-29.md](./KI-audit-FINAL-DROP-2026-07-29.md) | **FINAL DROP gate CONDITIONAL (88/100)** — start here for Submit |
+| [KI-audit-predeploy-2026-07-29.md](./KI-audit-predeploy-2026-07-29.md) | Predeploy build+spot-check — **BUILD SUCCEEDED**; ASC residuals only |
 | [KI-audit-drop-READY-2026-07-29.md](./KI-audit-drop-READY-2026-07-29.md) | Prior DROP CONDITIONAL (86/100) — superseded by FINAL DROP |
 | [KI-firebase-operator-checklist-2026-07-29.md](./KI-firebase-operator-checklist-2026-07-29.md) | Firebase Console + RC `fitrpg_*` values |
 | [KI-xcode-asc-operator-2026-07-29.md](./KI-xcode-asc-operator-2026-07-29.md) | Xcode/ASC manual steps; iOS **18.6** floor |
+| [ASO FitRPG ASC package](../../marketing/ASO-FitRPG-ASC-2026-07-29.md) | Copy-paste Name/Subtitle/Keywords/Promo/Privacy Labels for ASC fill |
 | [KI-audit-merged-LAST-2026-07-29.md](./KI-audit-merged-LAST-2026-07-29.md) | Prior LAST CONDITIONAL — superseded by FINAL DROP |
 | [KI-audit-merged-REAUDIT3-FIX-2026-07-29.md](./KI-audit-merged-REAUDIT3-FIX-2026-07-29.md) | Prior REAUDIT3-FIX YES (code) — superseded by LAST |
 | [KI-audit-merged-REAUDIT3-2026-07-29.md](./KI-audit-merged-REAUDIT3-2026-07-29.md) | Prior REAUDIT3 CONDITIONAL (superseded) |
@@ -27,13 +29,14 @@
 
 ## Audits (2026-07-29)
 
-**Start here (KI):** [KI-audit-FINAL-DROP-2026-07-29](./KI-audit-FINAL-DROP-2026-07-29.md) — **CONDITIONAL 88/100** (build green; ASC + safe CF deploy).  
+**Start here (KI):** [KI-audit-FINAL-DROP-2026-07-29](./KI-audit-FINAL-DROP-2026-07-29.md) — **CONDITIONAL 88/100** (submit narrative). Fresh build evidence: [PREDEPLOY](./KI-audit-predeploy-2026-07-29.md) (**BUILD SUCCEEDED**).  
 Prior: [DROP READY](./KI-audit-drop-READY-2026-07-29.md) → [LAST](./KI-audit-merged-LAST-2026-07-29.md).  
 **Long-form dumps:** [MASTER — Full Audit](../../docs/audit/2026-07-29-MASTER.md)
 
 | Report | Focus |
 |--------|-------|
-| [FINAL DROP](./KI-audit-FINAL-DROP-2026-07-29.md) | **Current** submit gate — equip/train honesty + build verify |
+| [FINAL DROP](./KI-audit-FINAL-DROP-2026-07-29.md) | **Current** submit gate — equip/train honesty + ASC |
+| [PREDEPLOY](./KI-audit-predeploy-2026-07-29.md) | Fresh `xcodebuild` + soft-polish spot-check |
 | [DROP READY](./KI-audit-drop-READY-2026-07-29.md) | Prior DROP (86/100) — superseded |
 | [LAST](./KI-audit-merged-LAST-2026-07-29.md) | Final 3-lens audit on `d143f99` |
 | [REAUDIT3-FIX](./KI-audit-merged-REAUDIT3-FIX-2026-07-29.md) | Celebrations, energy omit, HK Update key, Block |
