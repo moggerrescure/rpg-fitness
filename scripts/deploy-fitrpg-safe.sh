@@ -14,7 +14,8 @@ exports = [
 "matchmakeClanWar","cancelClanWarSearch","processClanWarPhases","recordClanWarAttack",
 "attackWorldBoss","processWorldBossCycle",
 "sendFriendRequest","searchPlayers","inviteToTeam3v3",
-"acceptFriendRequest","declineFriendRequest","joinTeam","matchWithOpponent",
+"acceptFriendRequest","declineFriendRequest","acceptFriendDuel","declineFriendDuel",
+"joinTeam","matchWithOpponent",
 "equipItem","resolvePvEBattle","onMatchmakingTicketCreated",
 "fillTeammatesWithBots","triggerOpponentBotFallback","getLeaderboards",
 "vertexProxy","imageProxy","deleteAccount","moderateSharedWorkout","onReportCreated"

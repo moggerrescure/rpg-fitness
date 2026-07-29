@@ -818,6 +818,111 @@ export const declineFriendRequest = functions.https.onCall(async (data, context)
 });
 
 // -------------------------------------------------------------------
+// 6c. HTTP Callable: Accept Friend Duel
+// -------------------------------------------------------------------
+export const acceptFriendDuel = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+
+    const uid = context.auth.uid;
+    const ticketId = data.ticketId;
+    const acceptor = data.acceptor; // { id, name, characterClass, health, maxHealth, avatarName, reps? }
+
+    if (!ticketId || !acceptor || acceptor.id !== uid) {
+        throw new functions.https.HttpsError("invalid-argument", "Invalid duel accept payload.");
+    }
+
+    const ticketRef = db.collection("matchmaking").doc(ticketId);
+
+    const result = await db.runTransaction(async (transaction) => {
+        const ticketDoc = await transaction.get(ticketRef);
+        if (!ticketDoc.exists) {
+            throw new functions.https.HttpsError("not-found", "Duel challenge not found.");
+        }
+        const ticket = ticketDoc.data()!;
+        if (ticket.status !== "waitingForFriend") {
+            throw new functions.https.HttpsError("failed-precondition", "Challenge is no longer available.");
+        }
+        if (ticket.targetUid !== uid) {
+            throw new functions.https.HttpsError("permission-denied", "Not the challenged player.");
+        }
+        const battleId = ticket.battleId;
+        if (!battleId) {
+            throw new functions.https.HttpsError("failed-precondition", "Challenge missing battle.");
+        }
+
+        const battleRef = db.collection("battles").doc(battleId);
+        const battleDoc = await transaction.get(battleRef);
+        if (!battleDoc.exists) {
+            throw new functions.https.HttpsError("not-found", "Battle not found.");
+        }
+
+        const acceptorPlayer = {
+            id: acceptor.id,
+            name: acceptor.name || "Player",
+            characterClass: acceptor.characterClass || "Swordsman",
+            health: Number(acceptor.health) || 110,
+            maxHealth: Number(acceptor.maxHealth) || 110,
+            avatarName: acceptor.avatarName || "avatar_swordsman",
+            reps: 0
+        };
+
+        transaction.update(battleRef, {
+            opponentTeam: [acceptorPlayer],
+            status: "active",
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        transaction.update(ticketRef, {
+            status: "matched"
+        });
+
+        const challenger = (ticket.team && ticket.team[0]) || {
+            id: ticket.uid,
+            name: ticket.playerName,
+            characterClass: ticket.playerClass,
+            health: 100 + (ticket.playerLevel || 1) * 10,
+            maxHealth: 100 + (ticket.playerLevel || 1) * 10,
+            avatarName: ticket.playerAvatar,
+            reps: 0
+        };
+
+        return { battleId, challenger, acceptor: acceptorPlayer };
+    });
+
+    return { success: true, ...result };
+});
+
+// -------------------------------------------------------------------
+// 6d. HTTP Callable: Decline Friend Duel
+// -------------------------------------------------------------------
+export const declineFriendDuel = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+
+    const uid = context.auth.uid;
+    const ticketId = data.ticketId;
+    if (!ticketId) throw new functions.https.HttpsError("invalid-argument", "Missing ticketId.");
+
+    const ticketRef = db.collection("matchmaking").doc(ticketId);
+    await db.runTransaction(async (transaction) => {
+        const ticketDoc = await transaction.get(ticketRef);
+        if (!ticketDoc.exists) return;
+        const ticket = ticketDoc.data()!;
+        if (ticket.targetUid !== uid && ticket.uid !== uid) {
+            throw new functions.https.HttpsError("permission-denied", "Not part of this duel.");
+        }
+        if (ticket.battleId) {
+            const battleRef = db.collection("battles").doc(ticket.battleId);
+            transaction.set(battleRef, {
+                status: "completed",
+                winnerId: "declined"
+            }, { merge: true });
+        }
+        transaction.delete(ticketRef);
+    });
+
+    return { success: true };
+});
+
+// -------------------------------------------------------------------
 // 7. HTTP Callable: Join Team
 // -------------------------------------------------------------------
 export const joinTeam = functions.https.onCall(async (data, context) => {

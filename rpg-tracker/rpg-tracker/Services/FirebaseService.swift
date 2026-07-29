@@ -584,6 +584,13 @@ class FirebaseService: ObservableObject {
         scheduleEnergyRestoredNotification(for: char.energy, maxEnergy: char.maxEnergy)
         return true
     }
+
+    func refundEnergy(amount: Int) {
+        guard amount > 0 else { return }
+        guard var char = currentCharacter else { return }
+        char.energy = min(char.maxEnergy, char.energy + amount)
+        syncCharacter(char)
+    }
     
     // MARK: - Energy Regeneration
     

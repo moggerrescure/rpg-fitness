@@ -63,6 +63,8 @@ class MultiplayerService: ObservableObject {
     
     private var pendingFriendBattle: Battle? = nil           // Held until countdown ends
     private var countdownTimer: Timer?
+    /// Energy held for queue/lobby; refunded if match never becomes active.
+    private var pendingMatchEnergyCharge: Int = 0
     
     private let db = Firestore.firestore()
     private var matchmakingListener: ListenerRegistration?
@@ -129,6 +131,12 @@ class MultiplayerService: ObservableObject {
     /// Opens the team lobby, creating the battle placeholder but NOT starting a timer.
     func initTeamLobby() {
         guard let char = FirebaseService.shared.currentCharacter else { return }
+        
+        guard FirebaseService.shared.consumeEnergy(amount: 10) else {
+            matchmakingError = "Not enough energy for 3v3 (need 10)."
+            return
+        }
+        pendingMatchEnergyCharge = 10
         
         self.currentSearchType = .team3v3
         
@@ -355,6 +363,12 @@ class MultiplayerService: ObservableObject {
     func challengeFriend(friendUid: String) {
         guard let char = FirebaseService.shared.currentCharacter else { return }
         
+        guard FirebaseService.shared.consumeEnergy(amount: 10) else {
+            matchmakingError = "Not enough energy for a duel (need 10)."
+            return
+        }
+        pendingMatchEnergyCharge = 10
+        
         self.currentSearchType = .duel1v1
         isSearching = true
         matchmakingError = nil
@@ -424,6 +438,7 @@ class MultiplayerService: ObservableObject {
         } catch {
             print("Failed to challenge friend: \(error)")
             isSearching = false
+            refundPendingMatchEnergy()
             matchmakingError = "Could not send duel challenge. Check your connection."
         }
     }
@@ -431,8 +446,8 @@ class MultiplayerService: ObservableObject {
     /// Acceptor fills in their player on the battle document, marking it active immediately.
     func acceptDuel(_ ticket: MatchmakingTicket) {
         guard let char = FirebaseService.shared.currentCharacter else { return }
-        guard let battleId = ticket.battleId else {
-            print("acceptDuel: no battleId on ticket")
+        guard let ticketId = ticket.id else {
+            print("acceptDuel: no ticket id")
             self.incomingDuel = nil
             return
         }
@@ -447,24 +462,40 @@ class MultiplayerService: ObservableObject {
             avatarName: char.avatarName
         )
         
-        let challengerPlayer = ticket.team?.first ?? BattlePlayer(
-            id: ticket.uid, name: ticket.playerName,
-            characterClass: ticket.playerClass,
-            health: 100 + ticket.playerLevel * 10, maxHealth: 100 + ticket.playerLevel * 10,
-            avatarName: ticket.playerAvatar
-        )
-        
         Task {
             do {
-                // Update the battle: set opponentTeam (acceptor) and mark active
-                let acceptorData = try Firestore.Encoder().encode(acceptorPlayer)
-                try await db.collection("battles").document(battleId).updateData([
-                    "opponentTeam": [acceptorData],
-                    "status": BattleStatus.active.rawValue,
-                    "createdAt": Timestamp(date: Date())
+                let functions = Functions.functions()
+                let acceptorPayload: [String: Any] = [
+                    "id": acceptorPlayer.id,
+                    "name": acceptorPlayer.name,
+                    "characterClass": acceptorPlayer.characterClass.rawValue,
+                    "health": acceptorPlayer.health,
+                    "maxHealth": acceptorPlayer.maxHealth,
+                    "avatarName": acceptorPlayer.avatarName ?? "avatar_swordsman"
+                ]
+                let result = try await functions.httpsCallable("acceptFriendDuel").call([
+                    "ticketId": ticketId,
+                    "acceptor": acceptorPayload
                 ])
                 
-                // Build acceptor-perspective battle (acceptor is localTeam, challenger is opponentTeam)
+                guard let data = result.data as? [String: Any],
+                      let battleId = data["battleId"] as? String else {
+                    throw NSError(domain: "FitRPG", code: 1, userInfo: [NSLocalizedDescriptionKey: "Bad accept response"])
+                }
+                
+                let challengerPlayer: BattlePlayer
+                if let challengerData = data["challenger"] as? [String: Any],
+                   let decoded = try? Firestore.Decoder().decode(BattlePlayer.self, from: challengerData) {
+                    challengerPlayer = decoded
+                } else {
+                    challengerPlayer = ticket.team?.first ?? BattlePlayer(
+                        id: ticket.uid, name: ticket.playerName,
+                        characterClass: ticket.playerClass,
+                        health: 100 + ticket.playerLevel * 10, maxHealth: 100 + ticket.playerLevel * 10,
+                        avatarName: ticket.playerAvatar
+                    )
+                }
+                
                 let clientBattle = Battle(
                     id: battleId, type: .duel1v1, status: .active,
                     localTeam: [acceptorPlayer], opponentTeam: [challengerPlayer],
@@ -480,6 +511,7 @@ class MultiplayerService: ObservableObject {
     
     /// Starts a 3-second countdown, then launches the friend battle.
     private func startFriendBattleCountdown(battle: Battle) {
+        pendingMatchEnergyCharge = 0 // Match is on — keep the energy cost
         self.pendingFriendBattle = battle
         self.friendDuelCountdown = 3
         self.countdownTimer?.invalidate()
@@ -502,10 +534,23 @@ class MultiplayerService: ObservableObject {
     
     func declineDuel(_ ticket: MatchmakingTicket) {
         self.incomingDuel = nil
-        if let id = ticket.id {
-            // Just delete the ticket so the host's search gets cancelled/invalidated
-            db.collection("matchmaking").document(id).delete()
+        guard let id = ticket.id else { return }
+        Task {
+            do {
+                let functions = Functions.functions()
+                _ = try await functions.httpsCallable("declineFriendDuel").call(["ticketId": id])
+            } catch {
+                // Fallback: delete ticket if CF unavailable
+                try? await db.collection("matchmaking").document(id).delete()
+            }
         }
+    }
+    
+    private func refundPendingMatchEnergy() {
+        guard pendingMatchEnergyCharge > 0 else { return }
+        let amount = pendingMatchEnergyCharge
+        pendingMatchEnergyCharge = 0
+        FirebaseService.shared.refundEnergy(amount: amount)
     }
     
     // MARK: - Core Matchmaking
@@ -514,7 +559,11 @@ class MultiplayerService: ObservableObject {
         guard let char = FirebaseService.shared.currentCharacter else { return }
         
         // PVP costs 10 energy — block matchmaking when insufficient
-        guard FirebaseService.shared.consumeEnergy(amount: 10) else { return }
+        guard FirebaseService.shared.consumeEnergy(amount: 10) else {
+            matchmakingError = "Not enough energy (need 10)."
+            return
+        }
+        pendingMatchEnergyCharge = 10
         
         self.currentSearchType = type
         isSearching = true
@@ -1035,6 +1084,7 @@ class MultiplayerService: ObservableObject {
     }
     
     private func listenToBattle(battleId: String) {
+        pendingMatchEnergyCharge = 0 // Match found — keep energy cost
         self.teammateFallbackTimer?.invalidate()
         self.teammateFallbackTimer = nil
         self.opponentFallbackTimer?.invalidate()
@@ -1273,6 +1323,13 @@ class MultiplayerService: ObservableObject {
             // Already starting a battle — only clear searching state
             isSearching = false
             return
+        }
+
+        // Refund energy if we never entered an active battle
+        if activeBattle == nil {
+            refundPendingMatchEnergy()
+        } else {
+            pendingMatchEnergyCharge = 0
         }
 
         self.isSearching = false
