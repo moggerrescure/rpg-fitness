@@ -155,15 +155,7 @@ struct TeamSlotCard: View {
     
     var body: some View {
         HStack(spacing: 14) {
-            // Status icon
-            ZStack {
-                Circle()
-                    .fill(statusColor.opacity(0.15))
-                    .frame(width: 48, height: 48)
-                Image(systemName: statusIcon)
-                    .font(.title3.bold())
-                    .foregroundStyle(statusColor)
-            }
+            portrait
             
             VStack(alignment: .leading, spacing: 3) {
                 Text(slot.displayName)
@@ -177,15 +169,12 @@ struct TeamSlotCard: View {
             
             Spacer()
             
-            // Class badge for joined members
+            // Class badge for joined members / bots
             if case .joined(_, _, let cls) = slot.state {
-                Text(cls.rawValue.uppercased())
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(cls.themeColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                classBadge(cls)
+            }
+            if case .bot(_, let cls, _) = slot.state {
+                classBadge(cls)
             }
             
             if case .me = slot.state {
@@ -202,22 +191,62 @@ struct TeamSlotCard: View {
                 .stroke(statusColor.opacity(0.4), lineWidth: 1.5)
         )
     }
+
+    @ViewBuilder
+    private var portrait: some View {
+        switch slot.state {
+        case .me:
+            BattlePortraitView(
+                avatarName: FirebaseService.shared.currentCharacter?.avatarName,
+                characterClass: FirebaseService.shared.currentCharacter?.selectedClass ?? .swordsman,
+                size: 48,
+                lineWidth: 1.5,
+                showGlow: true
+            )
+        case .joined(_, _, let cls):
+            BattlePortraitView(
+                avatarName: cls.defaultAvatarName,
+                characterClass: cls,
+                size: 48,
+                lineWidth: 1.5,
+                showGlow: false
+            )
+        case .bot(_, let cls, let avatar):
+            BattlePortraitView(
+                avatarName: avatar,
+                characterClass: cls,
+                size: 48,
+                lineWidth: 1.5,
+                showGlow: true
+            )
+        case .invited:
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.15))
+                    .frame(width: 48, height: 48)
+                Image(systemName: "clock.fill")
+                    .font(.title3.bold())
+                    .foregroundStyle(statusColor)
+            }
+        }
+    }
+
+    private func classBadge(_ cls: CharacterClass) -> some View {
+        Text(cls.rawValue.uppercased())
+            .font(.system(size: 9, weight: .black, design: .monospaced))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(cls.themeColor)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
     
     private var statusColor: Color {
         switch slot.state {
         case .me: return .green
         case .invited: return Theme.warning
         case .joined: return .green
-        case .bot: return Theme.textSecondary
-        }
-    }
-    
-    private var statusIcon: String {
-        switch slot.state {
-        case .me: return "person.fill.checkmark"
-        case .invited: return "clock.fill"
-        case .joined: return "checkmark.seal.fill"
-        case .bot: return "cpu.fill"
+        case .bot: return Theme.primary
         }
     }
     
@@ -226,7 +255,7 @@ struct TeamSlotCard: View {
         case .me: return "YOU • READY"
         case .invited(_, let name): return "WAITING FOR \(name.uppercased())…"
         case .joined(_, _, let cls): return "JOINED • \(cls.rawValue.uppercased())"
-        case .bot: return "BOT ALLY"
+        case .bot(_, let cls, _): return "BOT ALLY • \(cls.rawValue.uppercased())"
         }
     }
 }
@@ -235,23 +264,27 @@ struct TeamSlotCard: View {
 struct BotSlotCard: View {
     let countdown: Int
     
+    private var preview: BotRoster.Identity {
+        BotRoster.makeAlly(index: countdown % 4, preferredClass: countdown % 2 == 0 ? .healer : .mage)
+    }
+    
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(Theme.textSecondary.opacity(0.1))
-                    .frame(width: 48, height: 48)
-                Image(systemName: "cpu.fill")
-                    .font(.title3.bold())
-                    .foregroundStyle(Theme.textSecondary.opacity(0.6))
-            }
+            BattlePortraitView(
+                avatarName: preview.avatarName,
+                characterClass: preview.characterClass,
+                size: 48,
+                lineWidth: 1.5,
+                showGlow: false
+            )
+            .opacity(0.55)
             
             VStack(alignment: .leading, spacing: 3) {
-                Text("Empty Slot")
+                Text(preview.name)
                     .font(.system(.subheadline, design: .default))
                     .fontWeight(.bold)
-                    .foregroundStyle(Theme.textSecondary.opacity(0.6))
-                Text("BOT IN \(countdown)S")
+                    .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                Text("BOT IN \(countdown)S • \(preview.characterClass.rawValue.uppercased())")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary.opacity(0.5))
                     .contentTransition(.numericText())

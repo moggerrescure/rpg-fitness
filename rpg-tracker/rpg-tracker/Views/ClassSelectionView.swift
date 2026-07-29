@@ -87,8 +87,8 @@ struct ClassSelectionView: View {
                     }
                     .frame(height: 190)
                     
-                    // Class details panel
-                    VStack(alignment: .leading, spacing: 20) {
+                    // Class details panel — dark tavern card (readable contrast, not washed grey)
+                    VStack(alignment: .leading, spacing: 18) {
                         // Class name and exercise tag
                         HStack {
                             Text(viewModel.selectedClass.rawValue.uppercased())
@@ -108,18 +108,18 @@ struct ClassSelectionView: View {
                             .font(.system(size: 10, design: .monospaced))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(viewModel.selectedClass.themeColor.opacity(0.15))
+                            .background(viewModel.selectedClass.themeColor.opacity(0.2))
                             .foregroundColor(viewModel.selectedClass.themeColor)
                             .cornerRadius(20)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 20)
-                                    .stroke(viewModel.selectedClass.themeColor.opacity(0.35), lineWidth: 1)
+                                    .stroke(viewModel.selectedClass.themeColor.opacity(0.45), lineWidth: 1)
                             )
                         }
                         
                         Text(viewModel.selectedClass.description)
                             .font(.system(.subheadline, design: .default))
-                            .foregroundColor(Theme.textSecondary)
+                            .foregroundColor(Theme.textPrimary.opacity(0.88))
                             .fixedSize(horizontal: false, vertical: true)
                             .lineSpacing(4)
                         
@@ -131,7 +131,7 @@ struct ClassSelectionView: View {
                             Text("CLASS ATTRIBUTES")
                                 .font(.system(size: 10, design: .monospaced))
                                 .fontWeight(.bold)
-                                .foregroundColor(Theme.textMuted)
+                                .foregroundColor(Theme.textSecondary)
                                 .tracking(1)
                             
                             ForEach(getClassStats(for: viewModel.selectedClass), id: \.name) { stat in
@@ -174,20 +174,46 @@ struct ClassSelectionView: View {
                             Text("STARTER EQUIPMENT")
                                 .font(.system(size: 10, design: .monospaced))
                                 .fontWeight(.bold)
-                                .foregroundColor(Theme.textMuted)
+                                .foregroundColor(Theme.textSecondary)
                                 .tracking(1)
                             
-                            HStack(spacing: 16) {
+                            VStack(spacing: 10) {
                                 if let weapon = viewModel.selectedWeapon {
-                                    GearPreviewItem(title: "Weapon", name: weapon.name, rarity: weapon.rarity, icon: "shield.fill")
+                                    GearPreviewItem(item: weapon, title: "Weapon")
                                 }
                                 if let armor = viewModel.selectedArmor {
-                                    GearPreviewItem(title: "Armor", name: armor.name, rarity: armor.rarity, icon: "tshirt.fill")
+                                    GearPreviewItem(item: armor, title: "Armor")
                                 }
                             }
                         }
                     }
-                    .glassmorphicCard()
+                    .padding(18)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "1A1520").opacity(0.95),
+                                Color(hex: "121018").opacity(0.97)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        viewModel.selectedClass.themeColor.opacity(0.55),
+                                        Color.white.opacity(0.08)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                    )
+                    .shadow(color: viewModel.selectedClass.themeColor.opacity(0.18), radius: 12, y: 4)
                     .padding(.horizontal)
                     
                     // Confirm selection button
@@ -319,31 +345,41 @@ struct ClassCard: View {
 }
 
 struct GearPreviewItem: View {
+    let item: EquipmentItem
     let title: String
-    let name: String
-    let rarity: ItemRarity
-    let icon: String
-    
+
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .foregroundColor(rarity.color)
-                .padding(8)
-                .background(rarity.color.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(item.rarity.color.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(item.rarity.color.opacity(0.4), lineWidth: 1)
+                    )
+
+                ItemIconView(item: item, fallbackIcon: item.getIconName())
+                    .frame(width: 28, height: 28)
+                    .foregroundColor(item.rarity.color)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption2)
-                    .foregroundColor(Theme.textMuted)
-                    .textCase(.uppercase)
-                
-                Text(name)
-                    .font(.caption)
+                Text(title.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
+
+                Text(item.name)
+                    .font(.subheadline)
                     .fontWeight(.bold)
                     .foregroundColor(Theme.textPrimary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

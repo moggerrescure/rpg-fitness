@@ -14,6 +14,8 @@ class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterD
     
     private var listenerRegistration: ListenerRegistration?
     private let db = Firestore.firestore()
+    /// Skip local banners for the initial historical snapshot.
+    private var notificationsWarm = false
     
     private override init() {
         super.init()
@@ -38,6 +40,7 @@ class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterD
     
     func listenForInAppNotifications(userId: String) {
         listenerRegistration?.remove()
+        notificationsWarm = false
         
         let query = db.collection("users").document(userId).collection("notifications")
             .order(by: "createdAt", descending: true)
@@ -45,15 +48,46 @@ class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterD
             
         listenerRegistration = query.addSnapshotListener { [weak self] snapshot, error in
             guard let self = self else { return }
-            guard let documents = snapshot?.documents else {
+            guard let snapshot else {
                 print("Error fetching notifications: \(error?.localizedDescription ?? "unknown error")")
                 return
             }
             
-            self.inAppNotifications = documents.compactMap { doc -> InAppNotification? in
+            self.inAppNotifications = snapshot.documents.compactMap { doc -> InAppNotification? in
                 try? doc.data(as: InAppNotification.self)
             }
             self.syncBadgeCount()
+            
+            if !self.notificationsWarm {
+                self.notificationsWarm = true
+                return
+            }
+            for change in snapshot.documentChanges where change.type == .added {
+                if let note = try? change.document.data(as: InAppNotification.self), !note.isRead {
+                    self.presentLocalInviteBanner(for: note)
+                }
+            }
+        }
+    }
+    
+    /// Local banner so invite taps (team / duel / friend) deep-link when the app was backgrounded.
+    private func presentLocalInviteBanner(for note: InAppNotification) {
+        guard isAuthorized else { return }
+        let type = note.actionData?["type"] ?? ""
+        guard type == "duel" || type == "teamInvite" || type == "friendRequest" else { return }
+        
+        let content = UNMutableNotificationContent()
+        content.title = note.title
+        content.body = note.message
+        content.sound = .default
+        var info: [AnyHashable: Any] = note.actionData ?? [:]
+        info["type"] = type
+        content.userInfo = info
+        
+        let id = "invite_\(type)_\(note.id ?? UUID().uuidString)"
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error { print("Failed to present invite banner: \(error)") }
         }
     }
     
@@ -87,6 +121,7 @@ class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterD
     
     func stopListening() {
         listenerRegistration?.remove()
+        notificationsWarm = false
         inAppNotifications = []
     }
     
@@ -206,12 +241,29 @@ class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterD
     
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let identifier = response.notification.request.identifier
+        let userInfo = response.notification.request.content.userInfo
+        let actionType = userInfo["type"] as? String
         
         Task { @MainActor in
-            if identifier == "energy_restored" {
+            if let actionType {
+                switch actionType {
+                case "duel", "teamInvite":
+                    self.pendingDeepLink = "duel"
+                case "friendRequest":
+                    self.pendingDeepLink = "friends"
+                case "clan", "clanWar", "clanwar":
+                    self.pendingDeepLink = "clanwar"
+                default:
+                    break
+                }
+            } else if identifier == "energy_restored" {
                 self.pendingDeepLink = "arena"
-            } else if identifier.starts(with: "duel_") {
+            } else if identifier.starts(with: "duel_") || identifier.starts(with: "invite_duel") || identifier.starts(with: "invite_teamInvite") {
                 self.pendingDeepLink = "duel"
+            } else if identifier.starts(with: "invite_friendRequest") {
+                self.pendingDeepLink = "friends"
+            } else if identifier.starts(with: "clan_war") {
+                self.pendingDeepLink = "clanwar"
             }
         }
         

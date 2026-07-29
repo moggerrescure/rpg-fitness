@@ -1,7 +1,14 @@
 import SwiftUI
 
+enum ConstellationNodeState {
+    case activated
+    case available
+    case locked
+}
+
 struct ConstellationNode: Identifiable, Hashable {
-    let id = UUID()
+    /// Stable across re-renders — UUID broke selection / double-tap feel.
+    let id: String
     let name: String
     let stat: String // "STR", "DEX", "INT", "VIT"
     let x: CGFloat
@@ -22,64 +29,75 @@ struct ConstellationSkillTreeView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
     @Environment(\.dismiss) private var dismiss
     
-    @State private var selectedNode: ConstellationNode? = nil
+    @State private var selectedNodeIndex: Int? = nil
     @State private var pulseScale: CGFloat = 1.0
-    @State private var starOffset: CGFloat = 0.0
     @State private var dashPhase: CGFloat = 0.0
     @State private var twinkle = false
     @State private var isUpgrading = false
+    @State private var spendFeedback: String? = nil
     
-    // Twinkling stars cache
     @State private var backgroundStars: [TwinklingStar] = []
     
     private var character: Character {
         firebaseService.currentCharacter ?? Character(id: "local", username: "Hero", selectedClass: .swordsman)
     }
     
-    // Generate class specific constellation nodes
+    private var classKey: String { character.selectedClass.rawValue }
+    
     private var nodes: [ConstellationNode] {
         switch character.selectedClass {
         case .archer:
             return [
-                ConstellationNode(name: "Root Core", stat: "DEX", x: 0, y: 100, description: "Celestial core of the Archer's Path. Unlocks initial attributes.", index: 0),
-                ConstellationNode(name: "Flex String", stat: "DEX", x: -60, y: 40, description: "Increases Dexterity for higher accuracy and speed. +1 DEX.", index: 1),
-                ConstellationNode(name: "Wind Shear", stat: "DEX", x: -110, y: -20, description: "Ultimate velocity. Arrows cut through wind resistance. +1 DEX.", index: 2),
-                ConstellationNode(name: "Iron Grip", stat: "STR", x: 60, y: 40, description: "Strengthens draw weight for armor penetration. +1 STR.", index: 3),
-                ConstellationNode(name: "Heavy Arrow", stat: "STR", x: 110, y: -20, description: "Devastating kinetic impact. Explodes on target shield. +1 STR.", index: 4),
-                ConstellationNode(name: "Starlight Sight", stat: "VIT", x: 0, y: -20, description: "Sharpened focus and health. Grants permanent vitality. +1 VIT.", index: 5),
-                ConstellationNode(name: "Phoenix Arrow", stat: "INT", x: 0, y: -100, description: "Enchant arrows with holy fire. Grants bonus magic intelligence. +1 INT.", index: 6)
+                node("Root Core", "DEX", 0, 100, "Celestial core of the Archer's Path. Unlocks initial attributes.", 0),
+                node("Flex String", "DEX", -60, 40, "Increases Dexterity for higher accuracy and speed. +1 DEX.", 1),
+                node("Wind Shear", "DEX", -110, -20, "Ultimate velocity. Arrows cut through wind resistance. +1 DEX.", 2),
+                node("Iron Grip", "STR", 60, 40, "Strengthens draw weight for armor penetration. +1 STR.", 3),
+                node("Heavy Arrow", "STR", 110, -20, "Devastating kinetic impact. Explodes on target shield. +1 STR.", 4),
+                node("Starlight Sight", "VIT", 0, -20, "Sharpened focus and health. Grants permanent vitality. +1 VIT.", 5),
+                node("Phoenix Arrow", "INT", 0, -100, "Enchant arrows with holy fire. Grants bonus magic intelligence. +1 INT.", 6)
             ]
         case .mage:
             return [
-                ConstellationNode(name: "Staff Base", stat: "INT", x: 0, y: 110, description: "The base of magical alignment. Anchor for celestial power.", index: 0),
-                ConstellationNode(name: "Focus Gem", stat: "INT", x: 0, y: 40, description: "Amplifies magical focus and spell power. +1 INT.", index: 1),
-                ConstellationNode(name: "Mana Ring", stat: "INT", x: 0, y: -30, description: "Deep reserve of celestial energy for quick castings. +1 INT.", index: 2),
-                ConstellationNode(name: "Runic Shield", stat: "VIT", x: -50, y: 10, description: "Enchanted defensive ward that absorbs incoming physical hits. +1 VIT.", index: 3),
-                ConstellationNode(name: "Swift Cast", stat: "DEX", x: 50, y: 10, description: "Speeds up elemental execution and staff swings. +1 DEX.", index: 4),
-                ConstellationNode(name: "Cosmic Sigil", stat: "INT", x: 0, y: -100, description: "Channels stellar space magic to double basic spells. +1 INT.", index: 5)
+                node("Staff Base", "INT", 0, 110, "The base of magical alignment. Anchor for celestial power.", 0),
+                node("Focus Gem", "INT", 0, 40, "Amplifies magical focus and spell power. +1 INT.", 1),
+                node("Mana Ring", "INT", 0, -30, "Deep reserve of celestial energy for quick castings. +1 INT.", 2),
+                node("Runic Shield", "VIT", -50, 10, "Enchanted defensive ward that absorbs incoming physical hits. +1 VIT.", 3),
+                node("Swift Cast", "DEX", 50, 10, "Speeds up elemental execution and staff swings. +1 DEX.", 4),
+                node("Cosmic Sigil", "INT", 0, -100, "Channels stellar space magic to double basic spells. +1 INT.", 5)
             ]
         case .swordsman:
             return [
-                ConstellationNode(name: "Blade Hilt", stat: "STR", x: 0, y: 110, description: "The core anchor of physical power. Base sword node.", index: 0),
-                ConstellationNode(name: "Heavy Strike", stat: "STR", x: 0, y: 40, description: "Adds weight to broadsword blows, bypassing armor. +1 STR.", index: 1),
-                ConstellationNode(name: "Starlight Guard", stat: "VIT", x: -55, y: 20, description: "Shield wall from falling stardust, raising health. +1 VIT.", index: 2),
-                ConstellationNode(name: "Sun Crest", stat: "VIT", x: 55, y: 20, description: "Sunlight warmth heals your soul. Permanently raises vitality. +1 VIT.", index: 3),
-                ConstellationNode(name: "Engraved Runes", stat: "INT", x: 0, y: -30, description: "Runes carved on the blade, adding elemental magic damage. +1 INT.", index: 4),
-                ConstellationNode(name: "Vortex Slash", stat: "STR", x: 0, y: -100, description: "Strikedown with double heavy swings, creating a whirlwind. +1 STR.", index: 5)
+                node("Blade Hilt", "STR", 0, 110, "The core anchor of physical power. Base sword node.", 0),
+                node("Heavy Strike", "STR", 0, 40, "Adds weight to broadsword blows, bypassing armor. +1 STR.", 1),
+                node("Starlight Guard", "VIT", -55, 20, "Shield wall from falling stardust, raising health. +1 VIT.", 2),
+                node("Sun Crest", "VIT", 55, 20, "Sunlight warmth heals your soul. Permanently raises vitality. +1 VIT.", 3),
+                node("Engraved Runes", "INT", 0, -30, "Runes carved on the blade, adding elemental magic damage. +1 INT.", 4),
+                node("Vortex Slash", "STR", 0, -100, "Strikedown with double heavy swings, creating a whirlwind. +1 STR.", 5)
             ]
         case .healer:
             return [
-                ConstellationNode(name: "Ankh Core", stat: "VIT", x: 0, y: 100, description: "Holy alignment for self recovery. Foundation of life.", index: 0),
-                ConstellationNode(name: "Solar Flare", stat: "VIT", x: 0, y: 30, description: "Light warmth increases health and aura pool. +1 VIT.", index: 1),
-                ConstellationNode(name: "Aura Wing L", stat: "INT", x: -60, y: -10, description: "Divine light heals companions continuously. +1 INT.", index: 2),
-                ConstellationNode(name: "Aura Wing R", stat: "INT", x: 60, y: -10, description: "Stellar pulse targets raid boss vulnerabilities. +1 INT.", index: 3),
-                ConstellationNode(name: "Sacred Relic", stat: "DEX", x: 0, y: -45, description: "Relic increases agility and movement speeds. +1 DEX.", index: 4),
-                ConstellationNode(name: "Divine Arch", stat: "VIT", x: 0, y: -110, description: "Ultimate celestial armor, shielding entire party. +1 VIT.", index: 5)
+                node("Ankh Core", "VIT", 0, 100, "Holy alignment for self recovery. Foundation of life.", 0),
+                node("Solar Flare", "VIT", 0, 30, "Light warmth increases health and aura pool. +1 VIT.", 1),
+                node("Aura Wing L", "INT", -60, -10, "Divine light heals companions continuously. +1 INT.", 2),
+                node("Aura Wing R", "INT", 60, -10, "Stellar pulse targets raid boss vulnerabilities. +1 INT.", 3),
+                node("Sacred Relic", "DEX", 0, -45, "Relic increases agility and movement speeds. +1 DEX.", 4),
+                node("Divine Arch", "VIT", 0, -110, "Ultimate celestial armor, shielding entire party. +1 VIT.", 5)
             ]
         }
     }
     
-    // Connect lines
+    private func node(_ name: String, _ stat: String, _ x: CGFloat, _ y: CGFloat, _ description: String, _ index: Int) -> ConstellationNode {
+        ConstellationNode(
+            id: "\(classKey)_\(index)",
+            name: name,
+            stat: stat,
+            x: x,
+            y: y,
+            description: description,
+            index: index
+        )
+    }
+    
     private var lineConnections: [(Int, Int)] {
         switch character.selectedClass {
         case .archer:
@@ -91,6 +109,10 @@ struct ConstellationSkillTreeView: View {
         case .healer:
             return [(0, 1), (1, 2), (1, 3), (1, 4), (4, 5)]
         }
+    }
+    
+    private var parentIndexByNode: [Int: Int] {
+        Dictionary(uniqueKeysWithValues: lineConnections.map { ($0.1, $0.0) })
     }
     
     private var activeClassColor: Color {
@@ -106,9 +128,13 @@ struct ConstellationSkillTreeView: View {
         }
     }
     
+    private var selectedNode: ConstellationNode? {
+        guard let idx = selectedNodeIndex else { return nil }
+        return nodes.first { $0.index == idx }
+    }
+    
     var body: some View {
         ZStack {
-            // Space gradient
             RadialGradient(
                 colors: [Color(hex: "080B18"), Color(hex: "020306")],
                 center: .center,
@@ -117,7 +143,6 @@ struct ConstellationSkillTreeView: View {
             )
             .ignoresSafeArea()
             
-            // Twinkling Starfield in background
             ZStack {
                 ForEach(backgroundStars) { star in
                     Circle()
@@ -127,6 +152,7 @@ struct ConstellationSkillTreeView: View {
                         .opacity(twinkle ? Double.random(in: 0.15...0.7) : 0.4)
                 }
             }
+            .allowsHitTesting(false)
             .onAppear {
                 generateStars()
                 withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
@@ -134,7 +160,6 @@ struct ConstellationSkillTreeView: View {
                 }
             }
             
-            // Nebula ambient radial glow
             RadialGradient(
                 colors: [activeClassColor.opacity(0.08), Color.clear],
                 center: .center,
@@ -142,9 +167,9 @@ struct ConstellationSkillTreeView: View {
                 endRadius: 280
             )
             .ignoresSafeArea()
+            .allowsHitTesting(false)
             
             VStack(spacing: 0) {
-                // Header navigation bar
                 HStack {
                     Button(action: { dismiss() }) {
                         HStack(spacing: 4) {
@@ -175,7 +200,6 @@ struct ConstellationSkillTreeView: View {
                     
                     Spacer()
                     
-                    // Available Upgrade Points
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles")
                             .foregroundColor(Theme.warning)
@@ -192,7 +216,6 @@ struct ConstellationSkillTreeView: View {
                 }
                 .padding()
                 
-                // Stat status HUD
                 HStack(spacing: 12) {
                     hudStatCard(title: "STR", value: character.baseStrength, color: Theme.swordsmanColor, systemIcon: "figure.strength.strength")
                     hudStatCard(title: "DEX", value: character.baseDexterity, color: Theme.archerColor, systemIcon: "figure.run")
@@ -204,89 +227,88 @@ struct ConstellationSkillTreeView: View {
                 
                 Spacer()
                 
-                // Map Area
                 ZStack {
-                    // Giant background weapon class emblem
                     Image(systemName: classEmblemIconName)
                         .font(.system(size: 160))
                         .foregroundColor(activeClassColor.opacity(0.04))
                         .glow(color: activeClassColor.opacity(0.1), radius: 15)
                         .blur(radius: 2)
+                        .allowsHitTesting(false)
                     
-                    // 1. Draw glowing constellation lines
-                    ForEach(lineConnections, id: \.0) { connection in
-                        let start = nodes.first(where: { $0.index == connection.0 })!
-                        let end = nodes.first(where: { $0.index == connection.1 })!
-                        let isUnlocked = isNodeUnlocked(start) && isNodeUnlocked(end)
-                        
-                        // Background line
-                        LineView(from: CGPoint(x: start.x, y: start.y), to: CGPoint(x: end.x, y: end.y))
-                            .stroke(
-                                isUnlocked ? activeClassColor.opacity(0.4) : Color.white.opacity(0.08),
-                                style: StrokeStyle(lineWidth: isUnlocked ? 2.0 : 1.0, lineCap: .round)
-                            )
-                        
-                        // Flying energy pulse line on top of unlocked lines
-                        if isUnlocked {
+                    ForEach(lineConnections, id: \.1) { connection in
+                        if let start = nodes.first(where: { $0.index == connection.0 }),
+                           let end = nodes.first(where: { $0.index == connection.1 }) {
+                            let lit = state(for: start) == .activated && state(for: end) != .locked
+                            
                             LineView(from: CGPoint(x: start.x, y: start.y), to: CGPoint(x: end.x, y: end.y))
                                 .stroke(
-                                    activeClassColor,
-                                    style: StrokeStyle(lineWidth: 2.0, lineCap: .round, dash: [10, 25], dashPhase: dashPhase)
+                                    lit ? activeClassColor.opacity(0.4) : Color.white.opacity(0.08),
+                                    style: StrokeStyle(lineWidth: lit ? 2.0 : 1.0, lineCap: .round)
                                 )
-                                .glow(color: activeClassColor.opacity(0.6), radius: 4)
+                                .allowsHitTesting(false)
+                            
+                            if lit {
+                                LineView(from: CGPoint(x: start.x, y: start.y), to: CGPoint(x: end.x, y: end.y))
+                                    .stroke(
+                                        activeClassColor,
+                                        style: StrokeStyle(lineWidth: 2.0, lineCap: .round, dash: [10, 25], dashPhase: dashPhase)
+                                    )
+                                    .glow(color: activeClassColor.opacity(0.6), radius: 4)
+                                    .allowsHitTesting(false)
+                            }
                         }
                     }
                     
-                    // 2. Draw Interactive nodes
                     ForEach(nodes) { node in
-                        let isUnlocked = isNodeUnlocked(node)
-                        let isSelected = selectedNode?.id == node.id
+                        let nodeState = state(for: node)
+                        let isSelected = selectedNodeIndex == node.index
                         
-                        Button(action: {
+                        Button {
+                            spendFeedback = nil
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                selectedNode = node
+                                selectedNodeIndex = node.index
                             }
-                        }) {
+                        } label: {
                             ZStack {
-                                // Pulsing star halo for unlocked/selected stars
-                                if isUnlocked || isSelected {
+                                if nodeState == .activated || nodeState == .available || isSelected {
                                     Circle()
-                                        .fill(activeClassColor.opacity(isSelected ? 0.25 : 0.15))
+                                        .fill(nodeFillHalo(nodeState, selected: isSelected))
                                         .frame(width: isSelected ? 52 : 40, height: isSelected ? 52 : 40)
-                                        .scaleEffect(pulseScale)
+                                        .scaleEffect(nodeState == .available ? pulseScale : 1.0)
                                     
-                                    // Expanding ripple rings
                                     Circle()
-                                        .stroke(activeClassColor.opacity(0.35), lineWidth: 0.5)
+                                        .stroke(ringColor(nodeState).opacity(0.35), lineWidth: 0.5)
                                         .frame(width: isSelected ? 40 : 30)
-                                        .scaleEffect(pulseScale * 1.1)
+                                        .scaleEffect(nodeState == .available ? pulseScale * 1.1 : 1.0)
                                 }
                                 
-                                // Outer core ring
                                 Circle()
                                     .stroke(
-                                        isSelected ? activeClassColor : (isUnlocked ? activeClassColor.opacity(0.7) : Color.white.opacity(0.25)),
+                                        isSelected ? activeClassColor : ringColor(nodeState),
                                         lineWidth: isSelected ? 2.5 : 1.5
                                     )
                                     .frame(width: isSelected ? 30 : 22, height: isSelected ? 30 : 22)
-                                    .glow(color: isUnlocked ? activeClassColor.opacity(0.65) : Color.clear, radius: 5)
+                                    .glow(color: nodeState == .activated ? activeClassColor.opacity(0.65) : Color.clear, radius: 5)
                                 
-                                // Star core
                                 Circle()
-                                    .fill(isUnlocked ? activeClassColor : Color(hex: "4B5563"))
+                                    .fill(coreFill(nodeState))
                                     .frame(width: isSelected ? 12 : 8, height: isSelected ? 12 : 8)
-                                    .glow(color: isUnlocked ? .white.opacity(0.8) : Color.clear, radius: 3)
+                                    .glow(color: nodeState == .activated ? .white.opacity(0.8) : Color.clear, radius: 3)
                             }
+                            .frame(width: 56, height: 56)
+                            .contentShape(Circle())
                         }
+                        .buttonStyle(.plain)
                         .offset(x: node.x, y: node.y)
+                        .accessibilityLabel("\(node.name), \(statusLabel(nodeState))")
                     }
                 }
                 .frame(width: 320, height: 320)
                 
                 Spacer()
                 
-                // Bottom Node Details card
                 if let node = selectedNode {
+                    let nodeState = state(for: node)
                     VStack(alignment: .leading, spacing: 14) {
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
@@ -299,13 +321,12 @@ struct ConstellationSkillTreeView: View {
                             }
                             Spacer()
                             
-                            // Allocation status indicator
-                            Text(isNodeUnlocked(node) ? "ACTIVATED" : "UNLOCKED")
+                            Text(statusLabel(nodeState))
                                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundColor(isNodeUnlocked(node) ? Theme.success : Theme.textMuted)
+                                .foregroundColor(statusColor(nodeState))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
-                                .background(isNodeUnlocked(node) ? Theme.success.opacity(0.12) : Theme.secondaryCard)
+                                .background(statusColor(nodeState).opacity(0.12))
                                 .cornerRadius(6)
                         }
                         
@@ -313,9 +334,27 @@ struct ConstellationSkillTreeView: View {
                             .font(.caption2)
                             .foregroundColor(Theme.textSecondary)
                             .lineSpacing(2)
-                            .lineLimit(2)
+                            .lineLimit(3)
                         
-                        if canAllocate(to: node) {
+                        if let spendFeedback {
+                            Text(spendFeedback)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(Theme.warning)
+                        } else if nodeState == .locked {
+                            Text(lockReason(for: node))
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(Theme.textMuted)
+                        } else if nodeState == .activated && node.index == 0 {
+                            Text("Core star is always active. Select a connected star to spend SP.")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(Theme.textMuted)
+                        } else if nodeState == .activated {
+                            Text("Already activated. +\(node.stat) applied.")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(Theme.success)
+                        }
+                        
+                        if nodeState == .available {
                             Button(action: { allocatePoint(for: node) }) {
                                 HStack {
                                     Spacer()
@@ -324,7 +363,7 @@ struct ConstellationSkillTreeView: View {
                                             .tint(.black)
                                     } else {
                                         Image(systemName: "sparkles")
-                                        Text("SPEND 1 STAT POINT")
+                                        Text("SPEND 1 SP → +\(node.stat)")
                                     }
                                     Spacer()
                                 }
@@ -334,9 +373,14 @@ struct ConstellationSkillTreeView: View {
                                 .background(Theme.warning)
                                 .cornerRadius(12)
                                 .shadow(color: Theme.warning.opacity(0.4), radius: 8)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(TactileButtonStyle())
                             .disabled(isUpgrading)
+                        } else if nodeState == .locked && character.statPoints == 0 {
+                            Text("Earn SP by leveling up, then return here.")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(Theme.warning.opacity(0.9))
                         }
                     }
                     .padding(20)
@@ -352,8 +396,7 @@ struct ConstellationSkillTreeView: View {
                     .padding()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 } else {
-                    // Default helper text
-                    Text("Select a star node to allocate attribute points")
+                    Text("Tap a star · gold ring = ready to unlock with SP")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(Theme.textMuted)
                         .padding(.bottom, 48)
@@ -361,7 +404,6 @@ struct ConstellationSkillTreeView: View {
             }
         }
         .onAppear {
-            // Animate flying dash phase lines
             withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) {
                 dashPhase = -35.0
             }
@@ -410,38 +452,104 @@ struct ConstellationSkillTreeView: View {
             + max(0, character.baseVitality - 10)
     }
     
-    private func isNodeUnlocked(_ node: ConstellationNode) -> Bool {
-        // Root core is always active; node i activates after i stat points spent sequentially.
-        if node.index == 0 { return true }
-        return totalStatPointsSpent >= node.index
+    private func isActivated(_ index: Int) -> Bool {
+        if index == 0 { return true }
+        return totalStatPointsSpent >= index
     }
     
-    private func canAllocate(to node: ConstellationNode) -> Bool {
-        guard character.statPoints > 0, node.index > 0 else { return false }
-        guard !isNodeUnlocked(node) else { return false }
+    private func isParentActivated(_ node: ConstellationNode) -> Bool {
+        if node.index == 0 { return true }
+        guard let parent = parentIndexByNode[node.index] else { return false }
+        return isActivated(parent)
+    }
+    
+    private func state(for node: ConstellationNode) -> ConstellationNodeState {
+        if isActivated(node.index) { return .activated }
         let nextIndex = totalStatPointsSpent + 1
-        return node.index == nextIndex || node.index < character.level / 2
+        if character.statPoints > 0, isParentActivated(node), node.index == nextIndex {
+            return .available
+        }
+        return .locked
+    }
+    
+    private func statusLabel(_ state: ConstellationNodeState) -> String {
+        switch state {
+        case .activated: return "ACTIVATED"
+        case .available: return "READY"
+        case .locked: return "LOCKED"
+        }
+    }
+    
+    private func statusColor(_ state: ConstellationNodeState) -> Color {
+        switch state {
+        case .activated: return Theme.success
+        case .available: return Theme.warning
+        case .locked: return Theme.textMuted
+        }
+    }
+    
+    private func ringColor(_ state: ConstellationNodeState) -> Color {
+        switch state {
+        case .activated: return activeClassColor.opacity(0.7)
+        case .available: return Theme.warning
+        case .locked: return Color.white.opacity(0.25)
+        }
+    }
+    
+    private func coreFill(_ state: ConstellationNodeState) -> Color {
+        switch state {
+        case .activated: return activeClassColor
+        case .available: return Theme.warning
+        case .locked: return Color(hex: "4B5563")
+        }
+    }
+    
+    private func nodeFillHalo(_ state: ConstellationNodeState, selected: Bool) -> Color {
+        switch state {
+        case .activated: return activeClassColor.opacity(selected ? 0.25 : 0.15)
+        case .available: return Theme.warning.opacity(selected ? 0.28 : 0.18)
+        case .locked: return Color.clear
+        }
+    }
+    
+    private func lockReason(for node: ConstellationNode) -> String {
+        if !isParentActivated(node) {
+            return "Unlock the previous star on this path first."
+        }
+        let nextIndex = totalStatPointsSpent + 1
+        if node.index > nextIndex {
+            return "Spend SP on earlier stars first (next: #\(nextIndex))."
+        }
+        if character.statPoints <= 0 {
+            return "No SP available. Level up to earn stat points."
+        }
+        return "This star is not ready yet."
     }
     
     private func allocatePoint(for node: ConstellationNode) {
-        guard canAllocate(to: node) else { return }
+        guard state(for: node) == .available else {
+            spendFeedback = lockReason(for: node)
+            return
+        }
+        guard character.statPoints > 0 else {
+            spendFeedback = "No SP available."
+            return
+        }
         isUpgrading = true
+        spendFeedback = nil
         
         var updatedChar = character
         updatedChar.allocateStatPoint(stat: node.stat)
-        
-        // Save to cloud Firestore
         firebaseService.syncCharacter(updatedChar)
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             isUpgrading = false
-            // Automatically refresh selection highlight
-            selectedNode = node
+            selectedNodeIndex = node.index
+            spendFeedback = "+\(node.stat) allocated"
         }
     }
 }
 
-// Custom Line drawing view connecting nodes
 struct LineView: Shape {
     var from: CGPoint
     var to: CGPoint
@@ -457,7 +565,6 @@ struct LineView: Shape {
     }
 }
 
-// Custom blur view representable
 struct Blur: UIViewRepresentable {
     var style: UIBlurEffect.Style = .systemMaterial
     

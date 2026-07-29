@@ -27,16 +27,16 @@ struct FriendsView: View {
                     if !isEmbedded {
                         Button(action: { dismiss() }) {
                             Image(systemName: "chevron.left")
-                                .font(.title3.bold())
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundStyle(Theme.textPrimary)
-                                .padding(12)
-                                .background(.ultraThinMaterial)
+                                .frame(width: 36, height: 36)
+                                .background(Color.black.opacity(0.45))
                                 .clipShape(Circle())
+                                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
                         }
                         .buttonStyle(TactileButtonStyle())
                     } else {
-                        // Spacer to keep layout balanced
-                        Color.clear.frame(width: 44, height: 44)
+                        Color.clear.frame(width: 36, height: 36)
                     }
                     
                     Spacer()
@@ -47,45 +47,47 @@ struct FriendsView: View {
                             .fontWeight(.black)
                             .foregroundStyle(Theme.textPrimary)
                         if !vm.friendRequests.isEmpty {
-                            Text("\(vm.friendRequests.count) request\(vm.friendRequests.count > 1 ? "s" : "")")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            Text("\(vm.friendRequests.count) PENDING")
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
                                 .foregroundStyle(Theme.warning)
+                                .tracking(0.8)
                         }
                     }
                     
                     Spacer()
                     
-                    // Share invite link
                     if let char = firebaseService.currentCharacter {
                         let inviteUrl = URL(string: "rpgfitness://friend?uid=\(char.id)")!
                         ShareLink(
                             item: inviteUrl,
-                            subject: Text("RPG Fitness — Add me!"),
-                            message: Text("Tap to add me as a friend in RPG Fitness!")
+                            subject: Text("FitRPG — Add me!"),
+                            message: Text("Add me in FitRPG: rpgfitness://friend?uid=\(char.id)")
                         ) {
-                            Image(systemName: "person.badge.plus")
-                                .font(.title3.bold())
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(Theme.primary)
-                                .padding(12)
-                                .background(Theme.primary.opacity(0.12))
+                                .frame(width: 36, height: 36)
+                                .background(Theme.primary.opacity(0.15))
                                 .clipShape(Circle())
+                                .overlay(Circle().stroke(Theme.primary.opacity(0.35), lineWidth: 1))
                         }
+                        .accessibilityLabel("Share friend invite link")
                     }
                 }
                 .padding(.horizontal)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
                 
-                // Search bar
+                // Search bar — solid panel, not empty glass
                 HStack(spacing: 10) {
                     Image(systemName: vm.searchIsLoading ? "arrow.triangle.2.circlepath" : "magnifyingglass")
-                        .foregroundStyle(Theme.textSecondary)
-                        .font(.body.bold())
+                        .foregroundStyle(searchFocused ? Theme.primary : Theme.textMuted)
+                        .font(.system(size: 14, weight: .bold))
                         .rotationEffect(.degrees(vm.searchIsLoading ? 360 : 0))
                         .animation(vm.searchIsLoading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: vm.searchIsLoading)
                     
                     TextField("Search by username or ID", text: $vm.searchText)
-                        .font(.system(.body, design: .default))
+                        .font(.system(size: 15, design: .default))
                         .foregroundStyle(Theme.textPrimary)
                         .focused($searchFocused)
                         .autocorrectionDisabled()
@@ -94,22 +96,22 @@ struct FriendsView: View {
                     if !vm.searchText.isEmpty {
                         Button { vm.searchText = "" } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(Theme.textSecondary)
+                                .foregroundStyle(Theme.textMuted)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .padding(14)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+                .background(Theme.cardBackground.opacity(0.92))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(searchFocused ? Theme.primary.opacity(0.5) : Theme.border, lineWidth: 1.5)
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(searchFocused ? Theme.primary.opacity(0.55) : Theme.border, lineWidth: 1)
                 )
                 .padding(.horizontal)
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
                 
-                // Content
                 if vm.isLoading && vm.friends.isEmpty && vm.friendRequests.isEmpty {
                     Spacer()
                     ProgressView()
@@ -117,17 +119,13 @@ struct FriendsView: View {
                     Spacer()
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 24) {
-                            // Search results
+                        LazyVStack(spacing: 14) {
                             if !vm.searchText.isEmpty {
                                 searchResultsSection
                             } else {
-                                // Friend requests
                                 if !vm.friendRequests.isEmpty {
                                     requestsSection
                                 }
-                                
-                                // Friends list
                                 friendsListSection
                             }
                         }
@@ -177,44 +175,44 @@ struct FriendsView: View {
     // MARK: - Search Results Section
     @ViewBuilder
     private var searchResultsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("SEARCH RESULTS")
                     .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .foregroundStyle(Theme.textSecondary)
-                    .tracking(2)
+                    .foregroundStyle(Theme.textMuted)
+                    .tracking(1.5)
                 Spacer()
                 if !vm.searchResults.isEmpty {
-                    Text("\(vm.searchResults.count) found")
-                        .font(.system(size: 10, design: .monospaced))
+                    Text("\(vm.searchResults.count)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(Theme.textSecondary)
                 }
             }
             
             if vm.searchText.count < 2 {
                 Text("Type at least 2 characters to search")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(Theme.textSecondary)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Theme.textMuted)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 20)
+                    .padding(.vertical, 16)
             } else if vm.searchIsLoading {
                 HStack {
                     Spacer()
                     ProgressView()
                     Spacer()
                 }
-                .padding(.top, 20)
+                .padding(.vertical, 16)
             } else if vm.searchResults.isEmpty {
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     Image(systemName: "person.slash")
-                        .font(.largeTitle)
-                        .foregroundStyle(Theme.textSecondary.opacity(0.4))
+                        .font(.title2)
+                        .foregroundStyle(Theme.textMuted.opacity(0.5))
                     Text("No players found for \"\(vm.searchText)\"")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Theme.textMuted)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.top, 24)
+                .padding(.vertical, 20)
             } else {
                 ForEach(vm.searchResults) { player in
                     searchResultRow(player: player)
@@ -226,11 +224,11 @@ struct FriendsView: View {
     // MARK: - Friend Requests Section
     @ViewBuilder
     private var requestsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Label("FRIEND REQUESTS", systemImage: "bell.badge.fill")
                 .font(.system(size: 10, weight: .black, design: .monospaced))
                 .foregroundStyle(Theme.warning)
-                .tracking(2)
+                .tracking(1.5)
             
             ForEach(vm.friendRequests) { req in
                 friendRequestRow(char: req)
@@ -241,36 +239,126 @@ struct FriendsView: View {
     // MARK: - Friends List Section
     @ViewBuilder
     private var friendsListSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("MY SQUAD (\(vm.friends.count))")
+                Text("MY SQUAD")
                     .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .foregroundStyle(Theme.textSecondary)
-                    .tracking(2)
+                    .foregroundStyle(Theme.textMuted)
+                    .tracking(1.5)
                 Spacer()
+                Text("\(vm.friends.count)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Theme.secondaryCard)
+                    .clipShape(Capsule())
             }
             
             if vm.friends.isEmpty {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     Image(systemName: "person.2.slash")
-                        .font(.system(size: 40))
-                        .foregroundStyle(Theme.textSecondary.opacity(0.3))
-                    Text("No allies yet.")
-                        .font(.system(.headline, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary.opacity(0.5))
-                    Text("Search for players to send friend requests!")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary.opacity(0.4))
+                        .font(.system(size: 28))
+                        .foregroundStyle(Theme.textMuted.opacity(0.45))
+                    Text("No allies yet")
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Theme.textSecondary)
+                    Text("Search for players to send friend requests.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Theme.textMuted)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.top, 40)
+                .padding(.vertical, 28)
+                .padding(.horizontal, 12)
+                .background(Theme.cardBackground.opacity(0.7))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border, lineWidth: 1))
             } else {
                 ForEach(vm.friends) { friend in
                     friendRow(char: friend)
                 }
             }
         }
+    }
+    
+    // MARK: - Avatar
+    @ViewBuilder
+    private func friendAvatar(char: Character, size: CGFloat = 44) -> some View {
+        let accent = char.selectedClass.themeColor
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [accent.opacity(0.35), Theme.secondaryCard],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: size, height: size)
+            
+            if let avatar = char.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                Image(platformImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size - 4, height: size - 4)
+                    .clipShape(Circle())
+            } else {
+                let emblem = AvatarEmblem.all.first { $0.id == char.avatarName }
+                let tint = emblem?.tint ?? accent
+                Image(systemName: emblem?.symbol ?? classIcon(for: char.selectedClass))
+                    .font(.system(size: size * 0.38, weight: .bold))
+                    .foregroundStyle(tint)
+                    .glow(color: tint.opacity(0.45), radius: 4)
+            }
+        }
+        .overlay(
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [accent, accent.opacity(0.35)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2
+                )
+        )
+    }
+    
+    private func classIcon(for c: CharacterClass) -> String {
+        switch c {
+        case .archer:    return "arrow.up.right.circle.fill"
+        case .mage:      return "wand.and.stars"
+        case .swordsman: return "shield.fill"
+        case .healer:    return "cross.case.fill"
+        }
+    }
+    
+    // MARK: - Dense card chrome
+    private func denseFriendCard<Content: View>(
+        accent: Color = Theme.border,
+        accentStrength: Double = 0.0,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Theme.cardBackground.opacity(0.9))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                accent.opacity(max(0.35, accentStrength)),
+                                Theme.border
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
     }
     
     // MARK: - Search Result Row
@@ -280,277 +368,259 @@ struct FriendsView: View {
         let pending = vm.hasPendingRequest(to: player.id)
         let incomingReq = vm.isIncomingRequest(from: player.id)
         
-        HStack(spacing: 14) {
-            // Avatar
-            ZStack {
-                Circle()
-                    .fill(player.selectedClass.themeColor.opacity(0.15))
-                    .frame(width: 52, height: 52)
-                Image(systemName: "person.fill")
-                    .font(.title2)
-                    .foregroundStyle(player.selectedClass.themeColor)
-            }
-            
-            VStack(alignment: .leading, spacing: 3) {
-                Text(player.username)
-                    .font(.system(.subheadline, design: .default))
-                    .fontWeight(.bold)
-                    .foregroundStyle(Theme.textPrimary)
-                HStack(spacing: 6) {
-                    Text("Lv. \(player.level)")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary)
-                    Text("•")
-                        .foregroundStyle(Theme.textSecondary.opacity(0.4))
-                    Text(player.selectedClass.rawValue)
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+        denseFriendCard(accent: player.selectedClass.themeColor, accentStrength: 0.25) {
+            HStack(spacing: 10) {
+                friendAvatar(char: player, size: 42)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(player.username)
+                        .font(.system(size: 14, weight: .bold, design: .default))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    Text("Lv.\(player.level) · \(player.selectedClass.rawValue)")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(player.selectedClass.themeColor)
                 }
-            }
-            
-            Spacer()
-            
-            Menu {
-                if !alreadyFriend {
-                    Button { vm.sendFriendRequest(to: player.id) } label: {
-                        Label("Add Friend", systemImage: "person.badge.plus")
+                
+                Spacer(minLength: 4)
+                
+                Menu {
+                    if !alreadyFriend {
+                        Button { vm.sendFriendRequest(to: player.id) } label: {
+                            Label("Add Friend", systemImage: "person.badge.plus")
+                        }
                     }
-                }
-                Button(role: .destructive) {
-                    firebaseService.blockUser(uid: player.id)
-                    reportFeedback = "Player blocked."
-                    if let char = firebaseService.currentCharacter {
-                        vm.fetchData(for: char)
+                    Button(role: .destructive) {
+                        firebaseService.blockUser(uid: player.id)
+                        reportFeedback = "Player blocked."
+                        if let char = firebaseService.currentCharacter {
+                            vm.fetchData(for: char)
+                        }
+                        vm.searchResults.removeAll { $0.id == player.id }
+                    } label: {
+                        Label("Block", systemImage: "hand.raised.fill")
                     }
-                    vm.searchResults.removeAll { $0.id == player.id }
+                    Button(role: .destructive) { reportTarget = player } label: {
+                        Label("Report", systemImage: "exclamationmark.bubble")
+                    }
                 } label: {
-                    Label("Block", systemImage: "hand.raised.fill")
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.textMuted)
+                        .frame(width: 28, height: 28)
+                        .background(Theme.secondaryCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                Button(role: .destructive) { reportTarget = player } label: {
-                    Label("Report", systemImage: "exclamationmark.bubble")
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.title3)
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            
-            // Action button
-            if incomingReq {
-                Button { vm.acceptRequest(from: player.id) } label: {
-                    Label("Accept", systemImage: "checkmark")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                
+                if incomingReq {
+                    Button { vm.acceptRequest(from: player.id) } label: {
+                        Text("ACCEPT")
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(Theme.success)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                } else if alreadyFriend {
+                    Text("ALLY")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(Theme.success)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Theme.success.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else if pending {
+                    Text("SENT")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(Theme.warning)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Theme.warning.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    Button { vm.sendFriendRequest(to: player.id) } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("ADD")
+                                .font(.system(size: 10, weight: .black, design: .monospaced))
+                        }
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(.green)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(TactileButtonStyle())
-            } else if alreadyFriend {
-                Label("Friends", systemImage: "checkmark.seal.fill")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.green)
-            } else if pending {
-                Label("Pending", systemImage: "clock")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Theme.warning)
-            } else {
-                Button { vm.sendFriendRequest(to: player.id) } label: {
-                    Label("Add", systemImage: "person.badge.plus")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
                         .background(Theme.primary)
-                        .clipShape(Capsule())
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(TactileButtonStyle())
                 }
-                .buttonStyle(TactileButtonStyle())
             }
         }
-        .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Theme.border, lineWidth: 1)
-        )
     }
     
     // MARK: - Friend Request Row
     @ViewBuilder
     private func friendRequestRow(char: Character) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(char.selectedClass.themeColor.opacity(0.15))
-                    .frame(width: 50, height: 50)
-                Image(systemName: "person.fill")
-                    .font(.title2)
-                    .foregroundStyle(char.selectedClass.themeColor)
-            }
-            
-            VStack(alignment: .leading, spacing: 3) {
-                Text(char.username)
-                    .font(.system(.subheadline, design: .default))
-                    .fontWeight(.bold)
-                    .foregroundStyle(Theme.textPrimary)
-                Text("Lv. \(char.level) • \(char.selectedClass.rawValue)")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(char.selectedClass.themeColor)
-            }
-            
-            Spacer()
-            
+        denseFriendCard(accent: Theme.warning, accentStrength: 0.45) {
             HStack(spacing: 10) {
-                Button(action: { vm.acceptRequest(from: char.id) }) {
-                    Image(systemName: "checkmark")
-                        .font(.body.bold())
-                        .foregroundStyle(.white)
-                        .padding(11)
-                        .background(.green)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(TactileButtonStyle())
+                friendAvatar(char: char, size: 42)
                 
-                Button(action: { vm.declineRequest(from: char.id) }) {
-                    Image(systemName: "xmark")
-                        .font(.body.bold())
-                        .foregroundStyle(Theme.textSecondary)
-                        .padding(11)
-                        .background(Theme.cardBackground)
-                        .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(char.username)
+                        .font(.system(size: 14, weight: .bold, design: .default))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    Text("Lv.\(char.level) · \(char.selectedClass.rawValue)")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(char.selectedClass.themeColor)
                 }
-                .buttonStyle(TactileButtonStyle())
+                
+                Spacer(minLength: 4)
+                
+                HStack(spacing: 8) {
+                    Button(action: { vm.acceptRequest(from: char.id) }) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Theme.success)
+                            .clipShape(RoundedRectangle(cornerRadius: 9))
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                    
+                    Button(action: { vm.declineRequest(from: char.id) }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(width: 32, height: 32)
+                            .background(Theme.secondaryCard)
+                            .clipShape(RoundedRectangle(cornerRadius: 9))
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                }
             }
         }
-        .padding(14)
-        .background(
-            ZStack {
-                Theme.warning.opacity(0.06)
-            }
-            .background(.thinMaterial)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Theme.warning.opacity(0.3), lineWidth: 1.5)
-        )
     }
     
     // MARK: - Friend Row
     @ViewBuilder
     private func friendRow(char: Character) -> some View {
-        HStack(spacing: 14) {
-            // Avatar with online indicator
-            ZStack(alignment: .bottomTrailing) {
-                ZStack {
-                    Circle()
-                        .fill(char.selectedClass.themeColor.opacity(0.15))
-                        .frame(width: 52, height: 52)
-                    Image(systemName: "person.fill")
-                        .font(.title2)
-                        .foregroundStyle(char.selectedClass.themeColor)
-                }
-                // Online dot (always show as online for now — can add presence later)
-                Circle()
-                    .fill(.green)
-                    .frame(width: 12, height: 12)
-                    .overlay(Circle().stroke(Theme.background, lineWidth: 2))
-            }
-            
-            VStack(alignment: .leading, spacing: 3) {
-                Text(char.username)
-                    .font(.system(.subheadline, design: .default))
-                    .fontWeight(.bold)
-                    .foregroundStyle(Theme.textPrimary)
-                HStack(spacing: 4) {
-                    Text("Lv. \(char.level)")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary)
-                    Text("•")
-                        .foregroundStyle(Theme.textSecondary.opacity(0.4))
-                    Text(char.selectedClass.rawValue)
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(char.selectedClass.themeColor)
-                }
-            }
-            
-            Spacer()
-            
-            // Action buttons
+        denseFriendCard(accent: char.selectedClass.themeColor, accentStrength: 0.3) {
             HStack(spacing: 10) {
-                // 1v1 Duel
-                Button {
-                    MultiplayerService.shared.challengeFriend(friendUid: char.id)
-                    dismiss()
-                } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: "bolt.fill")
-                            .font(.caption.bold())
-                        Text("1v1")
-                            .font(.system(size: 8, weight: .black, design: .monospaced))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(Theme.warning)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                ZStack(alignment: .bottomTrailing) {
+                    friendAvatar(char: char, size: 46)
+                    Circle()
+                        .fill(Theme.success)
+                        .frame(width: 11, height: 11)
+                        .overlay(Circle().stroke(Theme.cardBackground, lineWidth: 2))
+                        .offset(x: 1, y: 1)
                 }
-                .buttonStyle(TactileButtonStyle())
                 
-                // 3v3 Invite
-                Button {
-                    pendingTeamInviteUids = [char.id]
-                    MultiplayerService.shared.initTeamLobby()
-                    MultiplayerService.shared.sendTeamInvite(uid: char.id)
-                    showTeamLobby = true
-                } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: "person.3.fill")
-                            .font(.caption.bold())
-                        Text("3v3")
-                            .font(.system(size: 8, weight: .black, design: .monospaced))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(Theme.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(char.username)
+                        .font(.system(size: 14, weight: .bold, design: .default))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    Text("Lv.\(char.level) · \(char.selectedClass.rawValue)")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(char.selectedClass.themeColor)
                 }
-                .buttonStyle(TactileButtonStyle())
+                
+                Spacer(minLength: 4)
+                
+                HStack(spacing: 6) {
+                    // 1v1 Duel
+                    Button {
+                        MultiplayerService.shared.challengeFriend(friendUid: char.id)
+                        dismiss()
+                    } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("DUEL")
+                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                .tracking(0.5)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 40)
+                        .background(
+                            LinearGradient(
+                                colors: [Theme.warning, Theme.warning.opacity(0.75)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                    .accessibilityLabel("Challenge to duel")
+                    
+                    // 3v3 Invite
+                    Button {
+                        pendingTeamInviteUids = [char.id]
+                        MultiplayerService.shared.initTeamLobby()
+                        MultiplayerService.shared.sendTeamInvite(uid: char.id)
+                        showTeamLobby = true
+                    } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("3v3")
+                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                .tracking(0.5)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 40)
+                        .background(
+                            LinearGradient(
+                                colors: [Theme.primary, Theme.primary.opacity(0.75)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                    .accessibilityLabel("Invite to 3v3 team")
 
-                Menu {
-                    Button(role: .destructive) {
-                        firebaseService.blockUser(uid: char.id)
-                        reportFeedback = "Player blocked."
-                        if let me = firebaseService.currentCharacter {
-                            vm.fetchData(for: me)
+                    Menu {
+                        Button(role: .destructive) {
+                            firebaseService.blockUser(uid: char.id)
+                            reportFeedback = "Player blocked."
+                            if let me = firebaseService.currentCharacter {
+                                vm.fetchData(for: me)
+                            }
+                        } label: {
+                            Label("Block", systemImage: "hand.raised.fill")
+                        }
+                        Button(role: .destructive) { reportTarget = char } label: {
+                            Label("Report", systemImage: "exclamationmark.bubble")
                         }
                     } label: {
-                        Label("Block", systemImage: "hand.raised.fill")
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.textMuted)
+                            .frame(width: 32, height: 40)
+                            .background(Theme.secondaryCard)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Theme.border, lineWidth: 1)
+                            )
                     }
-                    Button(role: .destructive) { reportTarget = char } label: {
-                        Label("Report", systemImage: "exclamationmark.bubble")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.caption.bold())
-                        .foregroundStyle(Theme.textSecondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 9)
-                        .background(Theme.cardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("More actions")
                 }
             }
         }
-        .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Theme.border, lineWidth: 1)
-        )
     }
 }
 

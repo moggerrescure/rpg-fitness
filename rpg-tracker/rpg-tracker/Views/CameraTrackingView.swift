@@ -1,17 +1,20 @@
 import SwiftUI
+import AVFoundation
+import UIKit
 
 struct CameraTrackingView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
     @StateObject private var viewModel: CameraTrackingVM
     @Environment(\.dismiss) private var dismiss
     @State private var isWorkoutStarted: Bool
-    @State private var workoutCompletionRewards: (xp: Int, gold: Int)? = nil
+    @State private var workoutCompletionRewards: (xp: Int, gold: Int, energy: Int)? = nil
     
     @State private var combatEffects: [CombatSpellEffect] = []
     @State private var screenShake: Bool = false
     @State private var activeDebuff: CharacterClass? = nil
     @State private var debuffTask: Task<Void, Never>? = nil
     @State private var showHitOverlay: Bool = false
+    @State private var showSurrenderConfirm: Bool = false
     
     let bossName: String?
     let bossImage: String?
@@ -40,650 +43,12 @@ struct CameraTrackingView: View {
                 .ignoresSafeArea()
             
             if !isWorkoutStarted {
-                // Pre-Workout Camp View
-                VStack(spacing: 24) {
-                    // Close button
-                    HStack {
-                        Button(action: { dismiss() }) {
-                            Image(systemName: "chevron.left")
-                                .font(.title3)
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.black.opacity(0.4))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(TactileButtonStyle())
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 16)
-                    
-                    Spacer()
-                    
-                    VStack(spacing: 24) {
-                        // Title
-                        Text("\(viewModel.selectedClass.rawValue.uppercased()) CAMP")
-                            .font(.system(.title, design: .monospaced))
-                            .fontWeight(.black)
-                            .foregroundColor(.white)
-                            .tracking(2.5)
-                            .glow(color: viewModel.selectedClass.themeColor.opacity(0.5), radius: 10)
-                        
-                        // Class emblem representation
-                        ZStack {
-                            Circle()
-                                .fill(viewModel.selectedClass.themeColor.opacity(0.15))
-                                .frame(width: 120, height: 120)
-                                .overlay(
-                                    Circle()
-                                        .stroke(viewModel.selectedClass.themeColor, lineWidth: 2)
-                                )
-                                .glow(color: viewModel.selectedClass.themeColor.opacity(0.4), radius: 12)
-                            
-                            Image(systemName: classEmblem(for: viewModel.selectedClass))
-                                .font(.system(size: 56))
-                                .foregroundColor(viewModel.selectedClass.themeColor)
-                        }
-                        .padding(.vertical, 10)
-                        
-                        // Instructions card
-                        VStack(spacing: 12) {
-                            Text("TRAINING EXERCISE")
-                                .font(.system(size: 10, design: .monospaced))
-                                .fontWeight(.bold)
-                                .foregroundColor(Theme.textSecondary)
-                                .tracking(1.5)
-                            
-                            Text(viewModel.selectedClass.primaryExercise.uppercased())
-                                .font(.system(.title3, design: .monospaced))
-                                .fontWeight(.black)
-                                .foregroundColor(Theme.textPrimary)
-                            
-                            if let target = viewModel.targetReps {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "target")
-                                    Text("OBJECTIVE: \(target) REPS")
-                                }
-                                .font(.system(.subheadline, design: .monospaced))
-                                .fontWeight(.bold)
-                                .foregroundColor(Theme.healerColor)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 6)
-                                .background(Theme.healerColor.opacity(0.12))
-                                .cornerRadius(12)
-                                .padding(.top, 4)
-                            } else {
-                                let remaining = max(0, CameraTrackingVM.freeTrainingDailyCapPublic - CameraTrackingVM.freeTrainingRepsUsedToday())
-                                Text(remaining > 0
-                                     ? "PRACTICE MODE • \(remaining) REPS LEFT TODAY"
-                                     : "DAILY PRACTICE LIMIT REACHED")
-                                    .font(.system(size: 9, design: .monospaced))
-                                    .foregroundColor(remaining > 0 ? Theme.textMuted : Theme.warning)
-                            }
-                            
-                            Text(viewModel.selectedClass.description)
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(4)
-                                .padding(.horizontal)
-                                .padding(.top, 8)
-                        }
-                        .padding(20)
-                        .background(Theme.cardBackground.opacity(0.85))
-                        .cornerRadius(20)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 20)
-                                .stroke(Theme.border, lineWidth: 1)
-                        )
-                        .padding(.horizontal)
-                        
-                        // START TRAINING CTA
-                        Button(action: {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                                isWorkoutStarted = true
-                            }
-                        }) {
-                            HStack(spacing: 10) {
-                                Image(systemName: "play.fill")
-                                Text("START TRAINING")
-                                    .fontWeight(.black)
-                                    .tracking(1.5)
-                            }
-                            .font(.system(.subheadline, design: .monospaced))
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(viewModel.selectedClass.themeColor)
-                            .foregroundColor(.white)
-                            .cornerRadius(14)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                            )
-                            .glow(color: viewModel.selectedClass.themeColor.opacity(0.4), radius: 8)
-                        }
-                        .buttonStyle(TactileButtonStyle())
-                        .padding(.horizontal)
-                        .padding(.top, 10)
-                    }
-                    
-                    Spacer()
-                }
+                preWorkoutCampView
             } else {
-                // Active Workout view (uses camera)
-                GeometryReader { geo in
-                    let isBattle = (viewModel.bossMaxHP > 0) || (FirebaseService.shared.activeBattle != nil) || (BattleEngine.shared.activeBattle != nil)
-                    
-                    if isBattle {
-                        let battle = MultiplayerService.shared.activeBattle ?? BattleEngine.shared.activeBattle
-                        VStack(spacing: 0) {
-                            // Top Half: Opponent Combat Area
-                            ZStack {
-                                // Dynamic background
-                                AnimatedBackgroundView(backgroundType: .arena)
-                                    .brightness(-0.15)
-                                
-                                // Boss / Opponent representation
-                                VStack(spacing: 12) {
-                                    Spacer()
-                                    
-                                    if let battle = battle, let opponent = battle.opponentTeam.first {
-                                        // Opponent Info: Name, Class, level
-                                        VStack(spacing: 4) {
-                                            Text(opponent.name.uppercased())
-                                                .font(.system(size: 14, weight: .black, design: .monospaced))
-                                                .foregroundColor(.white)
-                                                .glow(color: opponent.characterClass.themeColor.opacity(0.4), radius: 5)
-                                            Text(opponent.characterClass.rawValue.uppercased())
-                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                                .foregroundColor(opponent.characterClass.themeColor)
-                                                .tracking(1)
-                                        }
-                                        
-                                        // Health Bar
-                                        let hpProgress = CGFloat(opponent.health) / CGFloat(opponent.maxHealth)
-                                        ZStack(alignment: .leading) {
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Color.black.opacity(0.75))
-                                                .frame(width: 200, height: 10)
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(opponent.characterClass.themeColor)
-                                                .frame(width: 200 * hpProgress, height: 10)
-                                                .glow(color: opponent.characterClass.themeColor.opacity(0.6), radius: 4)
-                                        }
-                                        .frame(width: 200)
-                                        
-                                        // Health Text
-                                        Text("HP: \(opponent.health) / \(opponent.maxHealth)")
-                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                            .foregroundColor(.white.opacity(0.85))
-                                        
-                                        // Opponent Avatar (Large and gorgeous)
-                                        ZStack {
-                                            Circle()
-                                                .fill(opponent.characterClass.themeColor.opacity(0.12))
-                                                .frame(width: 100, height: 100)
-                                                .overlay(Circle().stroke(opponent.characterClass.themeColor, lineWidth: 2))
-                                                .glow(color: opponent.characterClass.themeColor.opacity(0.3), radius: 8)
-                                            
-                                            if let avatar = opponent.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                                                Image(platformImage: uiImage)
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .frame(width: 96, height: 96)
-                                                    .clipShape(Circle())
-                                            } else {
-                                                Image(systemName: "person.crop.circle.fill")
-                                                    .font(.system(size: 80))
-                                                    .foregroundColor(opponent.characterClass.themeColor)
-                                            }
-                                            
-                                            // Red Damage Overlay & Shake
-                                            if showHitOverlay {
-                                                Circle()
-                                                    .fill(Color.red.opacity(0.4))
-                                                    .frame(width: 100, height: 100)
-                                            }
-                                        }
-                                        .scaleEffect(showHitOverlay ? 1.15 : 1.0)
-                                        .offset(x: showHitOverlay ? CGFloat.random(in: -8...8) : 0)
-                                        .animation(.spring(response: 0.2, dampingFraction: 0.5), value: showHitOverlay)
-                                    } else if viewModel.bossMaxHP > 0 {
-                                        // World Boss info
-                                        VStack(spacing: 4) {
-                                            Text(bossName?.uppercased() ?? "WORLD BOSS")
-                                                .font(.system(size: 14, weight: .black, design: .monospaced))
-                                                .foregroundColor(Theme.danger)
-                                                .glow(color: Theme.danger.opacity(0.4), radius: 5)
-                                        }
-                                        
-                                        // Boss Health Bar
-                                        let hpProgress = CGFloat(viewModel.bossCurrentHP) / CGFloat(max(1, viewModel.bossMaxHP))
-                                        ZStack(alignment: .leading) {
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Color.black.opacity(0.75))
-                                                .frame(width: 200, height: 10)
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Theme.danger)
-                                                .frame(width: 200 * hpProgress, height: 10)
-                                                .glow(color: Theme.danger.opacity(0.6), radius: 4)
-                                        }
-                                        .frame(width: 200)
-                                        
-                                        // Health Text
-                                        Text("HP: \(viewModel.bossCurrentHP) / \(viewModel.bossMaxHP)")
-                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                            .foregroundColor(.white.opacity(0.85))
-                                        
-                                        // Boss Avatar
-                                        ZStack {
-                                            Circle()
-                                                .fill(Theme.danger.opacity(0.12))
-                                                .frame(width: 100, height: 100)
-                                                .overlay(Circle().stroke(Theme.danger, lineWidth: 2))
-                                                .glow(color: Theme.danger.opacity(0.3), radius: 8)
-                                            
-                                            if let bImg = bossImage {
-                                                Image(bImg)
-                                                    .resizable()
-                                                    .scaledToFit()
-                                                    .frame(width: 96, height: 96)
-                                                    .clipShape(Circle())
-                                            } else {
-                                                Image(systemName: "shield.fill")
-                                                    .font(.system(size: 80))
-                                                    .foregroundColor(Theme.danger)
-                                            }
-                                            
-                                            BossDebuffOverlay(debuff: activeDebuff)
-                                                .frame(width: 100, height: 100)
-                                            
-                                            if showHitOverlay {
-                                                Circle()
-                                                    .fill(Color.red.opacity(0.45))
-                                                    .frame(width: 100, height: 100)
-                                            }
-                                        }
-                                        .scaleEffect(showHitOverlay ? 1.15 : 1.0)
-                                        .offset(x: showHitOverlay ? CGFloat.random(in: -8...8) : 0)
-                                        .animation(.spring(response: 0.2, dampingFraction: 0.5), value: showHitOverlay)
-                                    }
-                                    
-                                    Spacer()
-                                }
-                                
-                                // Flying spells overhead
-                                ForEach(combatEffects) { effect in
-                                    SpellEffectView(effect: effect)
-                                }
-                                
-                                // Back Button & Timer
-                                VStack {
-                                    HStack {
-                                        Button(action: {
-                                            withAnimation { isWorkoutStarted = false }
-                                        }) {
-                                            Image(systemName: "arrow.left")
-                                                .font(.title3)
-                                                .foregroundColor(.white)
-                                                .frame(width: 44, height: 44)
-                                                .background(Color.black.opacity(0.4))
-                                                .clipShape(Circle())
-                                        }
-                                        .buttonStyle(TactileButtonStyle())
-                                        Spacer()
-                                        
-                                        // Timer overlay if battle is present
-                                        if let battle = battle {
-                                            Text("\(battle.secondsRemaining)s")
-                                                .font(.system(size: 14, weight: .bold, design: .monospaced))
-                                                .foregroundColor(.white)
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 6)
-                                                .background(Color.black.opacity(0.5))
-                                                .cornerRadius(10)
-                                        }
-                                    }
-                                    .padding(.horizontal)
-                                    .padding(.top, 10)
-                                    
-                                    Spacer()
-                                }
-                            }
-                            .frame(height: geo.size.height * 0.45)
-                            .offset(x: screenShake ? CGFloat.random(in: -7...7) : 0, y: screenShake ? CGFloat.random(in: -5...5) : 0)
-                            
-                            // Golden separator line
-                            Rectangle()
-                                .fill(LinearGradient(colors: [Theme.healerColor, Theme.healerColor.opacity(0.3), Theme.healerColor], startPoint: .leading, endPoint: .trailing))
-                                .frame(height: 3)
-                                .shadow(color: Theme.healerColor.opacity(0.6), radius: 4)
-                            
-                            // Bottom Half: User Camera
-                            ZStack(alignment: .bottom) {
-                                CameraPreview(session: viewModel.cameraManager.session)
-                                    .frame(height: geo.size.height * 0.55)
-                                    .clipped()
-                                
-                                PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
-                                    .frame(height: geo.size.height * 0.55)
-                                
-                                VStack {
-                                    Spacer()
-                                    
-                                    liveFeedbackPrompt
-                                        .padding(.bottom, 6)
-                                    
-                                    repsDisplay
-                                        .padding(.bottom, 16)
-                                }
-                            }
-                            .frame(height: geo.size.height * 0.55)
-                        }
-                    } else {
-                        // Normal Training Layout
-                        ZStack {
-                            if viewModel.cameraManager.authorizationStatus == .denied
-                                || viewModel.cameraManager.authorizationStatus == .restricted {
-                                VStack(spacing: 16) {
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.textSecondary)
-                                    Text("Camera Access Required")
-                                        .font(.system(.headline, design: .monospaced))
-                                        .foregroundColor(.white)
-                                    Text("Enable camera in Settings to track your workout form.")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundColor(Theme.textSecondary)
-                                        .multilineTextAlignment(.center)
-                                        .padding(.horizontal, 32)
-                                    Button("Open Settings") {
-                                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                                            UIApplication.shared.open(url)
-                                        }
-                                    }
-                                    .font(.system(.subheadline, design: .monospaced).weight(.bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 12)
-                                    .background(viewModel.selectedClass.themeColor)
-                                    .cornerRadius(12)
-                                }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .background(Color.black)
-                            } else {
-                            CameraPreview(session: viewModel.cameraManager.session)
-                                .ignoresSafeArea()
-                                
-                            PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
-                            
-                            VStack(spacing: 0) {
-                                // Top 20% - Status and Reps
-                                VStack(spacing: 16) {
-                                    // Back button and Live Rewards
-                                    HStack {
-                                        Button(action: {
-                                            withAnimation { isWorkoutStarted = false }
-                                        }) {
-                                            Image(systemName: "arrow.left")
-                                                .font(.title3)
-                                                .foregroundColor(.white)
-                                                .frame(width: 44, height: 44)
-                                                .background(Color.black.opacity(0.4))
-                                                .clipShape(Circle())
-                                        }
-                                        .buttonStyle(TactileButtonStyle())
-                                        
-                                        Spacer()
-                                        
-                                        // Live Rewards Preview
-                                        if viewModel.repCount > 0 {
-                                            HStack(spacing: 14) {
-                                                // XP
-                                                HStack(spacing: 4) {
-                                                    Image(systemName: "star.fill")
-                                                        .foregroundColor(Color.yellow)
-                                                        .font(.system(size: 12))
-                                                    Text("+\(10 + viewModel.repCount * 6)")
-                                                        .foregroundColor(.white)
-                                                        .fontWeight(.black)
-                                                }
-                                                
-                                                // Gold
-                                                HStack(spacing: 4) {
-                                                    Image(systemName: "centsign.circle.fill")
-                                                        .foregroundColor(Theme.warning)
-                                                        .font(.system(size: 12))
-                                                    Text("+\(3 + Int(Double(viewModel.repCount) * 1.5))")
-                                                        .foregroundColor(.white)
-                                                        .fontWeight(.black)
-                                                }
-                                            }
-                                            .font(.system(size: 14, design: .monospaced))
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 8)
-                                            .background(Color.black.opacity(0.5))
-                                            .cornerRadius(20)
-                                            .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.15), lineWidth: 1))
-                                            .transition(.opacity)
-                                            .animation(.easeInOut, value: viewModel.repCount)
-                                        }
-                                    }
-                                    .padding(.horizontal)
-                                    .padding(.top, 10)
-                                    
-                                    // Exercise Name and Big Number
-                                    HStack(alignment: .center) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("CURRENT EXERCISE")
-                                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                                .foregroundColor(Theme.textSecondary)
-                                                
-                                            Text(viewModel.selectedClass.primaryExercise.uppercased())
-                                                .font(.system(size: 32, weight: .black, design: .monospaced))
-                                                .foregroundColor(viewModel.selectedClass.themeColor)
-                                                .shadow(color: viewModel.selectedClass.themeColor.opacity(0.5), radius: 5)
-                                        }
-                                        
-                                        Spacer()
-                                        
-                                        Text("\(viewModel.repCount)")
-                                            .font(.system(size: 80, weight: .black, design: .monospaced))
-                                            .foregroundColor(.white)
-                                            .shadow(color: viewModel.selectedClass.themeColor.opacity(0.8), radius: 15)
-                                    }
-                                    .padding(.horizontal, 24)
-                                    .padding(.bottom, 20)
-                                }
-                                .background(
-                                    LinearGradient(
-                                        colors: [Color.black.opacity(0.9), Color.black.opacity(0.7), .clear],
-                                        startPoint: .top, endPoint: .bottom
-                                    )
-                                    .ignoresSafeArea(edges: .top)
-                                )
-                                
-                                Spacer()
-                                
-                                // Bottom HUD
-                                VStack(spacing: 16) {
-                                    liveFeedbackPrompt
-                                    finishWorkoutCTA
-                                    guidanceStateInfo
-                                }
-                                .padding(.bottom, 30)
-                                .frame(maxWidth: .infinity)
-                                .background(
-                                    LinearGradient(
-                                        colors: [.clear, Color.black.opacity(0.8)],
-                                        startPoint: .top, endPoint: .bottom
-                                    )
-                                    .ignoresSafeArea(edges: .bottom)
-                                )
-                            }
-                            } // camera authorized
-                        }
-                    }
-                }
+                workoutActiveView
             }
-            // Workout Completion / Rewards Overlay (visual match to StageWinOverlay)
-            if let rewards = workoutCompletionRewards {
-                ZStack {
-                    Color.black.opacity(0.85)
-                        .ignoresSafeArea()
-                    
-                    // Golden sun rays background overlay
-                    GeometryReader { sunGeo in
-                        ZStack {
-                            ForEach(0..<4) { idx in
-                                Path { path in
-                                    path.move(to: CGPoint(x: sunGeo.size.width * 0.5, y: sunGeo.size.height * 0.5))
-                                    path.addLine(to: CGPoint(x: sunGeo.size.width * (0.2 + CGFloat(idx) * 0.2), y: 0))
-                                    path.addLine(to: CGPoint(x: sunGeo.size.width * (0.35 + CGFloat(idx) * 0.2), y: 0))
-                                    path.closeSubpath()
-                                }
-                                .fill(Theme.warning.opacity(0.04))
-                            }
-                            ForEach(0..<4) { idx in
-                                Path { path in
-                                    path.move(to: CGPoint(x: sunGeo.size.width * 0.5, y: sunGeo.size.height * 0.5))
-                                    path.addLine(to: CGPoint(x: sunGeo.size.width * (0.2 + CGFloat(idx) * 0.2), y: sunGeo.size.height))
-                                    path.addLine(to: CGPoint(x: sunGeo.size.width * (0.35 + CGFloat(idx) * 0.2), y: sunGeo.size.height))
-                                    path.closeSubpath()
-                                }
-                                .fill(Theme.warning.opacity(0.04))
-                            }
-                        }
-                    }
-                    .ignoresSafeArea()
-                    
-                    VStack(spacing: 24) {
-                        VStack(spacing: 8) {
-                            Text("TRAINING COMPLETED!")
-                                .font(.system(size: 24, weight: .black, design: .monospaced))
-                                .foregroundColor(Theme.success)
-                                .glow(color: Theme.success.opacity(0.5), radius: 10)
-                            
-                            Text("You performed \(viewModel.repCount) repetitions of \(viewModel.selectedClass.primaryExercise.uppercased()) in the training camp.")
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                        }
-                        
-                        VStack(spacing: 16) {
-                            Text("REWARDS EARNED")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(Theme.textMuted)
-                                .tracking(1)
-                            
-                            HStack(spacing: 16) {
-                                // XP Reward Card
-                                VStack(spacing: 8) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Theme.success.opacity(0.12))
-                                            .frame(width: 44, height: 44)
-                                        
-                                        Image(systemName: "star.fill")
-                                            .font(.title3)
-                                            .foregroundColor(Theme.success)
-                                    }
-                                    .glow(color: Theme.success.opacity(0.35), radius: 5)
-                                    
-                                    Text("+\(rewards.xp) XP")
-                                        .font(.system(.subheadline, design: .monospaced))
-                                        .fontWeight(.black)
-                                        .foregroundColor(Theme.textPrimary)
-                                    
-                                    Text("Class XP")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(Theme.textSecondary)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Theme.secondaryCard.opacity(0.6))
-                                .cornerRadius(12)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Theme.success.opacity(0.2), lineWidth: 1)
-                                )
-                                
-                                // Gold Reward Card
-                                VStack(spacing: 8) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Theme.warning.opacity(0.12))
-                                            .frame(width: 44, height: 44)
-                                        
-                                        Image(systemName: "centsign.circle.fill")
-                                            .font(.title3)
-                                            .foregroundColor(Theme.warning)
-                                    }
-                                    .glow(color: Theme.warning.opacity(0.35), radius: 5)
-                                    
-                                    Text("+\(rewards.gold) GOLD")
-                                        .font(.system(.subheadline, design: .monospaced))
-                                        .fontWeight(.black)
-                                        .foregroundColor(Theme.textPrimary)
-                                    
-                                    Text("Currency")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(Theme.textSecondary)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Theme.secondaryCard.opacity(0.6))
-                                .cornerRadius(12)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Theme.warning.opacity(0.2), lineWidth: 1)
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-                        
-                        Button(action: {
-                            workoutCompletionRewards = nil
-                            dismiss()
-                        }) {
-                            Text("RETURN TO HUB")
-                                .font(.system(.subheadline, design: .monospaced))
-                                .fontWeight(.black)
-                                .foregroundColor(.white)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Theme.primary)
-                                .cornerRadius(14)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                                )
-                                .glow(color: Theme.primary.opacity(0.4), radius: 8)
-                        }
-                        .buttonStyle(TactileButtonStyle())
-                        .padding(.horizontal)
-                    }
-                    .padding(24)
-                    .background(Theme.cardBackground.opacity(0.92))
-                    .cornerRadius(20)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Theme.warning.opacity(0.5), Color.clear],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 2
-                            )
-                    )
-                    .glow(color: Theme.warning.opacity(0.15), radius: 15)
-                    .padding(.horizontal, 28)
-                }
-                .transition(.opacity)
-                .zIndex(1000)
-            }
+            
+            workoutCompletionOverlay
         }
         .hideNavigationBar()
         .onAppear {
@@ -734,6 +99,742 @@ struct CameraTrackingView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 combatEffects.removeAll(where: { $0.id == newEffect.id })
             }
+        }
+    }
+    
+    // MARK: - Body Subviews (type-checker relief)
+    
+    @ViewBuilder
+    private var preWorkoutCampView: some View {
+        // Pre-Workout Camp View
+        VStack(spacing: 24) {
+            // Close button
+            HStack {
+                Button(action: { dismiss() }) {
+                    Image(systemName: "chevron.left")
+                        .font(.title3)
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(TactileButtonStyle())
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 16)
+            
+            Spacer()
+            
+            VStack(spacing: 24) {
+                // Title
+                Text("\(viewModel.selectedClass.rawValue.uppercased()) CAMP")
+                    .font(.system(.title, design: .monospaced))
+                    .fontWeight(.black)
+                    .foregroundColor(.white)
+                    .tracking(2.5)
+                    .glow(color: viewModel.selectedClass.themeColor.opacity(0.5), radius: 10)
+                
+                // Class emblem representation
+                ZStack {
+                    Circle()
+                        .fill(viewModel.selectedClass.themeColor.opacity(0.15))
+                        .frame(width: 120, height: 120)
+                        .overlay(
+                            Circle()
+                                .stroke(viewModel.selectedClass.themeColor, lineWidth: 2)
+                        )
+                        .glow(color: viewModel.selectedClass.themeColor.opacity(0.4), radius: 12)
+                    
+                    Image(systemName: classEmblem(for: viewModel.selectedClass))
+                        .font(.system(size: 56))
+                        .foregroundColor(viewModel.selectedClass.themeColor)
+                }
+                .padding(.vertical, 10)
+                
+                // Instructions card
+                VStack(spacing: 12) {
+                    Text("TRAINING EXERCISE")
+                        .font(.system(size: 10, design: .monospaced))
+                        .fontWeight(.bold)
+                        .foregroundColor(Theme.textSecondary)
+                        .tracking(1.5)
+                    
+                    Text(viewModel.selectedClass.primaryExercise.uppercased())
+                        .font(.system(.title3, design: .monospaced))
+                        .fontWeight(.black)
+                        .foregroundColor(Theme.textPrimary)
+                    
+                    if let target = viewModel.targetReps {
+                        HStack(spacing: 6) {
+                            Image(systemName: "target")
+                            Text("OBJECTIVE: \(target) REPS")
+                        }
+                        .font(.system(.subheadline, design: .monospaced))
+                        .fontWeight(.bold)
+                        .foregroundColor(Theme.healerColor)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .background(Theme.healerColor.opacity(0.12))
+                        .cornerRadius(12)
+                        .padding(.top, 4)
+                    } else {
+                        let remaining = max(0, CameraTrackingVM.freeTrainingDailyCapPublic - CameraTrackingVM.freeTrainingRepsUsedToday())
+                        Text(remaining > 0
+                             ? "PRACTICE MODE • \(remaining) REPS LEFT TODAY"
+                             : "DAILY PRACTICE LIMIT REACHED")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(remaining > 0 ? Theme.textMuted : Theme.warning)
+                    }
+                    
+                    Text(viewModel.selectedClass.description)
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                }
+                .padding(20)
+                .background(Theme.cardBackground.opacity(0.85))
+                .cornerRadius(20)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
+                .padding(.horizontal)
+                
+                // START TRAINING CTA
+                Button(action: {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                        isWorkoutStarted = true
+                    }
+                }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "play.fill")
+                        Text("START TRAINING")
+                            .fontWeight(.black)
+                            .tracking(1.5)
+                    }
+                    .font(.system(.subheadline, design: .monospaced))
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(viewModel.selectedClass.themeColor)
+                    .foregroundColor(.white)
+                    .cornerRadius(14)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    )
+                    .glow(color: viewModel.selectedClass.themeColor.opacity(0.4), radius: 8)
+                }
+                .buttonStyle(TactileButtonStyle())
+                .padding(.horizontal)
+                .padding(.top, 10)
+            }
+            
+            Spacer()
+        }
+    }
+    
+    @ViewBuilder
+    private var workoutActiveView: some View {
+        // Active Workout view (uses camera)
+        GeometryReader { geo in
+            let isBattle = (viewModel.bossMaxHP > 0) || (FirebaseService.shared.activeBattle != nil) || (BattleEngine.shared.activeBattle != nil) || (MultiplayerService.shared.activeBattle != nil)
+            
+            if isBattle {
+                battleWorkoutView(geo: geo)
+            } else {
+                normalTrainingWorkoutView
+            }
+        }
+        .alert("Surrender Match?", isPresented: $showSurrenderConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("SURRENDER", role: .destructive) {
+                MultiplayerService.shared.surrenderMatch()
+                dismiss()
+            }
+        } message: {
+            Text("You will forfeit this battle. Continue?")
+        }
+    }
+
+    private var cameraTopChromePadding: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let top = scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.safeAreaInsets.top
+            ?? scenes.first?.windows.first?.safeAreaInsets.top
+            ?? 59
+        return max(top, 54) + 10
+    }
+    
+    @ViewBuilder
+    private func battleWorkoutView(geo: GeometryProxy) -> some View {
+        let battle = MultiplayerService.shared.activeBattle ?? BattleEngine.shared.activeBattle
+        VStack(spacing: 0) {
+            // Top Half: Opponent Combat Area
+            ZStack {
+                // Dynamic background
+                AnimatedBackgroundView(backgroundType: .arena)
+                    .brightness(-0.15)
+                
+                // Boss / Opponent representation
+                VStack(spacing: 12) {
+                    Spacer()
+                    
+                    if let battle = battle, let opponent = battle.opponentTeam.first {
+                        // Opponent Info: Name, Class, level
+                        VStack(spacing: 4) {
+                            Text(opponent.name.uppercased())
+                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                .foregroundColor(.white)
+                                .glow(color: opponent.characterClass.themeColor.opacity(0.4), radius: 5)
+                            Text(opponent.characterClass.rawValue.uppercased())
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundColor(opponent.characterClass.themeColor)
+                                .tracking(1)
+                        }
+                        
+                        // Health Bar
+                        let hpProgress = CGFloat(opponent.health) / CGFloat(opponent.maxHealth)
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.black.opacity(0.75))
+                                .frame(width: 200, height: 10)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(opponent.characterClass.themeColor)
+                                .frame(width: 200 * hpProgress, height: 10)
+                                .glow(color: opponent.characterClass.themeColor.opacity(0.6), radius: 4)
+                        }
+                        .frame(width: 200)
+                        
+                        // Health Text
+                        Text("HP: \(opponent.health) / \(opponent.maxHealth)")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.85))
+                        
+                        // Opponent Avatar (Large and gorgeous)
+                        ZStack {
+                            BattlePortraitView(
+                                avatarName: opponent.avatarName,
+                                characterClass: opponent.characterClass,
+                                size: 100,
+                                lineWidth: 2,
+                                showGlow: true
+                            )
+                            
+                            // Red Damage Overlay & Shake
+                            if showHitOverlay {
+                                Circle()
+                                    .fill(Color.red.opacity(0.4))
+                                    .frame(width: 100, height: 100)
+                            }
+                        }
+                        .scaleEffect(showHitOverlay ? 1.15 : 1.0)
+                        .offset(x: showHitOverlay ? CGFloat.random(in: -8...8) : 0)
+                        .animation(.spring(response: 0.2, dampingFraction: 0.5), value: showHitOverlay)
+                    } else if viewModel.bossMaxHP > 0 {
+                        // World Boss info
+                        VStack(spacing: 4) {
+                            Text(bossName?.uppercased() ?? "BOSS")
+                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                .foregroundColor(Theme.danger)
+                                .glow(color: Theme.danger.opacity(0.4), radius: 5)
+                        }
+                        
+                        // Boss Health Bar
+                        let hpProgress = CGFloat(viewModel.bossCurrentHP) / CGFloat(max(1, viewModel.bossMaxHP))
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.black.opacity(0.75))
+                                .frame(width: 200, height: 10)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Theme.danger)
+                                .frame(width: 200 * hpProgress, height: 10)
+                                .glow(color: Theme.danger.opacity(0.6), radius: 4)
+                        }
+                        .frame(width: 200)
+                        
+                        // Health Text
+                        Text("HP: \(viewModel.bossCurrentHP) / \(viewModel.bossMaxHP)")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.85))
+                        
+                        // Boss Avatar
+                        ZStack {
+                            Circle()
+                                .fill(Theme.danger.opacity(0.12))
+                                .frame(width: 100, height: 100)
+                                .overlay(Circle().stroke(Theme.danger, lineWidth: 2))
+                                .glow(color: Theme.danger.opacity(0.3), radius: 8)
+                            
+                            if let bImg = bossImage {
+                                Image(bImg)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 96, height: 96)
+                                    .clipShape(Circle())
+                            } else {
+                                Image(systemName: "shield.fill")
+                                    .font(.system(size: 80))
+                                    .foregroundColor(Theme.danger)
+                            }
+                            
+                            BossDebuffOverlay(debuff: activeDebuff)
+                                .frame(width: 100, height: 100)
+                            
+                            if showHitOverlay {
+                                Circle()
+                                    .fill(Color.red.opacity(0.45))
+                                    .frame(width: 100, height: 100)
+                            }
+                        }
+                        .scaleEffect(showHitOverlay ? 1.15 : 1.0)
+                        .offset(x: showHitOverlay ? CGFloat.random(in: -8...8) : 0)
+                        .animation(.spring(response: 0.2, dampingFraction: 0.5), value: showHitOverlay)
+                    }
+                    
+                    Spacer()
+                }
+                
+                // Flying spells overhead
+                ForEach(combatEffects) { effect in
+                    SpellEffectView(effect: effect)
+                }
+                
+                // Top chrome: Surrender / Back + Timer (below Dynamic Island)
+                VStack {
+                    HStack(spacing: 12) {
+                        if MultiplayerService.shared.activeBattle != nil {
+                            Button {
+                                showSurrenderConfirm = true
+                            } label: {
+                                Text("SURRENDER")
+                                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 11)
+                                    .background(Theme.danger.opacity(0.92))
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(TactileButtonStyle())
+                            .accessibilityLabel("Surrender")
+                        } else {
+                            Button(action: {
+                                withAnimation { isWorkoutStarted = false }
+                            }) {
+                                Image(systemName: "arrow.left")
+                                    .font(.title3)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.black.opacity(0.4))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(TactileButtonStyle())
+                        }
+                        Spacer()
+                        
+                        // Timer overlay if battle is present
+                        if let battle = battle {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.black.opacity(0.55))
+                                    .frame(width: 48, height: 48)
+                                Circle()
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 3.5)
+                                    .frame(width: 46, height: 46)
+                                Circle()
+                                    .trim(from: 0.0, to: CGFloat(max(0, battle.secondsRemaining)) / 60.0)
+                                    .stroke(
+                                        battle.secondsRemaining < 15 ? Theme.danger : Theme.success,
+                                        style: StrokeStyle(lineWidth: 3.5, lineCap: .round)
+                                    )
+                                    .frame(width: 46, height: 46)
+                                    .rotationEffect(.degrees(-90))
+                                Text("\(battle.secondsRemaining)")
+                                    .font(.system(size: 13, weight: .black, design: .monospaced))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, cameraTopChromePadding)
+                    
+                    Spacer()
+                }
+            }
+            .frame(height: geo.size.height * 0.45)
+            .offset(x: screenShake ? CGFloat.random(in: -7...7) : 0, y: screenShake ? CGFloat.random(in: -5...5) : 0)
+            
+            // Golden separator line
+            Rectangle()
+                .fill(LinearGradient(colors: [Theme.healerColor, Theme.healerColor.opacity(0.3), Theme.healerColor], startPoint: .leading, endPoint: .trailing))
+                .frame(height: 3)
+                .shadow(color: Theme.healerColor.opacity(0.6), radius: 4)
+            
+            // Bottom Half: User Camera
+            ZStack(alignment: .bottom) {
+                CameraPreview(session: viewModel.cameraManager.session)
+                    .frame(height: geo.size.height * 0.55)
+                    .clipped()
+                
+                PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
+                    .frame(height: geo.size.height * 0.55)
+                
+                VStack {
+                    Spacer()
+                    
+                    liveFeedbackPrompt
+                        .padding(.bottom, 6)
+                    
+                    repsDisplay
+                        .padding(.bottom, 16)
+                }
+            }
+            .frame(height: geo.size.height * 0.55)
+        }
+    }
+    
+    @ViewBuilder
+    private var normalTrainingWorkoutView: some View {
+        // Normal Training Layout
+        ZStack {
+            if viewModel.cameraManager.authorizationStatus == .denied
+                || viewModel.cameraManager.authorizationStatus == .restricted {
+                VStack(spacing: 16) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 40))
+                        .foregroundColor(Theme.textSecondary)
+                    Text("Camera Access Required")
+                        .font(.system(.headline, design: .monospaced))
+                        .foregroundColor(.white)
+                    Text("Enable camera in Settings to track your workout form.")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    .font(.system(.subheadline, design: .monospaced).weight(.bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(viewModel.selectedClass.themeColor)
+                    .cornerRadius(12)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
+            } else {
+            CameraPreview(session: viewModel.cameraManager.session)
+                .ignoresSafeArea()
+                
+            PoseOverlayView(joints: viewModel.rawJoints, themeColor: viewModel.selectedClass.themeColor)
+            
+            VStack(spacing: 0) {
+                // Top 20% - Status and Reps
+                VStack(spacing: 16) {
+                    // Back button and Live Rewards
+                    HStack {
+                        Button(action: {
+                            withAnimation { isWorkoutStarted = false }
+                        }) {
+                            Image(systemName: "arrow.left")
+                                .font(.title3)
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Color.black.opacity(0.4))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(TactileButtonStyle())
+                        
+                        Spacer()
+                        
+                        // Live Rewards Preview
+                        if viewModel.repCount > 0 {
+                            HStack(spacing: 14) {
+                                // XP
+                                HStack(spacing: 4) {
+                                    Image(systemName: "star.fill")
+                                        .foregroundColor(Color.yellow)
+                                        .font(.system(size: 12))
+                                    Text("+\(10 + viewModel.repCount * 6)")
+                                        .foregroundColor(.white)
+                                        .fontWeight(.black)
+                                }
+                                
+                                // Gold
+                                HStack(spacing: 4) {
+                                    Image(systemName: "centsign.circle.fill")
+                                        .foregroundColor(Theme.warning)
+                                        .font(.system(size: 12))
+                                    Text("+\(3 + Int(Double(viewModel.repCount) * 1.5))")
+                                        .foregroundColor(.white)
+                                        .fontWeight(.black)
+                                }
+                            }
+                            .font(.system(size: 14, design: .monospaced))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.5))
+                            .cornerRadius(20)
+                            .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.15), lineWidth: 1))
+                            .transition(.opacity)
+                            .animation(.easeInOut, value: viewModel.repCount)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+                    
+                    // Exercise Name and Big Number
+                    HStack(alignment: .center) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("CURRENT EXERCISE")
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(Theme.textSecondary)
+                                
+                            Text(viewModel.selectedClass.primaryExercise.uppercased())
+                                .font(.system(size: 32, weight: .black, design: .monospaced))
+                                .foregroundColor(viewModel.selectedClass.themeColor)
+                                .shadow(color: viewModel.selectedClass.themeColor.opacity(0.5), radius: 5)
+                        }
+                        
+                        Spacer()
+                        
+                        Text("\(viewModel.repCount)")
+                            .font(.system(size: 80, weight: .black, design: .monospaced))
+                            .foregroundColor(.white)
+                            .shadow(color: viewModel.selectedClass.themeColor.opacity(0.8), radius: 15)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                }
+                .background(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.9), Color.black.opacity(0.7), .clear],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                    .ignoresSafeArea(edges: .top)
+                )
+                
+                Spacer()
+                
+                // Bottom HUD
+                VStack(spacing: 16) {
+                    liveFeedbackPrompt
+                    finishWorkoutCTA
+                    guidanceStateInfo
+                }
+                .padding(.bottom, 30)
+                .frame(maxWidth: .infinity)
+                .background(
+                    LinearGradient(
+                        colors: [.clear, Color.black.opacity(0.8)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                    .ignoresSafeArea(edges: .bottom)
+                )
+            }
+            } // camera authorized
+        }
+    }
+    
+    @ViewBuilder
+    private var workoutCompletionOverlay: some View {
+        if let rewards = workoutCompletionRewards {
+            ZStack {
+                Color.black.opacity(0.85)
+                    .ignoresSafeArea()
+                
+                // Golden sun rays background overlay
+                GeometryReader { sunGeo in
+                    ZStack {
+                        ForEach(0..<4) { idx in
+                            Path { path in
+                                path.move(to: CGPoint(x: sunGeo.size.width * 0.5, y: sunGeo.size.height * 0.5))
+                                path.addLine(to: CGPoint(x: sunGeo.size.width * (0.2 + CGFloat(idx) * 0.2), y: 0))
+                                path.addLine(to: CGPoint(x: sunGeo.size.width * (0.35 + CGFloat(idx) * 0.2), y: 0))
+                                path.closeSubpath()
+                            }
+                            .fill(Theme.warning.opacity(0.04))
+                        }
+                        ForEach(0..<4) { idx in
+                            Path { path in
+                                path.move(to: CGPoint(x: sunGeo.size.width * 0.5, y: sunGeo.size.height * 0.5))
+                                path.addLine(to: CGPoint(x: sunGeo.size.width * (0.2 + CGFloat(idx) * 0.2), y: sunGeo.size.height))
+                                path.addLine(to: CGPoint(x: sunGeo.size.width * (0.35 + CGFloat(idx) * 0.2), y: sunGeo.size.height))
+                                path.closeSubpath()
+                            }
+                            .fill(Theme.warning.opacity(0.04))
+                        }
+                    }
+                }
+                .ignoresSafeArea()
+                
+                VStack(spacing: 24) {
+                    VStack(spacing: 8) {
+                        Text("TRAINING COMPLETED!")
+                            .font(.system(size: 24, weight: .black, design: .monospaced))
+                            .foregroundColor(Theme.success)
+                            .glow(color: Theme.success.opacity(0.5), radius: 10)
+                        
+                        Text("You performed \(viewModel.repCount) repetitions of \(viewModel.selectedClass.primaryExercise.uppercased()) in the training camp.")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    
+                    VStack(spacing: 16) {
+                        Text("REWARDS EARNED")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.textMuted)
+                            .tracking(1)
+                        
+                        HStack(spacing: 12) {
+                            // XP Reward Card
+                            VStack(spacing: 8) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Theme.success.opacity(0.12))
+                                        .frame(width: 44, height: 44)
+                                    
+                                    Image(systemName: "star.fill")
+                                        .font(.title3)
+                                        .foregroundColor(Theme.success)
+                                }
+                                .glow(color: Theme.success.opacity(0.35), radius: 5)
+                                
+                                Text("+\(rewards.xp) XP")
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .fontWeight(.black)
+                                    .foregroundColor(Theme.textPrimary)
+                                
+                                Text("Class XP")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Theme.secondaryCard.opacity(0.6))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Theme.success.opacity(0.2), lineWidth: 1)
+                            )
+                            
+                            // Gold Reward Card
+                            VStack(spacing: 8) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Theme.warning.opacity(0.12))
+                                        .frame(width: 44, height: 44)
+                                    
+                                    Image(systemName: "centsign.circle.fill")
+                                        .font(.title3)
+                                        .foregroundColor(Theme.warning)
+                                }
+                                .glow(color: Theme.warning.opacity(0.35), radius: 5)
+                                
+                                Text("+\(rewards.gold) GOLD")
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .fontWeight(.black)
+                                    .foregroundColor(Theme.textPrimary)
+                                
+                                Text("Currency")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Theme.secondaryCard.opacity(0.6))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Theme.warning.opacity(0.2), lineWidth: 1)
+                            )
+
+                            if rewards.energy > 0 {
+                                VStack(spacing: 8) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color.cyan.opacity(0.12))
+                                            .frame(width: 44, height: 44)
+                                        
+                                        Image(systemName: "bolt.fill")
+                                            .font(.title3)
+                                            .foregroundColor(.cyan)
+                                    }
+                                    .glow(color: Color.cyan.opacity(0.35), radius: 5)
+                                    
+                                    Text("+\(rewards.energy) ENERGY")
+                                        .font(.system(.subheadline, design: .monospaced))
+                                        .fontWeight(.black)
+                                        .foregroundColor(Theme.textPrimary)
+                                    
+                                    Text("Stamina")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(Theme.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Theme.secondaryCard.opacity(0.6))
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.cyan.opacity(0.2), lineWidth: 1)
+                                )
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    
+                    Button(action: {
+                        workoutCompletionRewards = nil
+                        dismiss()
+                    }) {
+                        Text("RETURN TO HUB")
+                            .font(.system(.subheadline, design: .monospaced))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Theme.primary)
+                            .cornerRadius(14)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                            )
+                            .glow(color: Theme.primary.opacity(0.4), radius: 8)
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                    .padding(.horizontal)
+                }
+                .padding(24)
+                .background(Theme.cardBackground.opacity(0.92))
+                .cornerRadius(20)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Theme.warning.opacity(0.5), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 2
+                        )
+                )
+                .glow(color: Theme.warning.opacity(0.15), radius: 15)
+                .padding(.horizontal, 28)
+            }
+            .transition(.opacity)
+            .zIndex(1000)
         }
     }
     
@@ -862,13 +963,13 @@ struct CameraTrackingView: View {
                     if let player = battle.localTeam.first {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 6) {
-                                if let avatar = player.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                                    Image(platformImage: uiImage)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 32, height: 32)
-                                        .clipShape(Circle())
-                                }
+                                BattlePortraitView(
+                                    avatarName: player.avatarName,
+                                    characterClass: player.characterClass,
+                                    size: 32,
+                                    lineWidth: 1.2,
+                                    showGlow: false
+                                )
                                 VStack(alignment: .leading) {
                                     Text(player.name)
                                         .font(.system(size: 10, weight: .bold))
@@ -923,13 +1024,13 @@ struct CameraTrackingView: View {
                                         .font(.system(size: 7, weight: .bold, design: .monospaced))
                                         .foregroundColor(opponent.characterClass.themeColor)
                                 }
-                                if let avatar = opponent.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                                    Image(platformImage: uiImage)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 32, height: 32)
-                                        .clipShape(Circle())
-                                }
+                                BattlePortraitView(
+                                    avatarName: opponent.avatarName,
+                                    characterClass: opponent.characterClass,
+                                    size: 32,
+                                    lineWidth: 1.2,
+                                    showGlow: true
+                                )
                             }
                             // Health bar
                             GeometryReader { geo in

@@ -25,7 +25,9 @@ struct ClanDashboardView: View {
                 if selectedTab == 0 {
                     ScrollView {
                         if let clan = viewModel.userClan {
-                            ActiveClanView(clan: clan, viewModel: viewModel)
+                            ActiveClanView(clan: clan, viewModel: viewModel, onInviteFriends: {
+                                withAnimation { selectedTab = 2 }
+                            })
                         } else {
                             NoClanView(viewModel: viewModel)
                         }
@@ -51,6 +53,9 @@ struct ClanDashboardView: View {
         .hideNavigationBar()
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("FitRPGOpenFriendsSegment"))) { _ in
             selectedTab = 2
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("FitRPGOpenClanSegment"))) { _ in
+            selectedTab = 0
         }
     }
 }
@@ -341,6 +346,7 @@ struct CreateClanSheetView: View {
 struct ActiveClanView: View {
     let clan: Clan
     @ObservedObject var viewModel: ClanVM
+    var onInviteFriends: () -> Void = {}
     @State private var isEditingDescription: Bool = false
     @State private var editedDescription: String = ""
     @State private var showWarBattle: Bool = false
@@ -349,7 +355,23 @@ struct ActiveClanView: View {
     
     var body: some View {
         ZStack {
-            VStack(spacing: 20) {
+            VStack(spacing: 18) {
+            // Guild hall banner
+            HStack(spacing: 10) {
+                Image(systemName: "building.columns.fill")
+                    .foregroundColor(Theme.accent)
+                Text("GUILD HALL")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(.white)
+                    .tracking(2)
+                Spacer()
+                Text("\(clan.members.count)/\(clan.maxMembers)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            
             // Clan Overview Card
             VStack(spacing: 16) {
                 HStack(spacing: 16) {
@@ -539,7 +561,7 @@ struct ActiveClanView: View {
                 
                 ClanRaidBossCard(clan: clan)
                 
-                ClanTavernSceneCard(clan: clan, selectedMember: $selectedMemberForDetail)
+                ClanTavernSceneCard(clan: clan, selectedMember: $selectedMemberForDetail, onInvite: onInviteFriends)
                 
                 Divider()
                     .background(Theme.border)
@@ -1532,19 +1554,21 @@ struct WarResultOverlay: View {
                 .cornerRadius(12)
                 
                 VStack(spacing: 12) {
-                    Text("REWARDS")
+                    Text("CLAN TROPHIES")
                         .font(.headline)
                         .foregroundColor(Theme.textSecondary)
                     
                     HStack(spacing: 16) {
-                        Label("+\(result.xpEarned) XP", systemImage: "star.fill")
-                            .foregroundColor(.yellow)
-                        
                         Label("\(result.trophiesChange > 0 ? "+" : "")\(result.trophiesChange)", systemImage: "trophy.fill")
                             .foregroundColor(Theme.healerColor)
                     }
                     .font(.system(.body, design: .monospaced))
                     .fontWeight(.bold)
+                    
+                    Text("Individual XP/gold come from war attacks during the battle window.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Theme.textMuted)
+                        .multilineTextAlignment(.center)
                     
                     if result.clanLeveledUp {
                         Text("CLAN LEVELED UP!")
@@ -1733,75 +1757,83 @@ struct ClanBuffsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Image(systemName: "sparkles")
-                    .foregroundColor(Theme.primary)
-                    .font(.title3)
+                ZStack {
+                    Circle()
+                        .fill(Theme.primary.opacity(0.2))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "sparkles")
+                        .foregroundColor(Theme.primary)
+                        .font(.body.weight(.bold))
+                }
                 
-                Text("GUILD BUFFS")
-                    .font(.system(.subheadline, design: .monospaced))
-                    .fontWeight(.black)
-                    .foregroundColor(.white)
-                    .tracking(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("GUILD BUFFS")
+                        .font(.system(.subheadline, design: .monospaced))
+                        .fontWeight(.black)
+                        .foregroundColor(.white)
+                        .tracking(1)
+                    Text("Hall flavor (not combat bonuses)")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                Spacer()
             }
             
             VStack(spacing: 8) {
-                // Buff 1
-                HStack {
-                    Image(systemName: "bolt.fill")
-                        .foregroundColor(Theme.primary)
-                        .font(.caption)
-                    Text("CRUSADER'S EXP")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                    Spacer()
-                    Text("+15% XP")
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
-                        .foregroundColor(Theme.success)
-                }
-                .padding(8)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(8)
-                
-                // Buff 2
-                HStack {
-                    Image(systemName: "flame.fill")
-                        .foregroundColor(Theme.warning)
-                        .font(.caption)
-                    Text("VALOROUS SWORD")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                    Spacer()
-                    Text("+10% DMG")
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
-                        .foregroundColor(Theme.success)
-                }
-                .padding(8)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(8)
-                
-                // Buff 3
-                HStack {
-                    Image(systemName: "lock.fill")
-                        .foregroundColor(Theme.textMuted)
-                        .font(.caption)
-                    Text("CELESTIAL REGEN")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(Theme.textMuted)
-                    Spacer()
-                    Text("REQUIRES LVL 5")
-                        .font(.system(size: 8, weight: .black, design: .monospaced))
-                        .foregroundColor(Theme.textMuted)
-                }
-                .padding(8)
-                .background(Color.white.opacity(0.02))
-                .cornerRadius(8)
+                guildBuffRow(icon: "bolt.fill", iconColor: Theme.primary, title: "CRUSADER'S EXP", value: "FLAVOR", active: false)
+                guildBuffRow(icon: "flame.fill", iconColor: Theme.warning, title: "VALOROUS SWORD", value: "FLAVOR", active: false)
+                guildBuffRow(
+                    icon: "lock.fill",
+                    iconColor: Theme.textMuted,
+                    title: "CELESTIAL REGEN",
+                    value: "COMING LATER",
+                    active: false
+                )
             }
+            
+            Text("Hall blessings are cosmetic for now — they do not change XP, damage, or healing.")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundColor(Theme.warning)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
-        .background(Theme.secondaryCard.opacity(0.85))
-        .cornerRadius(14)
-        .dndBorder()
+        .padding(16)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "1A1528"), Color(hex: "0E0C14")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.primary.opacity(0.45), lineWidth: 1.5)
+        )
+        .shadow(color: Theme.primary.opacity(0.18), radius: 10, y: 4)
         .padding(.horizontal)
+    }
+    
+    private func guildBuffRow(icon: String, iconColor: Color, title: String, value: String, active: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .foregroundColor(iconColor)
+                .font(.caption.weight(.bold))
+                .frame(width: 22)
+            Text(title)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(active ? .white : Theme.textMuted)
+            Spacer()
+            Text(value)
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .foregroundColor(active ? Theme.success : Theme.textMuted)
+        }
+        .padding(10)
+        .background(active ? Color.white.opacity(0.07) : Color.white.opacity(0.03))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(active ? iconColor.opacity(0.35) : Color.white.opacity(0.06), lineWidth: 1)
+        )
     }
 }
 
@@ -1810,75 +1842,124 @@ struct ClanBuffsCard: View {
 struct ClanRaidBossCard: View {
     let clan: Clan
     
+    private var raidProgress: CGFloat {
+        min(1.0, CGFloat(clan.totalReps) / 500.0)
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Image(systemName: "flame.circle.fill")
-                    .foregroundColor(Theme.danger)
-                    .font(.title3)
+                ZStack {
+                    Circle()
+                        .fill(Theme.danger.opacity(0.25))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "flame.circle.fill")
+                        .foregroundColor(Theme.danger)
+                        .font(.title3)
+                }
                 
-                Text("GUILD DAILY BOSS RAID")
-                    .font(.system(.subheadline, design: .monospaced))
-                    .fontWeight(.black)
-                    .foregroundColor(.white)
-                    .tracking(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("DAILY GUILD GOAL")
+                        .font(.system(.subheadline, design: .monospaced))
+                        .fontWeight(.black)
+                        .foregroundColor(.white)
+                        .tracking(1)
+                    Text("Clan reps from training · World Boss is on Raids")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                Spacer()
+                
+                Text("TRACKER")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundColor(Theme.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Theme.accent.opacity(0.18))
+                    .cornerRadius(6)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.accent.opacity(0.5), lineWidth: 1))
             }
             
             HStack(spacing: 14) {
-                // Mini boss image or symbol
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Theme.danger.opacity(0.1))
-                        .frame(width: 54, height: 54)
+                        .fill(Theme.danger.opacity(0.15))
+                        .frame(width: 58, height: 58)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(Theme.danger.opacity(0.3), lineWidth: 1)
+                                .stroke(Theme.danger.opacity(0.55), lineWidth: 1.5)
                         )
-                    Image(systemName: "shield.fill")
+                    Image(systemName: "figure.strengthtraining.traditional")
                         .font(.title2)
                         .foregroundColor(Theme.danger)
                 }
-                .glow(color: Theme.danger.opacity(0.3), radius: 5)
+                .glow(color: Theme.danger.opacity(0.35), radius: 6)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("ICE DRAGON OVERLORD")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("CLAN REP GOAL")
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
                         .foregroundColor(.white)
                     
-                    Text("HP: 142,500 / 200,000")
-                        .font(.system(size: 9, design: .monospaced))
+                    Text("Train workouts contribute clan reps")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundColor(Theme.textSecondary)
                     
-                    // HP Bar
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.white.opacity(0.12))
-                            .frame(height: 5)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.white.opacity(0.14))
+                            .frame(height: 7)
                         GeometryReader { gr in
-                            RoundedRectangle(cornerRadius: 2)
+                            RoundedRectangle(cornerRadius: 3)
                                 .fill(Theme.danger)
-                                .frame(width: gr.size.width * CGFloat(142500.0 / 200000.0), height: 5)
-                                .glow(color: Theme.danger.opacity(0.4), radius: 2)
+                                .frame(width: gr.size.width * raidProgress, height: 7)
                         }
-                        .frame(height: 5)
+                        .frame(height: 7)
                     }
                 }
             }
             
-            HStack {
-                Text("Today's Clan Reps:")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(Theme.textSecondary)
-                Spacer()
-                Text("\(clan.totalReps) / 500 Reps")
+            VStack(spacing: 8) {
+                HStack {
+                    Text("Today's clan reps")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                    Spacer()
+                    Text("\(clan.totalReps) / 500")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(Theme.accent)
+                }
+                
+                GeometryReader { gr in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.1))
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Theme.accent)
+                            .frame(width: gr.size.width * raidProgress)
+                    }
+                }
+                .frame(height: 8)
+                
+                Text("TRAIN to contribute · open Raids tab for World Boss")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.accent)
+                    .foregroundColor(Theme.warning)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(14)
-        .background(Theme.secondaryCard.opacity(0.85))
-        .cornerRadius(14)
-        .dndBorder()
+        .padding(16)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "2A1210"), Color(hex: "120808")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.danger.opacity(0.5), lineWidth: 1.5)
+        )
+        .shadow(color: Theme.danger.opacity(0.2), radius: 10, y: 4)
         .padding(.horizontal)
     }
 }
@@ -1899,7 +1980,6 @@ struct TavernFireplace: View {
     
     var body: some View {
         ZStack {
-            // Logs structure
             HStack(spacing: -3) {
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(Color(hex: "4E342E"))
@@ -1912,27 +1992,30 @@ struct TavernFireplace: View {
             }
             .offset(y: 10)
             
-            // Fire ambient glowing leak
             Circle()
                 .fill(Color.orange.opacity(0.35))
                 .frame(width: 48, height: 48)
                 .blur(radius: 6)
                 .scaleEffect(flameScale)
             
-            // Outer fire core
             Circle()
                 .fill(Color.red.opacity(0.2))
                 .frame(width: 60, height: 60)
                 .blur(radius: 8)
                 .scaleEffect(flameScale * 1.1)
             
-            // Flame emoji
-            Text("🔥")
+            Image(systemName: "flame.fill")
                 .font(.title2)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color(hex: "FFB300"), Color(hex: "EF4444")],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                )
                 .scaleEffect(flameScale)
                 .offset(y: 2)
             
-            // Rising sparks particle simulation
             ForEach(sparks) { spark in
                 Circle()
                     .fill(Color(hex: "FFB300").opacity(spark.opacity))
@@ -1940,12 +2023,12 @@ struct TavernFireplace: View {
                     .offset(x: spark.x, y: spark.y)
             }
         }
+        .allowsHitTesting(false)
         .onAppear {
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                 flameScale = 1.15
             }
             
-            // Emit sparks on timer
             Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { _ in
                 let newSpark = SparkParticle(
                     x: CGFloat.random(in: -8...8),
@@ -1973,181 +2056,289 @@ struct TavernFireplace: View {
 struct ClanTavernSceneCard: View {
     let clan: Clan
     @Binding var selectedMember: ClanMember?
+    var onInvite: () -> Void = {}
+    
+    /// Fixed seats around the table (empty pedestals when unfilled).
+    private let seatCount = 6
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "house.fill")
-                    .foregroundColor(Theme.primary)
-                Text("COZY CLAN TAVERN")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.textSecondary)
+                Image(systemName: "cup.and.saucer.fill")
+                    .foregroundColor(Theme.accent)
+                Text("GUILD TAVERN")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(.white)
                     .tracking(1.5)
                 Spacer()
-                Text("Tap avatar for details")
-                    .font(.system(size: 8, design: .monospaced))
-                    .foregroundColor(Theme.textMuted)
+                Text("\(min(clan.members.count, seatCount))/\(seatCount) seated")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
             }
             .padding(.horizontal, 14)
             .padding(.top, 14)
             
             ZStack {
-                // Alternating wooden floor panels
+                // Warm plank floor
                 VStack(spacing: 0) {
-                    ForEach(0..<8) { row in
+                    ForEach(0..<8, id: \.self) { row in
                         HStack(spacing: 0) {
-                            ForEach(0..<4) { col in
+                            ForEach(0..<4, id: \.self) { col in
                                 Rectangle()
-                                    .fill(Color(hex: (row + col) % 2 == 0 ? "17100B" : "1E1510"))
+                                    .fill(Color(hex: (row + col) % 2 == 0 ? "1C140E" : "241A12"))
                                     .overlay(
                                         Rectangle()
-                                            .stroke(Color.black.opacity(0.2), lineWidth: 0.5)
+                                            .stroke(Color.black.opacity(0.25), lineWidth: 0.5)
                                     )
                             }
                         }
                     }
                 }
-                .frame(height: 200)
+                .frame(height: 236)
                 .cornerRadius(16)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(Theme.border, lineWidth: 1.5)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Theme.accent.opacity(0.55), Theme.healerColor.opacity(0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.5
+                        )
                 )
                 
-                // Hearth brick fireplace at Top Center
+                // Soft hearth glow
+                Circle()
+                    .fill(Theme.healerColor.opacity(0.12))
+                    .frame(width: 140, height: 140)
+                    .blur(radius: 28)
+                    .offset(y: 10)
+                    .allowsHitTesting(false)
+                
                 VStack {
                     ZStack {
-                        // Hearth stone back
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(hex: "374151")) // stone dark gray
-                            .frame(width: 60, height: 38)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.black, lineWidth: 1))
+                            .fill(Color(hex: "2A2220"))
+                            .frame(width: 64, height: 40)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(hex: "1A1412"), lineWidth: 1))
                         
                         TavernFireplace()
                     }
-                    .offset(y: 8)
+                    .offset(y: 6)
                     Spacer()
                 }
                 
-                let activeMembers = clan.members.filter { $0.repsContributed > 0 }
-                let inactiveMembers = clan.members.filter { $0.repsContributed == 0 }
-                
-                // Active tavern circular table
+                // Round table with mug (SF Symbol — no emoji tofu / "?")
                 ZStack {
                     Circle()
-                        .fill(Color(hex: "3E2723")) // mahogany brown
-                        .frame(width: 66, height: 66)
-                        .shadow(color: .black.opacity(0.5), radius: 6, y: 3)
+                        .fill(
+                            RadialGradient(
+                                colors: [Color(hex: "5D4037"), Color(hex: "3E2723")],
+                                center: .center,
+                                startRadius: 4,
+                                endRadius: 36
+                            )
+                        )
+                        .frame(width: 72, height: 72)
+                        .shadow(color: .black.opacity(0.55), radius: 8, y: 4)
                         .overlay(Circle().stroke(Color(hex: "271712"), lineWidth: 4))
-                    Text("🍻")
-                        .font(.body)
+                        .overlay(
+                            Circle()
+                                .stroke(Theme.healerColor.opacity(0.25), lineWidth: 1)
+                                .padding(6)
+                        )
+                    Image(systemName: "cup.and.saucer.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Theme.healerColor, Color(hex: "B45309")],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .glow(color: Theme.healerColor.opacity(0.35), radius: 4)
                 }
-                .offset(y: 15)
+                .offset(y: 18)
+                .allowsHitTesting(false)
                 
-                // Place active members around the table
-                ForEach(0..<activeMembers.count, id: \.self) { idx in
-                    let member = activeMembers[idx]
-                    let angle = Double(idx) * (2.0 * .pi / Double(max(1, activeMembers.count))) + (.pi / 4.0)
-                    let radius: Double = 56.0
+                // Seats: members first, then empty pedestals
+                ForEach(0..<seatCount, id: \.self) { idx in
+                    let angle = Double(idx) * (2.0 * .pi / Double(seatCount)) - (.pi / 2.0)
+                    let radius: Double = 82.0
                     let x = cos(angle) * radius
-                    let y = sin(angle) * radius + 15.0
+                    let y = sin(angle) * radius + 18.0
                     
-                    Button(action: { selectedMember = member }) {
-                        VStack(spacing: 2) {
-                            ZStack(alignment: .bottomTrailing) {
-                                memberAvatarView(member: member, isActive: true)
-                                
-                                // Active indicator spark
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 7))
-                                    .foregroundColor(Theme.warning)
-                                    .padding(2.5)
-                                    .background(Circle().fill(Color.black))
+                    if idx < clan.members.count {
+                        let member = clan.members[idx]
+                        let isActive = member.repsContributed > 0
+                        Button(action: { selectedMember = member }) {
+                            VStack(spacing: 3) {
+                                ZStack(alignment: .bottomTrailing) {
+                                    memberAvatarView(member: member, isActive: isActive)
+                                    if isActive {
+                                        Image(systemName: "sparkles")
+                                            .font(.system(size: 7))
+                                            .foregroundColor(Theme.warning)
+                                            .padding(2.5)
+                                            .background(Circle().fill(Color.black.opacity(0.9)))
+                                    }
+                                }
+                                Text(seatLabel(for: member))
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(Theme.textPrimary)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.7)
+                                    .multilineTextAlignment(.center)
+                                    .frame(width: 58)
                             }
-                            
-                            Text(member.username)
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundColor(Theme.textPrimary)
-                                .lineLimit(1)
-                                .frame(width: 44)
                         }
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .offset(x: CGFloat(x), y: CGFloat(y))
-                }
-                
-                // Place inactive members sleeping in the corners
-                ForEach(0..<inactiveMembers.count, id: \.self) { idx in
-                    let member = inactiveMembers[idx]
-                    let x: CGFloat = idx % 2 == 0 ? -120 + CGFloat(idx / 2 * 32) : 120 - CGFloat(idx / 2 * 32)
-                    let y: CGFloat = -45 + CGFloat(idx / 2 * 20)
-                    
-                    Button(action: { selectedMember = member }) {
-                        VStack(spacing: 2) {
-                            ZStack(alignment: .topTrailing) {
-                                memberAvatarView(member: member, isActive: false)
-                                    .opacity(0.65)
-                                
-                                // sleeping Zzz bubble
-                                Text("💤")
-                                    .font(.system(size: 7))
-                                    .offset(x: 4, y: -4)
+                        .buttonStyle(PlainButtonStyle())
+                        .offset(x: CGFloat(x), y: CGFloat(y))
+                        .accessibilityLabel("\(seatLabel(for: member)), \(member.characterClass.rawValue)")
+                    } else {
+                        Button(action: onInvite) {
+                            VStack(spacing: 3) {
+                                ZStack {
+                                    Circle()
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                                        .foregroundColor(Theme.accent.opacity(0.65))
+                                        .frame(width: 36, height: 36)
+                                        .background(
+                                            Circle()
+                                                .fill(Color(hex: "1A1510").opacity(0.92))
+                                        )
+                                    Image(systemName: "person.badge.plus")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(Theme.accent)
+                                }
+                                Text("Empty")
+                                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                    .foregroundColor(Theme.textSecondary)
+                                Text("Invite")
+                                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                                    .foregroundColor(Theme.accent)
                             }
-                            
-                            Text(member.username)
-                                .font(.system(size: 7))
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(1)
-                                .frame(width: 44)
+                            .frame(width: 54)
                         }
+                        .buttonStyle(PlainButtonStyle())
+                        .offset(x: CGFloat(x), y: CGFloat(y))
+                        .accessibilityLabel("Empty seat, invite friend")
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    .offset(x: x, y: y)
                 }
             }
-            .frame(height: 200)
+            .frame(height: 236)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
+            
+            Button(action: onInvite) {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.badge.plus")
+                    Text(clan.isFull ? "GUILD FULL" : "INVITE ALLIES TO THE HALL")
+                        .fontWeight(.black)
+                }
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(clan.isFull ? Theme.textMuted : .black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    Group {
+                        if clan.isFull {
+                            Theme.secondaryCard
+                        } else {
+                            LinearGradient(
+                                colors: [Theme.accent, Color(hex: "818CF8")],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        }
+                    }
+                )
+                .cornerRadius(12)
+                .shadow(color: clan.isFull ? .clear : Theme.accent.opacity(0.35), radius: 8, y: 3)
+            }
+            .buttonStyle(TactileButtonStyle())
+            .disabled(clan.isFull)
             .padding(.horizontal, 14)
             .padding(.bottom, 14)
         }
-        .background(Theme.cardBackground.opacity(0.85))
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "1E1610"), Color(hex: "120E0A")],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
         .cornerRadius(16)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border, lineWidth: 1))
-        .dndBorder(color: Theme.accent.opacity(0.3), length: 12, lineWidth: 1)
-        .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.accent.opacity(0.45), lineWidth: 1.5))
+        .shadow(color: Color.black.opacity(0.35), radius: 10, y: 5)
         .padding(.horizontal)
+    }
+
+    /// Prefer a human name; if username looks like a shared numeric id, show class instead so seats differ.
+    private func seatLabel(for member: ClanMember) -> String {
+        let raw = member.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let looksLikeNumericId = !raw.isEmpty && raw.count >= 5 && raw.allSatisfy(\.isNumber)
+        let sameNameCount = clan.members.filter {
+            $0.username.trimmingCharacters(in: .whitespacesAndNewlines) == raw
+        }.count
+
+        if raw.isEmpty || looksLikeNumericId {
+            return member.characterClass.rawValue
+        }
+        if sameNameCount > 1 {
+            return "\(raw) · \(shortClass(member.characterClass))"
+        }
+        return raw
+    }
+
+    private func shortClass(_ c: CharacterClass) -> String {
+        switch c {
+        case .archer: return "Arc"
+        case .mage: return "Mage"
+        case .swordsman: return "Sword"
+        case .healer: return "Heal"
+        }
     }
     
     @ViewBuilder
     private func memberAvatarView(member: ClanMember, isActive: Bool) -> some View {
-        let avatar = avatarName(for: member)
+        let avatar = BattleAvatar.resolve(avatarName: nil, characterClass: member.characterClass)
         ZStack {
             if let uiImage = loadLocalAvatar(named: avatar) {
                 Image(platformImage: uiImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 36, height: 36)
                     .clipShape(Circle())
             } else {
                 Circle()
-                    .fill(member.characterClass.themeColor.opacity(0.15))
-                    .frame(width: 32, height: 32)
+                    .fill(member.characterClass.themeColor.opacity(0.25))
+                    .frame(width: 36, height: 36)
                     .overlay(
-                        Image(systemName: "person.fill")
-                            .font(.caption2)
+                        Image(systemName: classSeatIcon(member.characterClass))
+                            .font(.caption)
                             .foregroundColor(member.characterClass.themeColor)
                     )
             }
         }
-        .overlay(Circle().stroke(isActive ? Color.green.opacity(0.8) : member.characterClass.themeColor.opacity(0.4), lineWidth: 1.5))
+        .overlay(
+            Circle()
+                .stroke(
+                    isActive ? Color.green.opacity(0.9) : member.characterClass.themeColor.opacity(0.7),
+                    lineWidth: 2
+                )
+        )
+        .shadow(color: member.characterClass.themeColor.opacity(0.35), radius: 4, y: 1)
         .glow(color: isActive ? Color.green.opacity(0.4) : member.characterClass.themeColor.opacity(0.2), radius: 3)
     }
-    
-    private func avatarName(for member: ClanMember) -> String {
-        switch member.characterClass {
-        case .archer: return "avatar_archer"
-        case .mage: return "avatar_mage"
-        case .swordsman: return "avatar_knight"
-        case .healer: return "avatar_healer"
+
+    private func classSeatIcon(_ c: CharacterClass) -> String {
+        switch c {
+        case .archer: return "arrow.up.forward"
+        case .mage: return "wand.and.stars"
+        case .swordsman: return "shield.fill"
+        case .healer: return "cross.case.fill"
         }
     }
 }

@@ -27,11 +27,27 @@ assert(
 );
 assert(
   derivePvpWinnerId({
-    localTeam: local,
-    opponentTeam: [{ id: "u2", health: 20, reps: 0 }],
+    localTeam: [{ id: "u1", health: 10, reps: 5 }],
+    opponentTeam: [{ id: "bot_1", health: 10, reps: 8 }],
     surrenderedBy: "u1",
-  }) === "u2",
-  "surrender"
+  }) === "bot_1",
+  "surrender vs bot"
+);
+
+assert(
+  derivePvpWinnerId({
+    localTeam: [
+      { id: "u1", health: 50, reps: 2 },
+      { id: "bot_ally", health: 50, reps: 0 },
+    ],
+    opponentTeam: [
+      { id: "bot_1", health: 40, reps: 1 },
+      { id: "bot_2", health: 40, reps: 1 },
+      { id: "bot_3", health: 40, reps: 1 },
+    ],
+    surrenderedBy: "u1",
+  }) === "bot_1",
+  "3v3 surrender vs bots"
 );
 
 assert(isAllowedActivityReason("training"), "training ok");

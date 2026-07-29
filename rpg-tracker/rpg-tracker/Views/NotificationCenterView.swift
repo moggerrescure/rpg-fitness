@@ -100,6 +100,23 @@ struct NotificationCenterView: View {
 
 struct NotificationCard: View {
     let notification: InAppNotification
+
+    private var accent: Color { colorForType(notification.type) }
+    private var isActionable: Bool {
+        guard let type = notification.actionData?["type"] else { return false }
+        return type == "duel" || type == "teamInvite" || type == "friendRequest"
+    }
+    private var ctaLabel: String {
+        switch notification.actionData?["type"] {
+        case "teamInvite": return "Tap to join"
+        case "duel": return "Tap to accept"
+        case "friendRequest": return "View request"
+        default: return ""
+        }
+    }
+    private var iconName: String {
+        notification.type.iconName(actionData: notification.actionData)
+    }
     
     var body: some View {
         Button(action: {
@@ -114,61 +131,114 @@ struct NotificationCard: View {
                 }
             }
         }) {
-            HStack(spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(colorForType(notification.type).opacity(0.15))
-                        .frame(width: 44, height: 44)
+                        .fill(
+                            LinearGradient(
+                                colors: [accent.opacity(0.35), accent.opacity(0.12)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 48, height: 48)
                     
-                    Image(systemName: notification.type.iconName)
-                        .font(.title3)
-                        .foregroundColor(colorForType(notification.type))
+                    Image(systemName: iconName)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(accent)
+                        .accessibilityHidden(true)
                 }
+                .overlay(
+                    Circle()
+                        .stroke(accent.opacity(notification.isRead ? 0.25 : 0.65), lineWidth: notification.isRead ? 1 : 1.5)
+                )
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(notification.title)
                             .font(.system(.subheadline, design: .monospaced))
                             .fontWeight(.bold)
                             .foregroundColor(notification.isRead ? Theme.textSecondary : Theme.textPrimary)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                            .fixedSize(horizontal: false, vertical: true)
                         
-                        Spacer()
+                        Spacer(minLength: 4)
                         
                         if !notification.isRead {
                             Circle()
                                 .fill(Theme.danger)
                                 .frame(width: 8, height: 8)
+                                .accessibilityLabel("Unread")
                         }
                     }
                     
-                    Text(notification.message)
+                    Text(displayMessage)
                         .font(.caption)
-                        .foregroundColor(Theme.textMuted)
+                        .foregroundColor(Theme.textSecondary)
                         .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                     
-                    Text(timeAgoDisplay(notification.createdAt))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Theme.textMuted.opacity(0.7))
-                        .padding(.top, 2)
-                }
-            }
-            .padding()
-            .background(
-                ZStack {
-                    if !notification.isRead {
-                        colorForType(notification.type).opacity(0.08)
-                            .shadow(color: colorForType(notification.type).opacity(0.3), radius: 8, x: 0, y: 0)
+                    HStack(spacing: 10) {
+                        Text(timeAgoDisplay(notification.createdAt))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(Theme.textMuted)
+                        
+                        Spacer(minLength: 0)
+                        
+                        if isActionable {
+                            HStack(spacing: 4) {
+                                Text(ctaLabel)
+                                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(accent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(accent.opacity(0.15))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(accent.opacity(0.35), lineWidth: 1))
+                        }
                     }
                 }
-                .background(.thinMaterial)
+            }
+            .padding(14)
+            .background(
+                ZStack {
+                    Theme.cardBackground.opacity(notification.isRead ? 0.72 : 0.92)
+                    if !notification.isRead {
+                        accent.opacity(0.08)
+                    }
+                }
             )
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(notification.isRead ? Theme.border : colorForType(notification.type).opacity(0.6), lineWidth: notification.isRead ? 1 : 2)
+                    .stroke(
+                        notification.isRead ? Theme.border : accent.opacity(0.55),
+                        lineWidth: notification.isRead ? 1 : 1.5
+                    )
             )
+            .shadow(color: notification.isRead ? .clear : accent.opacity(0.18), radius: 8, y: 2)
         }
         .buttonStyle(TactileButtonStyle())
+        .accessibilityHint(isActionable ? ctaLabel : "")
+    }
+
+    /// Strip redundant "Tap to join" from body when CTA chip is shown.
+    private var displayMessage: String {
+        var msg = notification.message
+        if isActionable {
+            for suffix in [" Tap to join.", " Tap to join", " Tap to accept.", " Tap to accept"] {
+                if msg.hasSuffix(suffix) {
+                    msg = String(msg.dropLast(suffix.count))
+                    break
+                }
+            }
+        }
+        return msg
     }
     
     private func colorForType(_ type: NotificationType) -> Color {

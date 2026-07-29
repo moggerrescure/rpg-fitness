@@ -15,12 +15,15 @@ import {
     applyXpToProgression,
     clampActivityRewards,
     clampPvERewards,
+    computeTrainEnergyGrant,
     consumeEnergyChargeForRefund,
     FITRPG_USER_FIELD_KEYS,
     pvpOutcomeForPlayer,
     registerEnergySpend,
     rewardsForPvpOutcome,
     rollClanWarWin,
+    TRAIN_ENERGY_PER_SESSION,
+    utcDayKey,
 } from "./economyHelpers";
 import {
     derivePvpWinnerId,
@@ -28,6 +31,7 @@ import {
     isBattleParticipant,
     participantUidsFromTeams,
     stripUserForPublic,
+    teamPlayerIds,
 } from "./battleHelpers";
 import {
     mergeTeamGuests,
@@ -977,13 +981,14 @@ export const acceptFriendDuel = fitRpgOnCall(async (data, context) => {
             characterClass: acceptor.characterClass || "Swordsman",
             health: Number(acceptor.health) || 110,
             maxHealth: Number(acceptor.maxHealth) || 110,
-            avatarName: acceptor.avatarName || "avatar_swordsman",
+            avatarName: acceptor.avatarName || "avatar_knight",
             reps: 0
         };
 
         transaction.update(battleRef, {
             opponentTeam: [acceptorPlayer],
-            status: "active",
+            // Must match iOS BattleStatus.active rawValue ("Active Combat")
+            status: "Active Combat",
             participantUids: participantUidsFromTeams(localTeam, [acceptorPlayer]),
             createdByServer: true,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -1167,7 +1172,8 @@ export const matchWithOpponent = fitRpgOnCall(async (data, context) => {
         transaction.set(battleRef, {
             id: resolvedBattleId,
             type: myTicket.teamType || currentOpp.teamType || "1v1 Duel",
-            status: "active",
+            // Must match iOS BattleStatus.active rawValue ("Active Combat")
+            status: "Active Combat",
             localTeam,
             opponentTeam,
             participantUids: participantUidsFromTeams(localTeam, opponentTeam),
@@ -1431,7 +1437,12 @@ export const resolvePvPBattle = fitRpgOnCall(async (data, context) => {
 
         // Ignore client winnerId — derive from HP/reps/surrender
         const winnerId = derivePvpWinnerId(battle);
-        const outcome = pvpOutcomeForPlayer(winnerId, uid);
+        const outcome = pvpOutcomeForPlayer(
+            winnerId,
+            uid,
+            teamPlayerIds(battle.localTeam),
+            teamPlayerIds(battle.opponentTeam)
+        );
         const rewards = rewardsForPvpOutcome(outcome);
         const selectedClass = userData.selectedClass || "Archer";
         const { updates: progUpdates } = applyXpToProgression(
@@ -1479,8 +1490,8 @@ export const adjustEnergy = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     const uid = context.auth.uid;
     const op = String(data.op || "");
-    if (!["spend", "refund", "regen"].includes(op)) {
-        throw new functions.https.HttpsError("invalid-argument", "op must be spend|refund|regen.");
+    if (!["spend", "refund", "regen", "train"].includes(op)) {
+        throw new functions.https.HttpsError("invalid-argument", "op must be spend|refund|regen|train.");
     }
     const amount = Math.floor(Number(data.amount) || 0);
     if ((op === "spend" || op === "refund") && amount <= 0) {
@@ -1515,6 +1526,7 @@ export const adjustEnergy = fitRpgOnCall(async (data, context) => {
             lastEnergyRegenAt: now,
         };
         let chargeIdOut: string | undefined;
+        let trainAwarded = 0;
 
         if (op === "spend") {
             if (energy < amount) {
@@ -1553,11 +1565,30 @@ export const adjustEnergy = fitRpgOnCall(async (data, context) => {
             energy = Math.min(maxEnergy, energy + consumed.refundAmount);
             updates.energy = energy;
             updates.pendingEnergyCharges = consumed.remaining;
+        } else if (op === "train") {
+            // Camera free-train session complete → +5 energy, max +40/day (UTC).
+            // Health Sync must NOT use this op.
+            const todayKey = utcDayKey(nowMs);
+            const grant = computeTrainEnergyGrant({
+                requested: amount > 0 ? amount : TRAIN_ENERGY_PER_SESSION,
+                awardedToday: userData.trainEnergyAwardedToday,
+                dayKey: userData.lastTrainEnergyDay,
+                todayKey,
+            });
+            const room = Math.max(0, maxEnergy - energy);
+            trainAwarded = Math.min(grant.awarded, room);
+            const sameDay = String(userData.lastTrainEnergyDay || "") === todayKey;
+            const used = sameDay ? Math.max(0, Math.floor(Number(userData.trainEnergyAwardedToday) || 0)) : 0;
+            energy = Math.min(maxEnergy, energy + trainAwarded);
+            updates.energy = energy;
+            updates.lastTrainEnergyDay = todayKey;
+            // Only count energy actually granted (full bar does not burn daily budget).
+            updates.trainEnergyAwardedToday = used + trainAwarded;
         }
         // regen: energy already topped up above
 
         transaction.update(userRef, updates);
-        return { energy, maxEnergy, chargeId: chargeIdOut };
+        return { energy, maxEnergy, chargeId: chargeIdOut, trainAwarded };
     });
 
     return { success: true, ...result };
@@ -1698,12 +1729,14 @@ export const cleanupFitRPGAccount = fitRpgOnCall(async (data, context) => {
         await userRef.update(deletions);
     }
 
-    // Delete FitRPG notifications subcollection only
-    const notifs = await userRef.collection("notifications").listDocuments();
-    for (let i = 0; i < notifs.length; i += 400) {
-        const batch = db.batch();
-        notifs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
-        await batch.commit();
+    // Delete FitRPG notifications + UGC block list subcollections
+    for (const sub of ["notifications", "blocked"] as const) {
+        const docs = await userRef.collection(sub).listDocuments();
+        for (let i = 0; i < docs.length; i += 400) {
+            const batch = db.batch();
+            docs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
+            await batch.commit();
+        }
     }
 
     // Cancel open matchmaking tickets owned by user
@@ -1733,7 +1766,11 @@ export const onMatchmakingTicketCreated = functions.firestore
                 "Duel Request! ⚔️", 
                 `${senderName} challenged you to a duel! Open the app to accept.`
             );
-        } else if (ticket.teamType === "team3v3" && ticket.status === "searchingTeammates" && ticket.uid) {
+        } else if (
+            (ticket.teamType === "3v3 Team Battle" || ticket.teamType === "team3v3")
+            && ticket.status === "searchingTeammates"
+            && ticket.uid
+        ) {
             const senderDoc = await db.collection("users").doc(ticket.uid).get();
             const userData = senderDoc.data();
             const senderName = userData?.name || "A clanmate";
@@ -1780,19 +1817,20 @@ export const fillTeammatesWithBots = fitRpgOnCall(async (data, context) => {
         lobbyBattleId = ticket.battleId || null;
         
         const team = ticket.team || [];
-        const bots = ["HealerBot", "TankBot", "MageBot"];
+        const allyNames = ["Life Binder", "Rune Companion", "Keen Scout"];
+        const allyAvatars = ["avatar_healer", "avatar_mage", "avatar_archer"];
         
         let botIdx = 0;
         while (team.length < 3) {
             const botClass = team.length === 1 ? "Healer" : "Mage";
-            const botClassLower = botClass.toLowerCase();
+            const avatar = allyAvatars[botIdx % allyAvatars.length];
             team.push({
                 id: `bot_${admin.firestore.Timestamp.now().toMillis()}_${botIdx}`,
-                name: bots[botIdx % bots.length] || "Bot",
+                name: allyNames[botIdx % allyNames.length] || "Dawn Sentinel",
                 characterClass: botClass,
                 health: 110,
                 maxHealth: 110,
-                avatarName: `avatar_${botClassLower}`,
+                avatarName: avatar,
                 reps: 0
             });
             botIdx++;
@@ -1847,19 +1885,24 @@ export const triggerOpponentBotFallback = fitRpgOnCall(async (data, context) => 
         finalBattleId = battleId;
         const opponentTeam: any[] = [];
         
-        if (type === "team3v3") {
-            const bots = ["ShadowFiend", "DoomBringer", "NightStalker"];
-            const classes = ["Swordsman", "Mage", "Archer"];
+        // Client sends BattleType.rawValue ("3v3 Team Battle"); accept legacy "team3v3" too.
+        const isTeam3v3 = type === "3v3 Team Battle" || type === "team3v3"
+            || ticket.teamType === "3v3 Team Battle" || ticket.teamType === "team3v3";
+        if (isTeam3v3) {
+            const bots = [
+                { name: "Shadow Warrior", cls: "Swordsman", avatar: "avatar_knight" },
+                { name: "Frost Hexer", cls: "Mage", avatar: "avatar_mage" },
+                { name: "Silent Arrow", cls: "Archer", avatar: "avatar_archer" },
+            ];
             for (let i = 0; i < 3; i++) {
                 const health = 110 + (i * 10);
-                const classLower = classes[i].toLowerCase();
                 opponentTeam.push({
                     id: `bot_${admin.firestore.Timestamp.now().toMillis()}_${i}`,
-                    name: bots[i],
-                    characterClass: classes[i],
+                    name: bots[i].name,
+                    characterClass: bots[i].cls,
                     health: health,
                     maxHealth: health,
-                    avatarName: `avatar_${classLower}`,
+                    avatarName: bots[i].avatar,
                     reps: 0
                 });
             }
@@ -1871,7 +1914,7 @@ export const triggerOpponentBotFallback = fitRpgOnCall(async (data, context) => 
                 characterClass: "Swordsman",
                 health: myCharLevel,
                 maxHealth: myCharLevel,
-                avatarName: "avatar_swordsman",
+                avatarName: "avatar_knight",
                 reps: 0
             });
         }
@@ -1879,7 +1922,8 @@ export const triggerOpponentBotFallback = fitRpgOnCall(async (data, context) => 
         const newBattle = {
             id: battleId,
             type: ticket.teamType || type,
-            status: "active",
+            // Must match iOS BattleStatus.active rawValue ("Active Combat")
+            status: "Active Combat",
             localTeam: ticket.team || [],
             opponentTeam: opponentTeam,
             participantUids: participantUidsFromTeams(ticket.team || [], opponentTeam),

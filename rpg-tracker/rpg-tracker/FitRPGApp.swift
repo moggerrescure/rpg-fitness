@@ -163,8 +163,22 @@ struct FitRPGApp: App {
             .onOpenURL { url in
                 if url.scheme == "rpgfitness", url.host == "friend" {
                     if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                       let uid = components.queryItems?.first(where: { $0.name == "uid" })?.value {
+                       let uid = components.queryItems?.first(where: { $0.name == "uid" })?.value,
+                       !uid.isEmpty {
                         Task {
+                            guard firebaseService.currentCharacter != nil else {
+                                await MainActor.run {
+                                    firebaseService.lastActionError = "Sign in first, then open the invite link again."
+                                    NotificationManager.shared.pendingDeepLink = "friends"
+                                }
+                                return
+                            }
+                            guard uid != firebaseService.currentCharacter?.id else {
+                                await MainActor.run {
+                                    NotificationManager.shared.pendingDeepLink = "friends"
+                                }
+                                return
+                            }
                             await firebaseService.sendFriendRequest(to: uid)
                             await MainActor.run {
                                 NotificationCenter.default.post(

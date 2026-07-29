@@ -76,13 +76,22 @@ class ClassSelectionVM: ObservableObject {
                 stats: CharacterStats(),
                 equippedWeaponId: defaultWeapon?.id,
                 equippedArmorId: defaultArmor?.id,
-                clanId: nil
+                clanId: nil,
+                avatarName: self.selectedClass.defaultAvatarName
             )
 
             // Save to Firestore — this will trigger the snapshot listener in FirebaseService
-            // and automatically update currentCharacter
+            // and automatically update currentCharacter. Also write usernameLower for search.
             do {
-                try db.collection("users").document(uid).setData(from: newChar)
+                guard var data = try Firestore.Encoder().encode(newChar) as? [String: Any] else {
+                    throw NSError(domain: "FitRPG", code: 1, userInfo: [
+                        NSLocalizedDescriptionKey: "Failed to encode character."
+                    ])
+                }
+                data["username"] = cleanName
+                data["usernameLower"] = cleanName.lowercased()
+                data["currentLevel"] = 1
+                try await db.collection("users").document(uid).setData(data)
                 self.isSubmitting = false
                 completion(true)
             } catch {

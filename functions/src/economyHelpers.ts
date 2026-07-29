@@ -19,11 +19,65 @@ export const ACTIVITY_XP_CAP = 200;
 export const ACTIVITY_GOLD_CAP = 80;
 export const ACTIVITY_REWARDS_PER_HOUR = 40;
 
+/** Free-train / camera session → energy (CF adjustEnergy op "train" only). */
+export const TRAIN_ENERGY_PER_SESSION = 5;
+export const TRAIN_ENERGY_DAILY_CAP = 40;
+
+/** UTC calendar day key YYYY-MM-DD for train-energy daily cap. */
+export function utcDayKey(ms: number = Date.now()): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/**
+ * Cap train-energy grant by daily budget. Does not apply maxEnergy clamp —
+ * caller applies Math.min(maxEnergy, energy + awarded).
+ */
+export function computeTrainEnergyGrant(opts: {
+  requested?: unknown;
+  awardedToday: unknown;
+  dayKey: unknown;
+  todayKey: string;
+  perSession?: number;
+  dailyCap?: number;
+}): { awarded: number; nextAwardedToday: number; dayRollover: boolean } {
+  const perSession = opts.perSession ?? TRAIN_ENERGY_PER_SESSION;
+  const dailyCap = opts.dailyCap ?? TRAIN_ENERGY_DAILY_CAP;
+  const requested = clampInt(opts.requested, 0, perSession, perSession);
+  const sameDay = String(opts.dayKey || "") === opts.todayKey;
+  const used = sameDay ? clampInt(opts.awardedToday, 0, dailyCap, 0) : 0;
+  const remaining = Math.max(0, dailyCap - used);
+  const awarded = Math.min(requested, remaining, perSession);
+  return {
+    awarded,
+    nextAwardedToday: used + awarded,
+    dayRollover: !sameDay,
+  };
+}
+
 export type PvpOutcome = "win" | "loss" | "draw";
 
-export function pvpOutcomeForPlayer(winnerId: string | null | undefined, playerUid: string): PvpOutcome {
+/**
+ * Map a derived winnerId to this player's outcome.
+ * Optional team id lists make 3v3 teammates share the win (winnerId is team captain / first id).
+ */
+export function pvpOutcomeForPlayer(
+  winnerId: string | null | undefined,
+  playerUid: string,
+  localTeamIds?: string[],
+  opponentTeamIds?: string[]
+): PvpOutcome {
   if (!winnerId || winnerId === "draw") return "draw";
   if (winnerId === playerUid) return "win";
+  if (localTeamIds?.length || opponentTeamIds?.length) {
+    const local = localTeamIds || [];
+    const opp = opponentTeamIds || [];
+    const playerOnLocal = local.includes(playerUid);
+    const playerOnOpp = opp.includes(playerUid);
+    const winOnLocal = local.includes(winnerId);
+    const winOnOpp = opp.includes(winnerId);
+    if (playerOnLocal && winOnLocal) return "win";
+    if (playerOnOpp && winOnOpp) return "win";
+  }
   return "loss";
 }
 
@@ -170,6 +224,8 @@ export const FITRPG_USER_FIELD_KEYS = [
   "classTrophies",
   "lastActive",
   "lastHealthSyncDate",
+  "lastTrainEnergyDay",
+  "trainEnergyAwardedToday",
   "progressions",
   "fcmToken",
 ] as const;

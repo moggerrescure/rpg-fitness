@@ -7,6 +7,7 @@ struct MainHubView: View {
     @State private var showClassSelection: Bool = false
     @State private var showProfile: Bool = false
     @State private var toastMessage: String? = nil
+    @State private var toastIsError: Bool = false
     @State private var showDungeonRun: Bool = false
     @State private var showNotifications: Bool = false
     @State private var showTeamLobby: Bool = false
@@ -41,7 +42,7 @@ struct MainHubView: View {
                         ZStack {
                             switch currentTab {
                             case 0:
-                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage, showNotifications: $showNotifications)
+                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage, toastIsError: $toastIsError, showNotifications: $showNotifications)
                             case 1:
                                 TrainingSelectionView()
                             case 2:
@@ -51,23 +52,27 @@ struct MainHubView: View {
                             case 4:
                                 WorldBossDashboardView(currentTab: $currentTab)
                             default:
-                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage, showNotifications: $showNotifications)
+                                HomeDashboardView(showClassSelection: $showClassSelection, showProfile: $showProfile, toastMessage: $toastMessage, toastIsError: $toastIsError, showNotifications: $showNotifications)
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .animation(.easeInOut(duration: 0.22), value: currentTab)
                         
-                        // Custom Bottom Nav Bar
-                        CustomBottomNavBar(currentTab: $currentTab, activeColor: firebaseService.currentCharacter?.selectedClass.themeColor ?? Theme.primary)
+                        // Hide nav during combat / result overlay / queue so DuelResultOverlay isn't clipped under the bar
+                        if multiplayerService.activeBattle == nil
+                            && !multiplayerService.isSearching
+                            && multiplayerService.friendDuelCountdown == nil {
+                            CustomBottomNavBar(currentTab: $currentTab, activeColor: firebaseService.currentCharacter?.selectedClass.themeColor ?? Theme.primary)
+                        }
                     }
                 }
                 
-                // Floating Toast Notification
+                // Floating Toast Notification (auto-dismiss ~3s)
                 if let msg = toastMessage {
                     VStack {
                         FloatingToastView(
                             message: msg,
-                            style: multiplayerService.matchmakingError != nil ? .error : .success
+                            style: toastIsError ? .error : .success
                         )
                             .padding(.top, 40)
                         Spacer()
@@ -75,8 +80,13 @@ struct MainHubView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(100)
                     .onTapGesture {
-                        withAnimation { toastMessage = nil }
-                        multiplayerService.matchmakingError = nil
+                        dismissHubToast()
+                    }
+                    .task(id: msg) {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        guard !Task.isCancelled else { return }
+                        guard toastMessage == msg else { return }
+                        dismissHubToast()
                     }
                 }
                 
@@ -272,6 +282,7 @@ struct MainHubView: View {
                     NotificationCenter.default.post(name: NSNotification.Name("FitRPGOpenFriendsSegment"), object: nil)
                 case "clan", "clanwar":
                     currentTab = 3
+                    NotificationCenter.default.post(name: NSNotification.Name("FitRPGOpenClanSegment"), object: nil)
                 case "raid", "worldboss":
                     currentTab = 4
                 default:
@@ -287,12 +298,21 @@ struct MainHubView: View {
             }
             .onChange(of: multiplayerService.matchmakingError) { err in
                 guard let err, !err.isEmpty else { return }
-                withAnimation { toastMessage = err }
+                withAnimation {
+                    toastIsError = true
+                    toastMessage = err
+                }
             }
             .onChange(of: firebaseService.lastActionError) { err in
                 guard let err, !err.isEmpty else { return }
-                withAnimation { toastMessage = err }
+                withAnimation {
+                    toastIsError = true
+                    toastMessage = err
+                }
                 firebaseService.lastActionError = nil
+            }
+            .onAppear {
+                firebaseService.applyEnergyRegenIfNeeded()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowDungeonRun"))) { _ in
                 showDungeonRun = true
@@ -300,6 +320,13 @@ struct MainHubView: View {
             .fullScreenCover(isPresented: $showDungeonRun) {
                 DungeonRunView()
             }
+        }
+    }
+
+    private func dismissHubToast() {
+        withAnimation {
+            toastMessage = nil
+            multiplayerService.matchmakingError = nil
         }
     }
 }
@@ -413,6 +440,7 @@ struct HomeDashboardView: View {
     @Binding var showClassSelection: Bool
     @Binding var showProfile: Bool
     @Binding var toastMessage: String?
+    @Binding var toastIsError: Bool
     @Binding var showNotifications: Bool
     @State private var showArmoryShop: Bool = false
     @State private var armoryInitialSlot: EquipmentSlot = .weapon
@@ -474,7 +502,7 @@ struct HomeDashboardView: View {
                     .padding(.horizontal)
                     .padding(.top, 14)
 
-                    ClassSwitcherPanel(toastMessage: $toastMessage)
+                    ClassSwitcherPanel(toastMessage: $toastMessage, toastIsError: $toastIsError)
                         .padding(.top, 14)
 
                     DailyQuestsSection(
@@ -505,6 +533,9 @@ struct HomeDashboardView: View {
                 .environmentObject(FirebaseService.shared)
                 .environmentObject(MultiplayerService.shared)
         }
+        .onAppear {
+            firebaseService.applyEnergyRegenIfNeeded()
+        }
     }
 }
 
@@ -517,10 +548,19 @@ struct DashboardNavBar: View {
     let onSwitchClass: () -> Void
     let onFriends: () -> Void
 
+    /// Prefer a readable hero name; never leave the HUD showing only "..."
+    private var heroDisplayName: String {
+        let raw = char.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty { return char.selectedClass.rawValue }
+        return raw
+    }
+
     var body: some View {
-        HStack(spacing: 10) {
+        // No Spacer: a Spacer steals width from the profile Button and collapses
+        // the name Text to SwiftUI's "..." ellipsis even when username is set.
+        HStack(alignment: .center, spacing: 8) {
             Button(action: { showProfile = true }) {
-                HStack(spacing: 11) {
+                HStack(spacing: 10) {
                     ZStack {
                         if let avatar = char.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
                             Image(platformImage: uiImage)
@@ -529,43 +569,53 @@ struct DashboardNavBar: View {
                                 .frame(width: 44, height: 44)
                                 .clipShape(Circle())
                         } else {
-                            Image(systemName: "person.crop.circle.fill")
-                                .font(.system(size: 34))
+                            Image(systemName: char.selectedClass.emblemSymbol)
+                                .font(.system(size: 22, weight: .bold))
                                 .foregroundColor(char.selectedClass.themeColor)
+                                .frame(width: 44, height: 44)
+                                .background(Circle().fill(char.selectedClass.themeColor.opacity(0.15)))
                         }
                     }
                     .overlay(Circle().stroke(char.selectedClass.themeColor.opacity(0.8), lineWidth: 2))
                     .glow(color: char.selectedClass.themeColor.opacity(0.35), radius: 8)
+                    .fixedSize()
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("LVL \(char.level) · \(char.selectedClass.rawValue.uppercased())")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    // Level above name — vertical stack avoids HStack squeeze on the name.
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Lv \(char.level)")
+                            .font(.system(size: 11, weight: .black, design: .monospaced))
                             .foregroundColor(char.selectedClass.themeColor)
-                            .tracking(0.8)
-                        Text(char.username)
-                            .font(.system(.callout, design: .default))
+                            .lineLimit(1)
+
+                        Text(heroDisplayName)
+                            .font(.system(.subheadline, design: .default))
                             .fontWeight(.black)
                             .foregroundColor(Theme.textPrimary)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                        
+                            .minimumScaleFactor(0.7)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
                         // XP Progression mini bar
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.white.opacity(0.12))
-                                .frame(width: 80, height: 4)
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(char.selectedClass.themeColor)
-                                .frame(width: 80 * CGFloat(min(1.0, Double(char.xp) / Double(char.xpForNextLevel))), height: 4)
-                                .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 2)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.white.opacity(0.12))
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(char.selectedClass.themeColor)
+                                    .frame(width: geo.size.width * CGFloat(min(1.0, Double(char.xp) / Double(max(1, char.xpForNextLevel)))))
+                                    .glow(color: char.selectedClass.themeColor.opacity(0.5), radius: 2)
+                            }
                         }
+                        .frame(height: 4)
                         .padding(.top, 1)
                     }
+                    .frame(minWidth: 96, maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(TactileButtonStyle())
-
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 5) {
                 Image(systemName: "centsign.circle.fill")
@@ -574,16 +624,24 @@ struct DashboardNavBar: View {
                 Text("\(char.gold)")
                     .font(.system(size: 13, weight: .black, design: .monospaced))
                     .foregroundColor(Theme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 7)
-            .background(Color.black.opacity(0.4))
+            .background(Theme.cardBackground.opacity(0.95))
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.healerColor.opacity(0.25), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.healerColor.opacity(0.35), lineWidth: 1))
+            .fixedSize()
+            .layoutPriority(1)
 
-            navIconButton(systemName: "bell.fill", color: Theme.textPrimary, action: { showNotifications = true })
-            navIconButton(systemName: "person.2.fill", color: Theme.primary, action: { onFriends() })
-            navIconButton(systemName: "cart.fill", color: Theme.warning, action: { onShop() })
+            HStack(spacing: 5) {
+                navIconButton(systemName: "bell.fill", color: Theme.textPrimary, action: { showNotifications = true })
+                navIconButton(systemName: "person.2.fill", color: Theme.primary, action: { onFriends() })
+                navIconButton(systemName: "cart.fill", color: Theme.warning, action: { onShop() })
+            }
+            .fixedSize()
+            .layoutPriority(1)
         }
         .padding(.horizontal)
         .padding(.top, 16)
@@ -596,9 +654,14 @@ struct DashboardNavBar: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundColor(color)
                 .frame(width: 36, height: 36)
-                .background(Color.black.opacity(0.4))
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+                .background(
+                    Circle()
+                        .fill(Theme.cardBackground.opacity(0.95))
+                )
+                .overlay(
+                    Circle()
+                        .stroke(Theme.border.opacity(1.0), lineWidth: 1)
+                )
         }
         .buttonStyle(TactileButtonStyle())
     }
@@ -736,20 +799,20 @@ struct HeroCard: View {
 
                     Rectangle().fill(Theme.border).frame(width: 1, height: 52)
 
-                    GearSlotStrip(slot: "ARMOR", item: equippedArmor, fallbackIcon: "tshirt.fill",
+                    GearSlotStrip(slot: "ARMOR", item: equippedArmor, fallbackIcon: "shield.fill",
                                   accentColor: Theme.textMuted, action: onArmorTap)
                         .frame(maxWidth: .infinity)
 
                     Rectangle().fill(Theme.border).frame(width: 1, height: 52)
 
-                    GearSlotStrip(slot: "RING", item: equippedRing, fallbackIcon: "circle.dotted",
+                    GearSlotStrip(slot: "RING", item: equippedRing, fallbackIcon: "circle.circle.fill",
                                   accentColor: equippedRing != nil ? equippedRing!.rarity.color : Theme.textMuted,
                                   action: onRingTap)
                         .frame(maxWidth: .infinity)
 
                     Rectangle().fill(Theme.border).frame(width: 1, height: 52)
 
-                    GearSlotStrip(slot: "AMULET", item: equippedAmulet, fallbackIcon: "sparkles",
+                    GearSlotStrip(slot: "AMULET", item: equippedAmulet, fallbackIcon: "diamond.fill",
                                   accentColor: equippedAmulet != nil ? equippedAmulet!.rarity.color : Theme.textMuted,
                                   action: onAmuletTap)
                         .frame(maxWidth: .infinity)
@@ -840,8 +903,10 @@ struct GearSlotStrip: View {
                     Text(item.name)
                         .font(.system(size: 8, weight: .bold))
                         .foregroundColor(item.rarity.color)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.65)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("EMPTY")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
@@ -1220,15 +1285,18 @@ struct CustomBottomNavBar: View {
             Spacer()
             NavBarItem(icon: "flame.fill", label: "RAIDS", tab: 4, currentTab: $currentTab, color: activeColor, namespace: activeTabNamespace)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 20)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Theme.cardBackground.opacity(0.96))
+        )
         .clipShape(RoundedRectangle(cornerRadius: 24))
-        .shadow(color: activeColor.opacity(0.2), radius: 10, x: 0, y: 5)
+        .shadow(color: Color.black.opacity(0.45), radius: 12, x: 0, y: 6)
         .overlay(
             RoundedRectangle(cornerRadius: 24)
                 .stroke(LinearGradient(
-                    colors: [activeColor.opacity(0.35), Color.clear],
+                    colors: [activeColor.opacity(0.45), Theme.border],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ), lineWidth: 1.5)
@@ -1246,6 +1314,8 @@ struct NavBarItem: View {
     let color: Color
     let namespace: Namespace.ID
     
+    private var isActive: Bool { currentTab == tab }
+    
     var body: some View {
         Button(action: {
             #if canImport(UIKit)
@@ -1258,42 +1328,54 @@ struct NavBarItem: View {
             }
         }) {
             VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .bold))
-                    .scaleEffect(currentTab == tab ? 1.15 : 1.0)
-                    .glow(color: currentTab == tab ? color.opacity(0.4) : .clear, radius: 4)
+                ZStack {
+                    Circle()
+                        .fill(isActive ? color.opacity(0.22) : Theme.secondaryCard.opacity(0.85))
+                        .frame(width: 34, height: 34)
+                    
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(isActive ? color : Theme.textMuted)
+                        .scaleEffect(isActive ? 1.08 : 1.0)
+                        .glow(color: isActive ? color.opacity(0.45) : .clear, radius: 4)
+                }
                 
                 Text(label)
                     .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundColor(isActive ? Theme.textPrimary : Theme.textMuted)
+                    .lineLimit(1)
             }
-            .foregroundColor(currentTab == tab ? color : Theme.textSecondary)
-            .frame(width: 60, height: 44)
+            .frame(width: 58, height: 52)
             .background(
                 ZStack {
-                    if currentTab == tab {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(color.opacity(0.12))
+                    if isActive {
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(color.opacity(0.16))
                             .matchedGeometryEffect(id: "activeTabBackground", in: namespace)
                         
                         VStack {
                             Spacer()
                             RoundedRectangle(cornerRadius: 1.5)
                                 .fill(color)
-                                .frame(width: 24, height: 3)
+                                .frame(width: 22, height: 3)
                                 .glow(color: color.opacity(0.5), radius: 3)
                                 .matchedGeometryEffect(id: "activeTabLine", in: namespace)
                         }
+                        .padding(.bottom, 2)
                     }
                 }
             )
         }
         .buttonStyle(TactileButtonStyle())
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
 
 struct ClassSwitcherPanel: View {
     @ObservedObject var firebaseService = FirebaseService.shared
     @Binding var toastMessage: String?
+    @Binding var toastIsError: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1316,6 +1398,7 @@ struct ClassSwitcherPanel: View {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                 char.selectedClass = charClass
                                 firebaseService.syncCharacter(char)
+                                toastIsError = false
                                 toastMessage = "Class changed to \(charClass.rawValue)!"
                             }
                             
@@ -1332,35 +1415,45 @@ struct ClassSwitcherPanel: View {
                         VStack(spacing: 6) {
                             ZStack {
                                 Circle()
-                                    .fill(charClass.themeColor.opacity(isSelected ? 0.25 : 0.08))
-                                    .frame(width: 38, height: 38)
+                                    .fill(isSelected
+                                          ? charClass.themeColor.opacity(0.32)
+                                          : Theme.secondaryCard.opacity(0.95))
+                                    .frame(width: 40, height: 40)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(isSelected
+                                                    ? charClass.themeColor.opacity(0.7)
+                                                    : Theme.border,
+                                                    lineWidth: isSelected ? 1.5 : 1)
+                                    )
                                 
                                 Image(systemName: classIcon(for: charClass))
                                     .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(charClass.themeColor)
+                                    .foregroundColor(isSelected ? charClass.themeColor : Theme.textSecondary)
                             }
-                            .glow(color: isSelected ? charClass.themeColor.opacity(0.3) : .clear, radius: 5)
+                            .glow(color: isSelected ? charClass.themeColor.opacity(0.35) : .clear, radius: 5)
                             
-                            VStack(spacing: 1) {
-                                Text(charClass.rawValue.uppercased())
-                                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                            // Name + level stacked column (no vertical letter wrap)
+                            VStack(spacing: 2) {
+                                Text(classShortName(for: charClass))
+                                    .font(.system(size: 9, weight: .black, design: .monospaced))
                                     .foregroundColor(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
                                 
-                                Text("LVL \(lvl)")
-                                    .font(.system(size: 7, design: .monospaced))
+                                Text("Lv \(lvl)")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
                                     .foregroundColor(isSelected ? charClass.themeColor : Theme.textMuted)
+                                    .lineLimit(1)
                             }
                         }
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
                         .background(
-                            ZStack {
-                                if isSelected {
-                                    charClass.themeColor.opacity(0.18)
-                                } else {
-                                    Theme.cardBackground.opacity(0.4)
-                                }
-                            }
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(isSelected
+                                      ? charClass.themeColor.opacity(0.22)
+                                      : Theme.cardBackground.opacity(0.88))
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
@@ -1373,6 +1466,15 @@ struct ClassSwitcherPanel: View {
                 }
             }
             .padding(.horizontal)
+        }
+    }
+    
+    private func classShortName(for cls: CharacterClass) -> String {
+        switch cls {
+        case .archer: return "ARCHER"
+        case .mage: return "MAGE"
+        case .swordsman: return "SWORD"
+        case .healer: return "HEALER"
         }
     }
     

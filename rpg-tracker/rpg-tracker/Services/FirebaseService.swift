@@ -50,6 +50,12 @@ class FirebaseService: ObservableObject {
             .compactMap { $0 }
             .sink { [weak self] user in
                 self?.startListeningToCharacter(uid: user.uid)
+                Task { [weak self] in
+                    await BlockedUsersStore.syncWithServer(ownerUid: user.uid)
+                    await MainActor.run {
+                        self?.blockedUsersRevision += 1
+                    }
+                }
             }
             .store(in: &cancellables)
     }
@@ -344,8 +350,13 @@ class FirebaseService: ObservableObject {
     }
 
     func resolvePvPBattle(battleId: String) {
-        DispatchQueue.main.async {
+        let markSettling = {
             self.lastPvPSettlement = PvPSettlementResult(status: .settling)
+        }
+        if Thread.isMainThread {
+            markSettling()
+        } else {
+            DispatchQueue.main.async(execute: markSettling)
         }
         Task {
             do {
@@ -384,7 +395,7 @@ class FirebaseService: ObservableObject {
     }
 
     /// Story stage clear: CF mints capped XP/gold and advances storyStage server-side.
-    func awardStoryStageRewards(stage: Int, xp: Int, gold: Int, completion: ((Int, Int)?) -> Void = { _ in }) {
+    func awardStoryStageRewards(stage: Int, xp: Int, gold: Int, completion: @escaping ((Int, Int)?) -> Void = { _ in }) {
         let capped = FitRPGEconomyCaps.clampActivity(xp: xp, gold: gold)
         guard var char = currentCharacter else {
             completion(nil)
@@ -421,20 +432,27 @@ class FirebaseService: ObservableObject {
         }
     }
     
-    func awardWorkoutRewards(reps: Int) -> (xp: Int, gold: Int) {
-        guard var char = currentCharacter else { return (0, 0) }
+    /// Free-train session complete rewards. Energy via CF `adjustEnergy` op `train` only (+5, +40/day).
+    func awardWorkoutRewards(reps: Int) -> (xp: Int, gold: Int, energy: Int) {
+        guard var char = currentCharacter else { return (0, 0, 0) }
 
         let used = CameraTrackingVM.freeTrainingRepsUsedToday()
         let remaining = max(0, CameraTrackingVM.freeTrainingDailyCapPublic - used)
         let cappedReps = min(reps, remaining, 50)
         if cappedReps <= 0 {
             lastActionError = "Daily practice limit reached (50 reps)."
-            return (0, 0)
+            return (0, 0, 0)
         }
         let baseXP = cappedReps > 0 ? 10 : 0
         let baseGold = cappedReps > 0 ? 3 : 0
         let xpReward = baseXP + (cappedReps * 6)
         let goldReward = baseGold + Int(Double(cappedReps) * 1.5)
+
+        // Optimistic train energy (+5, capped at maxEnergy). Server enforces daily +40.
+        let trainEnergyPreview = min(5, max(0, char.maxEnergy - char.energy))
+        if trainEnergyPreview > 0 {
+            char.energy = min(char.maxEnergy, char.energy + trainEnergyPreview)
+        }
         
         _ = char.addXP(xpReward)
         char.gold += goldReward
@@ -448,7 +466,7 @@ class FirebaseService: ObservableObject {
         
         self.currentCharacter = char
         writeWidgetSnapshot(from: char)
-        syncCharacter(char) // stats only — gold/xp via CF below
+        syncCharacter(char) // stats only — gold/xp/energy via CF below
 
         // Advance daily free-train counter once at FINISH (not mid-session).
         CameraTrackingVM.recordFreeTrainingRepsAwarded(cappedReps)
@@ -467,6 +485,32 @@ class FirebaseService: ObservableObject {
                     }
                     print("awardWorkoutRewards CF failed: \(error)")
                 }
+            }
+        }
+
+        // Persist train energy via adjustEnergy (rules block client energy increases).
+        Task {
+            do {
+                let result = try await Functions.functions().httpsCallable("adjustEnergy").call([
+                    "op": "train"
+                ])
+                if let data = result.data as? [String: Any], let serverEnergy = data["energy"] as? Int {
+                    await MainActor.run {
+                        if var c = self.currentCharacter {
+                            c.energy = serverEnergy
+                            self.currentCharacter = c
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    if trainEnergyPreview > 0, var c = self.currentCharacter {
+                        c.energy = max(0, c.energy - trainEnergyPreview)
+                        self.currentCharacter = c
+                    }
+                    self.lastActionError = "Couldn't save training energy."
+                }
+                print("awardWorkoutRewards train energy CF failed: \(error)")
             }
         }
         
@@ -488,7 +532,7 @@ class FirebaseService: ObservableObject {
             }
         }
         
-        return (xpReward, goldReward)
+        return (xpReward, goldReward, trainEnergyPreview)
     }
     
     // MARK: - Matchmaking & Real-Time PvP
@@ -538,6 +582,7 @@ class FirebaseService: ObservableObject {
     }
 
     func blockUser(uid: String) {
+        guard !uid.isEmpty, uid != currentCharacter?.id else { return }
         BlockedUsersStore.block(uid)
         blockedUsersRevision += 1
         // Drop local friendship so they disappear from friends list immediately.
@@ -545,6 +590,11 @@ class FirebaseService: ObservableObject {
             char.friends = char.unwrappedFriends.filter { $0 != uid }
             syncCharacter(char)
         }
+    }
+
+    func unblockUser(uid: String) {
+        BlockedUsersStore.unblock(uid)
+        blockedUsersRevision += 1
     }
     
     func attackWorldBoss(damage: Int) {
@@ -572,7 +622,7 @@ class FirebaseService: ObservableObject {
             role: .leader
         )
         
-        let newClan = Clan(
+        var newClan = Clan(
             id: "clan_\(UUID().uuidString.prefix(6))",
             name: name,
             description: description,
@@ -582,13 +632,38 @@ class FirebaseService: ObservableObject {
             memberIds: [char.id],
             trophies: 1000
         )
+        newClan.syncMemberIds()
         
         self.userClan = newClan
-        self.syncClan(newClan)
         
-        var updatedChar = char
-        updatedChar.clanId = newClan.id
-        syncCharacter(updatedChar)
+        // Write clan first so clanId rules see memberIds before user doc updates.
+        do {
+            var data = (try Firestore.Encoder().encode(newClan)) as? [String: Any] ?? [:]
+            data.removeValue(forKey: "activeWar")
+            data["trophies"] = 1000
+            let clanId = newClan.id
+            Firestore.firestore().collection("clans").document(clanId).setData(data, merge: false) { [weak self] error in
+                guard let self else { return }
+                if let error {
+                    DispatchQueue.main.async {
+                        self.userClan = nil
+                        self.lastActionError = "Couldn't create clan. Try again."
+                    }
+                    print("createClan failed: \(error)")
+                    return
+                }
+                DispatchQueue.main.async {
+                    var updatedChar = self.currentCharacter ?? char
+                    updatedChar.clanId = clanId
+                    self.syncCharacter(updatedChar)
+                    self.startListeningToClan(clanId: clanId)
+                }
+            }
+        } catch {
+            userClan = nil
+            lastActionError = "Couldn't create clan. Try again."
+            print("createClan encode failed: \(error)")
+        }
     }
     
     func sendFriendRequest(to targetUid: String) async {
@@ -946,9 +1021,17 @@ class FirebaseService: ObservableObject {
             leaveClan()
         }
         
-        var updatedClan = clan
-        // Enforce membership limits
-        guard updatedClan.members.count < updatedClan.maxMembers else { return }
+        guard clan.members.count < clan.maxMembers else {
+            lastActionError = "That clan is full."
+            return
+        }
+        if clan.members.contains(where: { $0.id == char.id }) {
+            var updatedChar = char
+            updatedChar.clanId = clan.id
+            syncCharacter(updatedChar)
+            startListeningToClan(clanId: clan.id)
+            return
+        }
         
         let member = ClanMember(
             id: char.id,
@@ -958,14 +1041,62 @@ class FirebaseService: ObservableObject {
             role: .member
         )
         
-        updatedClan.members.append(member)
-        updatedClan.syncMemberIds()
-        self.userClan = updatedClan
-        self.syncClan(updatedClan)
-        
-        var updatedChar = currentCharacter ?? char
-        updatedChar.clanId = updatedClan.id
-        syncCharacter(updatedChar)
+        let clanRef = Firestore.firestore().collection("clans").document(clan.id)
+        // Transaction avoids stomping concurrent member joins with a stale full-doc rewrite.
+        Firestore.firestore().runTransaction({ (transaction, errorPointer) -> Any? in
+            let snapshot: DocumentSnapshot
+            do {
+                snapshot = try transaction.getDocument(clanRef)
+            } catch let error as NSError {
+                errorPointer?.pointee = error
+                return nil
+            }
+            guard snapshot.exists else {
+                errorPointer?.pointee = NSError(domain: "FitRPG", code: 404, userInfo: [
+                    NSLocalizedDescriptionKey: "Clan not found."
+                ])
+                return nil
+            }
+            do {
+                var live = try snapshot.data(as: Clan.self)
+                if live.members.contains(where: { $0.id == char.id }) {
+                    return live
+                }
+                guard live.members.count < live.maxMembers else {
+                    errorPointer?.pointee = NSError(domain: "FitRPG", code: 409, userInfo: [
+                        NSLocalizedDescriptionKey: "That clan is full."
+                    ])
+                    return nil
+                }
+                live.members.append(member)
+                live.syncMemberIds()
+                var data = (try Firestore.Encoder().encode(live)) as? [String: Any] ?? [:]
+                data.removeValue(forKey: "activeWar")
+                data.removeValue(forKey: "trophies")
+                transaction.setData(data, forDocument: clanRef, merge: true)
+                return live
+            } catch let error as NSError {
+                errorPointer?.pointee = error
+                return nil
+            }
+        }) { [weak self] result, error in
+            guard let self else { return }
+            if let error {
+                DispatchQueue.main.async {
+                    self.lastActionError = error.localizedDescription
+                }
+                print("joinClan failed: \(error)")
+                return
+            }
+            let joined = result as? Clan ?? clan
+            DispatchQueue.main.async {
+                self.userClan = joined
+                var updatedChar = self.currentCharacter ?? char
+                updatedChar.clanId = joined.id
+                self.syncCharacter(updatedChar)
+                self.startListeningToClan(clanId: joined.id)
+            }
+        }
     }
     
     func changeMemberRole(memberId: String, newRole: ClanRole) {
@@ -993,7 +1124,16 @@ class FirebaseService: ObservableObject {
     }
     func kickMember(memberId: String) {
         guard var clan = userClan else { return }
+        guard memberId != currentCharacter?.id else { return }
         clan.members.removeAll(where: { $0.id == memberId })
+        clan.syncMemberIds()
+        // If kicking the leader isn't allowed from UI; if leaderId orphaned, heal.
+        if clan.leaderId == memberId, let next = clan.members.first {
+            clan.leaderId = next.id
+            if let idx = clan.members.firstIndex(where: { $0.id == next.id }) {
+                clan.members[idx].role = .leader
+            }
+        }
         self.userClan = clan
         self.syncClan(clan)
     }
@@ -1015,6 +1155,7 @@ class FirebaseService: ObservableObject {
         guard let char = currentCharacter, var clan = userClan else { return }
         
         clan.members.removeAll(where: { $0.id == char.id })
+        clan.syncMemberIds()
         
         if clan.members.isEmpty {
             self.userClan = nil

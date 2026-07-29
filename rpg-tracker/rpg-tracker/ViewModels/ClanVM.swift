@@ -152,20 +152,17 @@ class ClanVM: ObservableObject {
         let opp = last.opponentClanScore
         let won = my > opp
         let tied = my == opp
+        // Clan trophies are applied by processClanWarPhases CF — do not invent member XP/loot.
         let trophies = won ? 50 : (tied ? 0 : -25)
-        let xp = won ? 200 : (tied ? 100 : 50)
 
         showWarResults = ClanWarResult(
             won: won,
             myScore: my,
             oppScore: opp,
-            xpEarned: xp,
+            xpEarned: 0,
             trophiesChange: trophies,
             clanLeveledUp: false,
             lootRewarded: nil
         )
-        if xp > 0 {
-            // War attack rewards are granted by recordClanWarAttack CF — UI totals only.
-        }
     }
 }

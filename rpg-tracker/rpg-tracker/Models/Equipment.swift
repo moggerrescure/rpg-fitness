@@ -17,6 +17,11 @@ enum ItemRarity: String, Codable, CaseIterable {
         case .mythical: return Color(hex: "EF4444") // Vibrant Crimson
         }
     }
+
+    /// Suffix for shop painted assets: `shop_<slot>_<assetKey>`.
+    var assetKey: String {
+        rawValue.lowercased()
+    }
 }
 
 enum EquipmentSlot: String, Codable {
@@ -42,41 +47,20 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
     }
     
     func getIconName() -> String {
-        if slot == .weapon {
-            // Class-specific weapon icons
-            switch classRestriction {
-            case .archer:    return "arrow.up.right"
-            case .mage:      return "wand.and.stars"
-            case .healer:    return "cross.case.fill"
-            case .swordsman: return "shield.fill"
-            case .none:
-                // Generic weapon icon by rarity
-                switch rarity {
-                case .mythical:   return "bolt.fill"
-                case .legendary:  return "flame.fill"
-                case .epic:       return "star.fill"
-                default:          return "bolt.slash.fill"
-                }
-            }
-        }
-        if slot == .ring {
-            return "circle.dotted"
-        }
-        if slot == .amulet {
-            return "sparkles"
-        }
-        // Armor: by rarity or class
-        guard let classRestriction = self.classRestriction else {
-            return "shield.fill"
-        }
-        switch classRestriction {
-        case .archer:    return "figure.run"
-        case .mage:      return "bolt.shield.fill"
-        case .swordsman: return "shield.fill"
-        case .healer:    return "heart.square.fill"
+        switch slot {
+        case .weapon:
+            return weaponIconName()
+        case .armor:
+            return armorIconName()
+        case .ring:
+            return ringIconName()
+        case .amulet:
+            return amuletIconName()
         }
     }
-    
+
+    /// Painted assets for shop/armory icons. Weapons are class-specific; armor / ring / amulet
+    /// use rarity-tier art in Assets.xcassets (`shop_<slot>_<rarity>`). SF Symbol only if missing.
     func getAssetImageName() -> String? {
         switch slot {
         case .weapon:
@@ -88,11 +72,100 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
             case .none:      return "weapon_swordsman_epic"
             }
         case .armor:
-            return "shop_armor_epic"
+            return "shop_armor_\(rarity.assetKey)"
         case .ring:
-            return "shop_ring_epic"
+            return "shop_ring_\(rarity.assetKey)"
         case .amulet:
-            return "shop_amulet_epic"
+            return "shop_amulet_\(rarity.assetKey)"
+        }
+    }
+
+    private func weaponIconName() -> String {
+        switch classRestriction {
+        case .archer:    return "arrow.up.forward"
+        case .mage:      return "wand.and.stars"
+        case .healer:    return "cross.case.fill"
+        case .swordsman: return "hammer.fill"
+        case .none:
+            let key = name.lowercased()
+            if key.contains("dagger") || key.contains("fang") { return "bolt.horizontal.fill" }
+            if key.contains("axe") { return "hammer.fill" }
+            if key.contains("rapier") || key.contains("sword") { return "bolt.fill" }
+            switch rarity {
+            case .mythical:   return "bolt.fill"
+            case .legendary:  return "flame.fill"
+            case .epic:       return "star.fill"
+            default:          return "hammer.fill"
+            }
+        }
+    }
+
+    private func armorIconName() -> String {
+        let key = name.lowercased()
+        if key.contains("robe") || key.contains("shroud") || key.contains("cloak") || key.contains("vestment") {
+            return "tshirt.fill"
+        }
+        if key.contains("leather") || key.contains("hide") || key.contains("jerkin") || key.contains("vest") {
+            return "shield.lefthalf.filled"
+        }
+        if key.contains("scale") || key.contains("drake") {
+            return "square.stack.3d.up.fill"
+        }
+        if key.contains("plate") || key.contains("mail") || key.contains("cuirass") || key.contains("aegis") || key.contains("chest") {
+            return "shield.righthalf.filled"
+        }
+        if key.contains("nano") || key.contains("antigravity") {
+            return "circle.hexagongrid.fill"
+        }
+        switch classRestriction {
+        case .archer:    return "shield.lefthalf.filled"
+        case .mage:      return "bolt.shield.fill"
+        case .swordsman: return "shield.fill"
+        case .healer:    return "heart.circle.fill"
+        case .none:
+            switch rarity {
+            case .mythical:  return "shield.fill"
+            case .legendary: return "shield.righthalf.filled"
+            case .epic:      return "shield.lefthalf.filled"
+            default:         return "shield"
+            }
+        }
+    }
+
+    private func ringIconName() -> String {
+        let key = name.lowercased()
+        if key.contains("void") { return "circle.hexagongrid.fill" }
+        if key.contains("dragon") || key.contains("eye") { return "eye.circle.fill" }
+        if key.contains("storm") || key.contains("lightning") { return "bolt.circle.fill" }
+        if key.contains("moon") { return "moon.circle.fill" }
+        if key.contains("obsidian") { return "circle.fill" }
+        if key.contains("signet") || key.contains("ancient") { return "seal.fill" }
+        if key.contains("copper") || key.contains("iron") || key.contains("band") || key.contains("loop") {
+            return "circle"
+        }
+        switch rarity {
+        case .mythical, .legendary: return "seal.fill"
+        case .epic: return "circle.circle.fill"
+        case .rare: return "circle.circle"
+        default: return "circle.dashed"
+        }
+    }
+
+    private func amuletIconName() -> String {
+        let key = name.lowercased()
+        if key.contains("phoenix") || key.contains("ember") || key.contains("fire") { return "flame.fill" }
+        if key.contains("heart") || key.contains("ruby") { return "heart.circle.fill" }
+        if key.contains("storm") || key.contains("bolt") { return "cloud.bolt.fill" }
+        if key.contains("sapphire") || key.contains("drop") { return "drop.fill" }
+        if key.contains("bone") || key.contains("charm") { return "leaf.fill" }
+        if key.contains("string") || key.contains("necklace") { return "link" }
+        if key.contains("antigravity") { return "circle.dashed" }
+        if key.contains("talisman") || key.contains("ancient") { return "star.circle.fill" }
+        switch rarity {
+        case .mythical, .legendary: return "diamond.fill"
+        case .epic: return "sparkles"
+        case .rare: return "diamond"
+        default: return "diamond"
         }
     }
     
@@ -406,23 +479,30 @@ struct EquipmentItem: Codable, Identifiable, Hashable {
 struct ItemIconView: View {
     let item: EquipmentItem?
     let fallbackIcon: String
-    
+
     var body: some View {
         if let item = item {
-            if let assetName = item.getAssetImageName() {
-                Image(assetName)
+            if let assetName = item.getAssetImageName(),
+               let uiImage = BattleAvatar.loadPlatformImage(named: assetName) {
+                Image(platformImage: uiImage)
                     .resizable()
+                    .renderingMode(.original)
                     .scaledToFill()
                     .clipped()
+                    .accessibilityLabel(item.name)
             } else {
                 Image(systemName: item.getIconName())
                     .resizable()
                     .scaledToFit()
+                    .padding(6)
+                    .foregroundStyle(item.rarity.color)
+                    .accessibilityLabel(item.name)
             }
         } else {
             Image(systemName: fallbackIcon)
                 .resizable()
                 .scaledToFit()
+                .padding(6)
         }
     }
 }

@@ -8,6 +8,15 @@ class BattleEngine: ObservableObject {
     @Published var activeBattle: Battle?
     @Published var activeBoss: Boss?
     @Published var droppedLoot: EquipmentItem?
+    /// Honest CF settlement for BossRaidResultOverlay (no opaque XP BTY / GOLD BTY).
+    @Published var raidRewardSettlement: RaidRewardSettlement = .idle
+
+    enum RaidRewardSettlement: Equatable {
+        case idle
+        case settling
+        case settled(xp: Int, gold: Int)
+        case failed
+    }
     
     private var battleTimer: Timer?
     
@@ -40,6 +49,8 @@ class BattleEngine: ObservableObject {
         
         self.activeBoss = scaledBoss
         self.activeBattle = newBattle
+        self.droppedLoot = nil
+        self.raidRewardSettlement = .idle
         
         startTimer()
     }
@@ -106,20 +117,20 @@ class BattleEngine: ObservableObject {
         let isEnraged = Double(boss.currentHealth) < Double(boss.maxHealth) * 0.5
         let currentInterval = isEnraged ? boss.attackInterval * 0.7 : boss.attackInterval
         
-        // Use a persistent property or just math to find if it's time to attack
-        // To avoid state, check if elapsed crossed a multiple of currentInterval
-        let totalElapsed = 120 - battle.secondsRemaining
-        let prevElapsed = 120 - (battle.secondsRemaining + 1)
+        // Match countdown length for this mode (duels are 60s; raids 120s).
+        let matchDuration = (battle.type == .duel1v1 || battle.type == .team3v3 || battle.type == .clanWar) ? 60 : 120
+        let totalElapsed = matchDuration - battle.secondsRemaining
+        let prevElapsed = matchDuration - (battle.secondsRemaining + 1)
         
         if totalElapsed > 0 && Int(Double(totalElapsed) / currentInterval) > Int(Double(prevElapsed) / currentInterval) {
             performBossAttack(boss: &boss, battle: &battle, isEnraged: isEnraged)
         }
         
         // Check win/loss
-        if battle.type == .duel1v1 {
-            // Duel win conditions: time runs out or someone dies
-            let localDead = battle.localTeam.first?.isDead == true
-            let oppDead = battle.opponentTeam.first?.isDead == true
+        if battle.type == .duel1v1 || battle.type == .team3v3 || battle.type == .clanWar {
+            // Duel / team win conditions: time runs out or a side is wiped
+            let localDead = !battle.localTeam.contains { !$0.isDead }
+            let oppDead = !battle.opponentTeam.contains { !$0.isDead }
             
             if localDead {
                 battle.status = .completed
@@ -135,8 +146,8 @@ class BattleEngine: ObservableObject {
                 FirebaseService.shared.activeBattle = nil
             } else if battle.secondsRemaining <= 0 {
                 battle.status = .completed
-                let myReps = battle.localTeam.first?.reps ?? 0
-                let oppReps = battle.opponentTeam.first?.reps ?? 0
+                let myReps = battle.localTeam.map(\.reps).reduce(0, +)
+                let oppReps = battle.opponentTeam.map(\.reps).reduce(0, +)
                 
                 if myReps > oppReps {
                     battle.winnerId = battle.localTeam.first?.id
@@ -164,12 +175,15 @@ class BattleEngine: ObservableObject {
                 
                 // Server-Side Loot & Rewards resolution
                 let capped = FitRPGEconomyCaps.clampPvE(xp: boss.xpReward, gold: boss.goldReward)
+                self.raidRewardSettlement = .settling
                 FirebaseService.shared.resolvePvEBattle(won: true, bossLootChance: boss.lootDropChance, xp: capped.xp, gold: capped.gold) { result in
                     DispatchQueue.main.async {
                         if !result.success {
+                            self.raidRewardSettlement = .failed
                             // lastActionError already set — do not treat as loot win
                             return
                         }
+                        self.raidRewardSettlement = .settled(xp: result.xp, gold: result.gold)
                         if let id = result.droppedItemId, let item = EquipmentItem.findArmor(by: id) ?? EquipmentItem.findWeapon(by: id) {
                             self.droppedLoot = item
                         }
@@ -228,8 +242,9 @@ class BattleEngine: ObservableObject {
         player.health = max(0, player.health - damage)
         battle.localTeam[0] = player
         
-        // If it's a duel, also update the bot's reps
-        if battle.type == .duel1v1, !battle.opponentTeam.isEmpty {
+        // Duel / team bot: count the strike as a bot rep
+        if (battle.type == .duel1v1 || battle.type == .team3v3 || battle.type == .clanWar),
+           !battle.opponentTeam.isEmpty {
             battle.opponentTeam[0].reps += 1
         }
         
@@ -259,8 +274,12 @@ class BattleEngine: ObservableObject {
             damage = max(1, damage / 2) // 50% damage penalty for bad form
         }
         
-        if battle.type == .duel1v1 && !battle.opponentTeam.isEmpty {
-            battle.opponentTeam[0].health = max(0, battle.opponentTeam[0].health - damage)
+        if (battle.type == .duel1v1 || battle.type == .team3v3 || battle.type == .clanWar),
+           !battle.opponentTeam.isEmpty {
+            let alive = battle.opponentTeam.enumerated().filter { !$0.element.isDead }
+            if let target = alive.randomElement() {
+                battle.opponentTeam[target.offset].health = max(0, target.element.health - damage)
+            }
         } else {
             boss.currentHealth = max(0, boss.currentHealth - damage)
             if boss.isGlobalWorldBoss {

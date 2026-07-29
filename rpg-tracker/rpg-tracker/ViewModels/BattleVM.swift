@@ -101,15 +101,35 @@ class BattleVM: ObservableObject {
                             }
                         } else {
                             if let winnerId = battle.winnerId {
-                                let won = winnerId == self.firebaseService.currentCharacter?.id
-                                if won {
+                                let myId = self.firebaseService.currentCharacter?.id
+                                let won: Bool = {
+                                    guard let myId else { return false }
+                                    if winnerId == myId { return true }
+                                    if winnerId == "draw" { return false }
+                                    // 3v3: winnerId is a team representative — share outcome with teammates
+                                    let onLocal = battle.localTeam.contains { $0.id == myId }
+                                    let winOnLocal = battle.localTeam.contains { $0.id == winnerId }
+                                    let onOpp = battle.opponentTeam.contains { $0.id == myId }
+                                    let winOnOpp = battle.opponentTeam.contains { $0.id == winnerId }
+                                    if onLocal && winOnLocal { return true }
+                                    if onOpp && winOnOpp { return true }
+                                    return false
+                                }()
+                                if winnerId == "draw" {
+                                    self.winnerName = "DRAW!"
+                                    if self.selectedPvPType == .clanWar || battle.type == .clanWar {
+                                        self.firebaseService.recordClanWarBattle(won: false)
+                                    }
+                                } else if won {
                                     self.winnerName = "VICTORY!"
+                                    if self.selectedPvPType == .clanWar || battle.type == .clanWar {
+                                        self.firebaseService.recordClanWarBattle(won: true)
+                                    }
                                 } else {
                                     self.winnerName = "DEFEAT!"
-                                }
-                                
-                                if self.selectedPvPType == .clanWar || battle.type == .clanWar {
-                                    self.firebaseService.recordClanWarBattle(won: won)
+                                    if self.selectedPvPType == .clanWar || battle.type == .clanWar {
+                                        self.firebaseService.recordClanWarBattle(won: false)
+                                    }
                                 }
                             } else {
                                 self.winnerName = "DRAW!"

@@ -6,13 +6,22 @@ struct WorldBossDashboardView: View {
     @State private var showingBattleArena = false
     @State private var energyHint: String? = nil
     
+    private var currentEnergy: Int {
+        firebaseService.currentCharacter?.energy ?? 0
+    }
+    
+    private var canAttack: Bool {
+        currentEnergy >= 15
+    }
+    
     var body: some View {
         ZStack {
-            Color.black.opacity(0.35).ignoresSafeArea()
+            Color.black.opacity(0.35)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
             
             ScrollView {
                 VStack(spacing: 24) {
-                    // Header
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("WORLD BOSS")
@@ -30,17 +39,12 @@ struct WorldBossDashboardView: View {
                             .font(.title)
                             .foregroundColor(Theme.danger)
                             .glow(color: Theme.danger.opacity(0.5), radius: 8)
+                            .allowsHitTesting(false)
                     }
                     .padding(.horizontal, 24)
                     .padding(.top, 20)
 
-                    if let energyHint {
-                        Text(energyHint)
-                            .font(.caption.bold())
-                            .foregroundColor(Theme.warning)
-                            .padding(.horizontal, 24)
-                            .transition(.opacity)
-                    }
+                    energyStatusBanner
                     
                     if let boss = firebaseService.activeWorldBoss {
                         if boss.isActive {
@@ -106,7 +110,7 @@ struct WorldBossDashboardView: View {
                         }
                     }
                 }
-                .padding(.bottom, 100)
+                .padding(.bottom, 120)
             }
         }
         .fullScreenCover(isPresented: $showingBattleArena) {
@@ -121,11 +125,44 @@ struct WorldBossDashboardView: View {
     }
     
     @ViewBuilder
+    private var energyStatusBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bolt.fill")
+                .foregroundColor(canAttack ? Theme.success : Theme.warning)
+            Text("Energy \(currentEnergy)/15 required")
+                .font(.caption.bold())
+                .foregroundColor(canAttack ? Theme.textSecondary : Theme.warning)
+            Spacer()
+            if !canAttack {
+                Text("NEED MORE ENERGY")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundColor(Theme.warning)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(canAttack ? Theme.success.opacity(0.08) : Theme.warning.opacity(0.12))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke((canAttack ? Theme.success : Theme.warning).opacity(0.35), lineWidth: 1)
+        )
+        .padding(.horizontal, 24)
+        
+        if let energyHint {
+            Text(energyHint)
+                .font(.caption.bold())
+                .foregroundColor(Theme.warning)
+                .padding(.horizontal, 24)
+                .transition(.opacity)
+        }
+    }
+    
+    @ViewBuilder
     private func activeBossView(boss: WorldBoss) -> some View {
         let template = Boss.templates.first { $0.id == boss.bossTemplateId } ?? Boss.templates.last!
         
         VStack(spacing: 24) {
-            // Boss Avatar
             ZStack {
                 Circle()
                     .fill(Theme.danger.opacity(0.1))
@@ -140,6 +177,7 @@ struct WorldBossDashboardView: View {
                     .overlay(Circle().stroke(Theme.danger, lineWidth: 4))
                     .shadow(color: Theme.danger, radius: 15)
             }
+            .allowsHitTesting(false)
             
             VStack(spacing: 8) {
                 Text(template.name.uppercased())
@@ -154,7 +192,6 @@ struct WorldBossDashboardView: View {
                     .padding(.horizontal)
             }
             
-            // Health Bar
             VStack(spacing: 8) {
                 HStack {
                     Text("GLOBAL HEALTH")
@@ -169,7 +206,7 @@ struct WorldBossDashboardView: View {
                 }
                 
                 GeometryReader { geo in
-                    let progress = max(0.0, min(1.0, CGFloat(boss.currentHealth) / CGFloat(boss.maxHealth)))
+                    let progress = max(0.0, min(1.0, CGFloat(boss.currentHealth) / CGFloat(max(1, boss.maxHealth))))
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 10)
                             .fill(Theme.cardBackground)
@@ -182,47 +219,62 @@ struct WorldBossDashboardView: View {
                     }
                 }
                 .frame(height: 20)
+                .allowsHitTesting(false)
             }
             .padding(.horizontal, 24)
             
-            Button(action: {
-                let energy = firebaseService.currentCharacter?.energy ?? 0
-                if energy < 15 {
-                    energyHint = "Need 15 energy to attack (you have \(energy))."
-                    return
-                }
-                energyHint = nil
-                showingBattleArena = true
-            }) {
-                HStack {
-                    Image(systemName: "bolt.fill")
-                    Text("ATTACK BOSS (15 ENERGY)")
-                        .fontWeight(.black)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            (firebaseService.currentCharacter?.energy ?? 0) >= 15 ? Theme.danger : Theme.textMuted,
-                            Theme.danger.opacity(0.8)
-                        ]),
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .foregroundColor(.white)
-                .cornerRadius(16)
-                .shadow(color: Theme.danger.opacity(0.5), radius: 8)
-            }
-            .buttonStyle(TactileButtonStyle())
-            .disabled((firebaseService.currentCharacter?.energy ?? 0) < 15)
-            .padding(.horizontal, 24)
-            .padding(.top, 8)
+            attackBossButton
             
-            // Leaderboard
             leaderboardView(boss: boss)
         }
+    }
+    
+    private var attackBossButton: some View {
+        Button(action: attemptAttack) {
+            HStack {
+                Image(systemName: canAttack ? "bolt.fill" : "bolt.slash.fill")
+                Text(canAttack ? "ATTACK BOSS (15 ENERGY)" : "NEED 15 ENERGY")
+                    .fontWeight(.black)
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: canAttack
+                        ? [Theme.danger, Theme.danger.opacity(0.85)]
+                        : [Theme.textMuted.opacity(0.55), Theme.textMuted.opacity(0.35)]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .foregroundColor(.white)
+            .cornerRadius(16)
+            .shadow(color: canAttack ? Theme.danger.opacity(0.5) : .clear, radius: 8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(canAttack ? Theme.danger.opacity(0.9) : Theme.warning.opacity(0.5), lineWidth: 1.5)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(PlainButtonStyle())
+        // Keep interactive when low energy so we can show the reason (SwiftUI `.disabled` blocks taps).
+        .opacity(canAttack ? 1.0 : 0.92)
+        .accessibilityLabel(canAttack ? "Attack world boss, costs 15 energy" : "Need 15 energy to attack")
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+        .zIndex(10)
+    }
+    
+    private func attemptAttack() {
+        let energy = currentEnergy
+        if energy < 15 {
+            withAnimation {
+                energyHint = "Need 15 energy to attack (you have \(energy)). Finish a camera workout (+5) or wait (+1 / 5 min)."
+            }
+            return
+        }
+        energyHint = nil
+        showingBattleArena = true
     }
     
     @ViewBuilder
@@ -276,7 +328,6 @@ struct WorldBossDashboardView: View {
                                 .foregroundColor(index == 0 ? Theme.healerColor : Theme.textSecondary)
                                 .frame(width: 40, alignment: .leading)
                             
-                            // Try to find the name in leaderboards, or just show ID
                             let allChars = firebaseService.leaderboards.values.flatMap { $0 }
                             let name = allChars.first(where: { $0.id == attacker.key })?.username ?? "Hero_\(attacker.key.prefix(4))"
                             

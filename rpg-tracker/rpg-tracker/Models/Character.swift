@@ -48,6 +48,35 @@ enum CharacterClass: String, Codable, CaseIterable, Identifiable {
         case .healer: return 100
         }
     }
+
+    /// Primary Assets.xcassets avatar for this class (bots + HUD fallback).
+    var defaultAvatarName: String {
+        switch self {
+        case .archer: return "avatar_archer"
+        case .mage: return "avatar_mage"
+        case .swordsman: return "avatar_knight"
+        case .healer: return "avatar_healer"
+        }
+    }
+
+    var fallbackAvatarNames: [String] {
+        switch self {
+        case .archer: return ["avatar_goblin", "avatar_orc"]
+        case .mage: return ["avatar_phoenix", "avatar_dragon"]
+        case .swordsman: return ["avatar_shield", "avatar_dumbbell", "avatar_crown"]
+        case .healer: return ["avatar_potion", "avatar_crown"]
+        }
+    }
+
+    /// Fantasy emblem when an image asset is unavailable — never `person.fill`.
+    var emblemSymbol: String {
+        switch self {
+        case .archer: return "scope"
+        case .mage: return "flame.fill"
+        case .swordsman: return "shield.lefthalf.filled"
+        case .healer: return "cross.case.fill"
+        }
+    }
 }
 
 struct CharacterStats: Codable {

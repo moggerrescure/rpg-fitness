@@ -494,12 +494,7 @@ extension Image {
 
 extension View {
     func loadLocalAvatar(named name: String) -> PlatformImage? {
-        let resolvedName = name == "avatar_swordsman" ? "avatar_knight" : name
-        if let bundleImage = PlatformImage(named: resolvedName) {
-            return bundleImage
-        }
-        let path = "/Users/ilakazdan/Documents/fitness-rpg /rpg-tracker/rpg-tracker/Assets/\(resolvedName).png"
-        return PlatformImage(contentsOfFile: path)
+        BattleAvatar.loadPlatformImage(named: name)
     }
 }
 

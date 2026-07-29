@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum BattleArenaSheetType: Identifiable, Equatable {
     case generalCameraTracker
@@ -188,6 +189,7 @@ struct BattleArenaView: View {
                             )
                         }
                     }
+                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.duelFinished)
                 )
             }
             
@@ -344,6 +346,9 @@ struct BattleArenaView: View {
                     showBossRaid = true
                 } else if type == .worldBoss {
                     viewModel.startQueue(type: .worldBoss)
+                } else if type == .clanWar {
+                    // Local skirmish — do not enter PvP matchmaking / spend arena energy.
+                    MultiplayerService.shared.startClanWarSkirmish()
                 } else {
                     viewModel.startQueue()
                 }
@@ -534,8 +539,9 @@ private struct ArenaHeroCard: View {
                 // Noise/texture overlay
                 Color.white.opacity(0.02)
 
+                // Low-energy: keep card readable (no heavy black mush)
                 if disabled {
-                    Color.black.opacity(0.45)
+                    Color.black.opacity(0.18)
                 }
 
                 VStack(alignment: .leading, spacing: 0) {
@@ -543,18 +549,18 @@ private struct ArenaHeroCard: View {
                     HStack(alignment: .top) {
                         Text(badge)
                             .font(.system(size: 8, weight: .black, design: .monospaced))
-                            .foregroundColor(badgeColor)
+                            .foregroundColor(disabled ? Theme.warning : badgeColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(badgeColor.opacity(0.15))
+                            .background((disabled ? Theme.warning : badgeColor).opacity(0.18))
                             .cornerRadius(6)
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(badgeColor.opacity(0.4), lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke((disabled ? Theme.warning : badgeColor).opacity(0.5), lineWidth: 1))
 
                         Spacer()
 
                         Image(systemName: disabled ? "bolt.slash.fill" : "arrow.up.right")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(accentColor.opacity(0.5))
+                            .foregroundColor(disabled ? Theme.warning.opacity(0.9) : accentColor.opacity(0.5))
                     }
 
                     Spacer()
@@ -562,33 +568,37 @@ private struct ArenaHeroCard: View {
                     // Center: Big icon
                     Image(systemName: icon)
                         .font(.system(size: 42, weight: .bold))
-                        .foregroundColor(accentColor)
-                        .glow(color: accentColor.opacity(0.6), radius: 12)
+                        .foregroundColor(disabled ? accentColor.opacity(0.75) : accentColor)
+                        .glow(color: accentColor.opacity(disabled ? 0.25 : 0.6), radius: disabled ? 4 : 12)
                         .padding(.bottom, 12)
 
                     // Title
                     Text(title)
                         .font(.system(size: 15, weight: .black, design: .monospaced))
-                        .foregroundColor(.white)
+                        .foregroundColor(.white.opacity(disabled ? 0.88 : 1.0))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
                     // Subtitle
                     Text(subtitle)
                         .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.45))
+                        .foregroundColor(.white.opacity(disabled ? 0.55 : 0.45))
                         .lineLimit(1)
                         .padding(.top, 3)
 
                     // Detail line
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(accentColor)
+                            .fill(disabled ? Theme.warning : accentColor)
                             .frame(width: 5, height: 5)
                         Text(disabled ? "NEED 10 ENERGY" : detail)
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
-                            .foregroundColor(accentColor.opacity(0.8))
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                            .foregroundColor(disabled ? Theme.warning : accentColor.opacity(0.9))
                     }
+                    .padding(.horizontal, disabled ? 8 : 0)
+                    .padding(.vertical, disabled ? 5 : 0)
+                    .background(disabled ? Theme.warning.opacity(0.18) : Color.clear)
+                    .cornerRadius(6)
                     .padding(.top, 5)
                 }
                 .padding(16)
@@ -599,16 +609,18 @@ private struct ArenaHeroCard: View {
                 RoundedRectangle(cornerRadius: 22)
                     .stroke(
                         LinearGradient(
-                            colors: [accentColor.opacity(pressed ? 0.8 : 0.4), accentColor.opacity(0.1)],
+                            colors: disabled
+                                ? [Theme.warning.opacity(0.55), Theme.warning.opacity(0.15)]
+                                : [accentColor.opacity(pressed ? 0.8 : 0.4), accentColor.opacity(0.1)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
                         lineWidth: 1.5
                     )
             )
-            .shadow(color: accentColor.opacity(pressed ? 0.35 : 0.18), radius: pressed ? 16 : 10, x: 0, y: pressed ? 4 : 6)
+            .shadow(color: (disabled ? Theme.warning : accentColor).opacity(pressed ? 0.35 : (disabled ? 0.12 : 0.18)), radius: pressed ? 16 : 10, x: 0, y: pressed ? 4 : 6)
             .scaleEffect(pressed ? 0.96 : 1.0)
-            .opacity(disabled ? 0.7 : 1.0)
+            .opacity(disabled ? 0.92 : 1.0)
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(disabled)
@@ -997,14 +1009,14 @@ struct MatchmakingQueueView: View {
                         .scaleEffect(pulseScale * 0.7)
                         .opacity(1.8 - Double(pulseScale))
                     
-                    Circle()
-                        .fill(Theme.cardBackground)
-                        .frame(width: 100, height: 100)
-                        .overlay(
-                            Image(systemName: "person.fill.viewfinder")
-                                .font(.largeTitle)
-                                .foregroundColor(Theme.primary)
-                        )
+                    // Teaser: fantasy opponent silhouette using class art, not person.fill
+                    BattlePortraitView(
+                        avatarName: "avatar_knight",
+                        characterClass: .swordsman,
+                        size: 100,
+                        lineWidth: 2.5,
+                        showGlow: true
+                    )
                 }
                 .onAppear {
                     withAnimation(Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: false)) {
@@ -1089,6 +1101,7 @@ struct CombatArenaView: View {
     @State private var localSecondsRemaining: Int = 60
     @State private var localTimerTask: Timer? = nil
     @State private var showHitOverlay: Bool = false
+    @State private var showSurrenderConfirm: Bool = false
     
     init(battle: Battle, viewModel: BattleVM) {
         self.battle = battle
@@ -1111,6 +1124,23 @@ struct CombatArenaView: View {
     private var localHPPercent: Double {
         guard let p = localPlayer, p.maxHealth > 0 else { return 1.0 }
         return Double(max(0, p.health)) / Double(p.maxHealth)
+    }
+
+    /// GeometryReader insets go to 0 under `.ignoresSafeArea()` — read the key window instead.
+    private var windowSafeArea: UIEdgeInsets {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let inset = scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.safeAreaInsets {
+            return inset
+        }
+        return scenes.first?.windows.first?.safeAreaInsets ?? UIEdgeInsets(top: 59, left: 0, bottom: 34, right: 0)
+    }
+
+    private var topChromePadding: CGFloat {
+        max(windowSafeArea.top, 54) + 10
+    }
+
+    private var bottomChromePadding: CGFloat {
+        max(windowSafeArea.bottom, 8) + 4
     }
 
     var body: some View {
@@ -1142,24 +1172,36 @@ struct CombatArenaView: View {
                         )
 
                         VStack(spacing: 0) {
-                            // ── Top nav: Battle type + Timer ─────────────────
-                            HStack(spacing: 12) {
-                                // Battle mode pill
-                                Text(battle.type == .bossRaid ? "⚔️ BOSS RAID" : (battle.type == .duel1v1 ? "⚔️ 1V1 DUEL" : "⚔️ TEAM BATTLE"))
-                                    .font(.system(size: 10, weight: .black, design: .monospaced))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 7)
-                                    .background(Color.black.opacity(0.65))
-                                    .cornerRadius(12)
-                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.danger.opacity(0.4), lineWidth: 1))
+                            // ── Top nav: Surrender + Timer (below Dynamic Island) ─
+                            HStack(alignment: .center, spacing: 12) {
+                                Button {
+                                    showSurrenderConfirm = true
+                                } label: {
+                                    Text("SURRENDER")
+                                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 11)
+                                        .background(Theme.danger.opacity(0.92))
+                                        .cornerRadius(12)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                                        )
+                                        .shadow(color: Theme.danger.opacity(0.45), radius: 8, y: 2)
+                                }
+                                .buttonStyle(TactileButtonStyle())
+                                .accessibilityLabel("Surrender")
 
-                                Spacer()
+                                Spacer(minLength: 8)
 
                                 // Countdown timer ring — driven by local timer, syncs from server on snapshots
                                 ZStack {
                                     Circle()
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 3.5)
+                                        .fill(Color.black.opacity(0.55))
+                                        .frame(width: 48, height: 48)
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 3.5)
                                         .frame(width: 46, height: 46)
                                     Circle()
                                         .trim(from: 0.0, to: CGFloat(localSecondsRemaining) / 60.0)
@@ -1174,10 +1216,10 @@ struct CombatArenaView: View {
                                         .font(.system(size: 13, weight: .black, design: .monospaced))
                                         .foregroundStyle(.white)
                                 }
+                                .accessibilityLabel("Time remaining \(localSecondsRemaining) seconds")
                             }
                             .padding(.horizontal, 16)
-                            // Push below Dynamic Island / notch — safe area top + 8pt breathing room
-                            .padding(.top, geo.safeAreaInsets.top + 8)
+                            .padding(.top, topChromePadding)
 
                             Spacer()
 
@@ -1285,23 +1327,13 @@ struct CombatArenaView: View {
                                         
                                         // Large Opponent Avatar with Damage Flashing & Shaking
                                         ZStack {
-                                            Circle()
-                                                .fill(opponent.characterClass.themeColor.opacity(0.12))
-                                                .frame(width: 110, height: 110)
-                                                .overlay(Circle().stroke(opponent.characterClass.themeColor, lineWidth: 2))
-                                                .glow(color: opponent.characterClass.themeColor.opacity(0.3), radius: 8)
-                                            
-                                            if let avatar = opponent.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                                                Image(platformImage: uiImage)
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .frame(width: 106, height: 106)
-                                                    .clipShape(Circle())
-                                            } else {
-                                                Image(systemName: "person.crop.circle.fill")
-                                                    .font(.system(size: 90))
-                                                    .foregroundColor(opponent.characterClass.themeColor)
-                                            }
+                                            BattlePortraitView(
+                                                avatarName: opponent.avatarName,
+                                                characterClass: opponent.characterClass,
+                                                size: 110,
+                                                lineWidth: 2,
+                                                showGlow: true
+                                            )
                                             
                                             if showHitOverlay {
                                                 Circle()
@@ -1397,21 +1429,13 @@ struct CombatArenaView: View {
                         if let player = localPlayer {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 6) {
-                                    ZStack {
-                                        if let avatar = FirebaseService.shared.currentCharacter?.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                                            Image(platformImage: uiImage)
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(width: 32, height: 32)
-                                                .clipShape(Circle())
-                                        } else {
-                                            Image(systemName: "person.crop.circle.fill")
-                                                .font(.system(size: 24))
-                                                .foregroundColor(cameraVM.selectedClass.themeColor)
-                                        }
-                                    }
-                                    .overlay(Circle().stroke(cameraVM.selectedClass.themeColor, lineWidth: 1.5))
-                                    .glow(color: cameraVM.selectedClass.themeColor.opacity(0.4), radius: 4)
+                                    BattlePortraitView(
+                                        avatarName: FirebaseService.shared.currentCharacter?.avatarName ?? player.avatarName,
+                                        characterClass: cameraVM.selectedClass,
+                                        size: 32,
+                                        lineWidth: 1.5,
+                                        showGlow: true
+                                    )
                                     
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(player.name)
@@ -1531,6 +1555,7 @@ struct CombatArenaView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 11)
+                        .padding(.bottom, bottomChromePadding)
                         .background(
                             LinearGradient(
                                 colors: [Color.black.opacity(0.0), Color.black.opacity(0.90)],
@@ -1545,6 +1570,14 @@ struct CombatArenaView: View {
             }
         }
         .ignoresSafeArea()
+        .alert("Surrender Match?", isPresented: $showSurrenderConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("SURRENDER", role: .destructive) {
+                MultiplayerService.shared.surrenderMatch()
+            }
+        } message: {
+            Text("You will forfeit this battle. Continue?")
+        }
         .overlay(
             ZStack {
                 ForEach(damageNumbers) { dmg in
@@ -1736,17 +1769,13 @@ struct ArenaFighterCard: View {
     var body: some View {
         VStack(spacing: 6) {
             // Avatar
-            ZStack {
-                Circle()
-                    .fill(player.characterClass.themeColor.opacity(isLocal ? 0.2 : 0.1))
-                    .frame(width: 52, height: 52)
-                    .overlay(Circle().stroke(isLocal ? player.characterClass.themeColor : Color.white.opacity(0.15), lineWidth: isLocal ? 2 : 1))
-                    .glow(color: isLocal ? player.characterClass.themeColor.opacity(0.5) : .clear, radius: 6)
-
-                Image(systemName: "figure.walk")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(player.characterClass.themeColor)
-            }
+            BattlePortraitView(
+                avatarName: player.avatarName,
+                characterClass: player.characterClass,
+                size: 52,
+                lineWidth: isLocal ? 2 : 1,
+                showGlow: isLocal
+            )
 
             Text(player.name)
                 .font(.system(size: 11, weight: .bold))
@@ -1810,36 +1839,23 @@ struct ArenaTeamMemberRow: View {
         HStack(spacing: 8) {
             if alignment == .trailing {
                 Spacer()
-            }
-
-            // Class color dot
-            Circle()
-                .fill(player.characterClass.themeColor)
-                .frame(width: 8, height: 8)
-                .glow(color: isLocal ? player.characterClass.themeColor.opacity(0.8) : .clear, radius: 3)
-
-            VStack(alignment: alignment == .leading ? .leading : .trailing, spacing: 2) {
-                Text(player.name)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-
-                GeometryReader { g in
-                    ZStack(alignment: alignment == .leading ? .leading : .trailing) {
-                        RoundedRectangle(cornerRadius: 2).fill(Color.black.opacity(0.5))
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(player.isDead ? Color.gray : player.characterClass.themeColor)
-                            .frame(width: CGFloat(player.health) / CGFloat(player.maxHealth) * g.size.width)
-                    }
-                }
-                .frame(height: 4)
-
-                Text("HP:\(player.health) ⚡\(player.reps)")
-                    .font(.system(size: 8, design: .monospaced))
-                    .foregroundStyle(isLocal ? player.characterClass.themeColor : .white.opacity(0.4))
-            }
-
-            if alignment == .leading {
+                nameAndBars
+                BattlePortraitView(
+                    avatarName: player.avatarName,
+                    characterClass: player.characterClass,
+                    size: 28,
+                    lineWidth: 1.2,
+                    showGlow: isLocal
+                )
+            } else {
+                BattlePortraitView(
+                    avatarName: player.avatarName,
+                    characterClass: player.characterClass,
+                    size: 28,
+                    lineWidth: 1.2,
+                    showGlow: isLocal
+                )
+                nameAndBars
                 Spacer()
             }
         }
@@ -1851,6 +1867,29 @@ struct ArenaTeamMemberRow: View {
             isLocal ? player.characterClass.themeColor.opacity(0.4) : Color.white.opacity(0.08),
             lineWidth: 1
         ))
+    }
+
+    private var nameAndBars: some View {
+        VStack(alignment: alignment == .leading ? .leading : .trailing, spacing: 2) {
+            Text(player.name)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+
+            GeometryReader { g in
+                ZStack(alignment: alignment == .leading ? .leading : .trailing) {
+                    RoundedRectangle(cornerRadius: 2).fill(Color.black.opacity(0.5))
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(player.isDead ? Color.gray : player.characterClass.themeColor)
+                        .frame(width: CGFloat(player.health) / CGFloat(max(1, player.maxHealth)) * g.size.width)
+                }
+            }
+            .frame(height: 4)
+
+            Text("HP:\(player.health) ⚡\(player.reps)")
+                .font(.system(size: 8, design: .monospaced))
+                .foregroundStyle(isLocal ? player.characterClass.themeColor : .white.opacity(0.4))
+        }
     }
 }
 
@@ -1895,26 +1934,14 @@ struct FighterCard: View {
                 .foregroundColor(player.characterClass.themeColor)
                 .fontWeight(.semibold)
             
-            // Custom avatar or class fallback
-            ZStack {
-                if let avatar = player.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                    Image(platformImage: uiImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 50, height: 50)
-                        .clipShape(Circle())
-                        .glow(color: player.characterClass.themeColor.opacity(0.4), radius: 6)
-                } else {
-                    Circle()
-                        .fill(player.characterClass.themeColor.opacity(0.15))
-                        .frame(width: 50, height: 50)
-                        .overlay(
-                            Image(systemName: "figure.walk")
-                                .font(.title3)
-                                .foregroundColor(player.characterClass.themeColor)
-                        )
-                }
-            }
+            // Custom avatar or class emblem
+            BattlePortraitView(
+                avatarName: player.avatarName,
+                characterClass: player.characterClass,
+                size: 50,
+                lineWidth: 1.5,
+                showGlow: true
+            )
             
             // Health statistics bar
             VStack(alignment: .leading, spacing: 4) {
@@ -2087,21 +2114,7 @@ struct DuelResultOverlay: View {
                         .foregroundColor(Theme.textMuted)
                         .fontWeight(.semibold)
 
-                    if case .settling = settlement?.status {
-                        Text("Rewards settling…")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(Theme.textSecondary)
-                    } else if case .failed = settlement?.status {
-                        Text("Rewards unavailable — try again later")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(Theme.danger)
-                            .multilineTextAlignment(.center)
-                    } else {
-                        HStack(spacing: 24) {
-                            RewardBadge(icon: "star.fill", value: "+\(displayXP) XP", color: Theme.success)
-                            RewardBadge(icon: "centsign.circle.fill", value: "+\(displayGold) Gold", color: Theme.healerColor)
-                        }
-                    }
+                    rewardsBody
                 }
                 .padding()
                 .background(Theme.secondaryCard)
@@ -2128,6 +2141,30 @@ struct DuelResultOverlay: View {
                     .stroke(Theme.border, lineWidth: 2)
             )
             .padding(.horizontal, 32)
+            .padding(.bottom, 24)
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        .zIndex(50)
+    }
+
+    @ViewBuilder
+    private var rewardsBody: some View {
+        // nil == settle not yet published — treat as settling (avoid fake +0/+0 flash)
+        switch settlement?.status {
+        case .none, .some(.settling):
+            Text("Rewards settling…")
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundColor(Theme.textSecondary)
+        case .some(.failed):
+            Text("Rewards unavailable — try again later")
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(Theme.danger)
+                .multilineTextAlignment(.center)
+        case .some(.settled(_, let xp, let gold)):
+            HStack(spacing: 24) {
+                RewardBadge(icon: "star.fill", value: "+\(xp) XP", color: Theme.success)
+                RewardBadge(icon: "centsign.circle.fill", value: "+\(gold) Gold", color: Theme.healerColor)
+            }
         }
     }
 
@@ -2135,22 +2172,14 @@ struct DuelResultOverlay: View {
         if case .settled = settlement?.status { return "REWARDS GAINED" }
         return "REWARDS"
     }
-
-    private var displayXP: Int {
-        if case .settled(_, let xp, _) = settlement?.status { return xp }
-        return 0
-    }
-
-    private var displayGold: Int {
-        if case .settled(_, _, let gold) = settlement?.status { return gold }
-        return 0
-    }
 }
 
 struct BossRaidResultOverlay: View {
     @ObservedObject var engine = BattleEngine.shared
     let winnerTitle: String
     let closeAction: () -> Void
+
+    private var isVictory: Bool { winnerTitle == "VICTORY!" }
     
     var body: some View {
         ZStack {
@@ -2160,23 +2189,17 @@ struct BossRaidResultOverlay: View {
             VStack(spacing: 24) {
                 Text(winnerTitle)
                     .font(.system(size: 36, weight: .black, design: .monospaced))
-                    .foregroundColor(winnerTitle == "VICTORY!" ? Theme.success : Theme.danger)
-                    .glow(color: winnerTitle == "VICTORY!" ? Theme.success.opacity(0.5) : Theme.danger.opacity(0.5), radius: 10)
+                    .foregroundColor(isVictory ? Theme.success : Theme.danger)
+                    .glow(color: isVictory ? Theme.success.opacity(0.5) : Theme.danger.opacity(0.5), radius: 10)
                 
                 VStack(spacing: 12) {
-                    Text(winnerTitle == "VICTORY!" ? "BOSS DEFEATED" : "YOU DIED")
+                    Text(isVictory ? "BOSS DEFEATED" : "YOU DIED")
                         .font(.caption)
                         .foregroundColor(Theme.textMuted)
                         .fontWeight(.semibold)
                     
-                    if winnerTitle == "VICTORY!" {
-                        // We don't have the boss's exact xp/gold here easily without passing it,
-                        // so we can just show a generic "Bounty Claimed" or pass it.
-                        // For now just show "Bounty Claimed"
-                        HStack(spacing: 24) {
-                            RewardBadge(icon: "star.fill", value: "XP BTY", color: Theme.success)
-                            RewardBadge(icon: "centsign.circle.fill", value: "GOLD BTY", color: Theme.healerColor)
-                        }
+                    if isVictory {
+                        raidRewardsSection
                         
                         if let droppedLoot = engine.droppedLoot {
                             Divider()
@@ -2254,6 +2277,26 @@ struct BossRaidResultOverlay: View {
                     .stroke(Theme.border, lineWidth: 2)
             )
             .padding(.horizontal, 32)
+        }
+    }
+
+    @ViewBuilder
+    private var raidRewardsSection: some View {
+        switch engine.raidRewardSettlement {
+        case .idle, .settling:
+            Text("Rewards settling…")
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundColor(Theme.textSecondary)
+        case .failed:
+            Text("Rewards unavailable — try again later")
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(Theme.danger)
+                .multilineTextAlignment(.center)
+        case .settled(let xp, let gold):
+            HStack(spacing: 24) {
+                RewardBadge(icon: "star.fill", value: "+\(xp) XP", color: Theme.success)
+                RewardBadge(icon: "centsign.circle.fill", value: "+\(gold) Gold", color: Theme.healerColor)
+            }
         }
     }
 }

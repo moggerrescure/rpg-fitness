@@ -258,8 +258,8 @@ private struct EquippedPreviewStrip: View {
         switch slot {
         case .weapon: return "bolt.fill"
         case .armor:  return "shield.fill"
-        case .ring:   return "circle.dotted"
-        case .amulet: return "sparkles"
+        case .ring:   return "circle.circle.fill"
+        case .amulet: return "diamond.fill"
         }
     }
 }
@@ -308,8 +308,8 @@ private struct SlotTabRow: View {
         switch slot {
         case .weapon: return "bolt.fill"
         case .armor:  return "shield.fill"
-        case .ring:   return "circle.dotted"
-        case .amulet: return "sparkles"
+        case .ring:   return "circle.circle.fill"
+        case .amulet: return "diamond.fill"
         }
     }
 }
@@ -372,7 +372,7 @@ private struct ShopItemList: View {
                 if displayItems.isEmpty {
                     let slotColor = character.selectedClass.themeColor
                     VStack(spacing: 16) {
-                        Image(systemName: slot == .ring ? "circle.dotted" : "sparkles")
+                        Image(systemName: slot == .ring ? "circle.circle.fill" : "diamond.fill")
                             .font(.system(size: 48, weight: .ultraLight))
                             .foregroundColor(slotColor.opacity(0.4))
                         Text("No \(slot.rawValue)s Yet")
@@ -450,7 +450,6 @@ private struct ShopItemRow: View {
                     ZStack {
                         ItemIconView(item: item, fallbackIcon: "questionmark")
                             .frame(width: 52, height: 52)
-                            .foregroundColor(item.rarity.color)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
@@ -466,6 +465,8 @@ private struct ShopItemRow: View {
                                 .font(.subheadline)
                                 .fontWeight(.black)
                                 .foregroundColor(Theme.textPrimary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.8)
 
                             RarityBadge(rarity: item.rarity)
 

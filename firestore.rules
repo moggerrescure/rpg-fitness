@@ -139,7 +139,8 @@ service cloud.firestore {
         'friends', 'friendRequests',
         'baseStrength', 'baseDexterity', 'baseIntelligence', 'baseVitality',
         'equippedWeaponId', 'equippedArmorId', 'equippedRingId', 'equippedAmuletId',
-        'lastEnergyRegenAt', 'pendingEnergyCharges'
+        'lastEnergyRegenAt', 'pendingEnergyCharges',
+        'lastTrainEnergyDay', 'trainEnergyAwardedToday'
       ].toSet();
     }
 
@@ -241,7 +242,15 @@ service cloud.firestore {
         allow create, update: if isSignedIn();
       }
 
-      // All other subcollections: owner only (Stepper workouts, blocked, etc.)
+      // FitRPG UGC block list — owner only; cannot block self.
+      match /blocked/{targetUid} {
+        allow read, delete: if isUser(userId);
+        allow create, update: if isUser(userId)
+                              && targetUid != request.auth.uid
+                              && targetUid.size() > 0;
+      }
+
+      // All other subcollections: owner only (Stepper workouts, etc.)
       match /{subcollection}/{document=**} {
         allow read, write: if isUser(userId);
       }
@@ -267,7 +276,18 @@ service cloud.firestore {
                     && request.resource.data.trophies == resource.data.trophies
                     && request.resource.data.diff(resource.data)
                          .affectedKeys()
-                         .hasOnly(['totalReps', 'members', 'description', 'emblem', 'name', 'memberIds', 'treasuryGold'])
+                         .hasOnly(['totalReps', 'members', 'description', 'emblem', 'name', 'memberIds', 'treasuryGold', 'leaderId'])
+                    && (
+                      // leaderId may only change to a remaining member, and only by the current leader
+                      // (covers leave-as-leader handoff and promote-to-leader).
+                      !('leaderId' in request.resource.data.diff(resource.data).affectedKeys())
+                      || (
+                        resource.data.leaderId == request.auth.uid
+                        && request.resource.data.leaderId is string
+                        && request.resource.data.memberIds is list
+                        && request.resource.data.leaderId in request.resource.data.memberIds
+                      )
+                    )
                     && (
                       resource.data.leaderId == request.auth.uid
                       || (

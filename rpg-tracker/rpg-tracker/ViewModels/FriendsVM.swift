@@ -23,6 +23,17 @@ class FriendsVM: ObservableObject {
                 self.fetchData(for: char)
             }
             .store(in: &cancellables)
+
+        FirebaseService.shared.$blockedUsersRevision
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self = self, let char = FirebaseService.shared.currentCharacter else { return }
+                self.fetchData(for: char)
+                if !self.searchText.isEmpty {
+                    self.performSearch(query: self.searchText)
+                }
+            }
+            .store(in: &cancellables)
         
         // Debounced search
         $searchText

@@ -1,6 +1,7 @@
 import SwiftUI
 import HealthKit
 import GoogleSignIn
+import FirebaseAuth
 
 struct PlayerProfileView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
@@ -76,166 +77,294 @@ struct PlayerProfileView: View {
                 .ignoresSafeArea()
             
             ScrollView {
-                VStack(spacing: 24) {
-                    // Top close button
+                VStack(spacing: 20) {
+                    // Top bar
                     HStack {
+                        Text("HERO PROFILE")
+                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                            .foregroundStyle(Theme.textMuted)
+                            .tracking(1.2)
                         Spacer()
                         Button(action: { dismiss() }) {
                             Image(systemName: "xmark")
-                                .font(.title3)
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.black.opacity(0.4))
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(Theme.textPrimary)
+                                .frame(width: 36, height: 36)
+                                .background(Color.black.opacity(0.45))
                                 .clipShape(Circle())
+                                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
                         }
                         .buttonStyle(TactileButtonStyle())
+                        .accessibilityLabel("Close profile")
                     }
                     .padding(.horizontal)
-                    .padding(.top, 16)
+                    .padding(.top, 14)
                     
-                    // Profile main card
-                    VStack(spacing: 16) {
-                        // Avatar frame
-                        Button(action: { showAvatarSelector = true }) {
-                            ZStack {
-                                // Radial glow halo
-                                RadialGradient(
-                                    colors: [character.selectedClass.themeColor.opacity(0.25), Color.clear],
-                                    center: .center,
-                                    startRadius: 0,
-                                    endRadius: 70
-                                )
-                                .frame(width: 140, height: 140)
-                                
-                                ZStack(alignment: .bottomTrailing) {
-                                    ZStack {
-                                        if let avatar = character.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
-                                            Image(platformImage: uiImage)
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 90, height: 90)
-                                                .clipShape(Circle())
-                                        } else {
+                    // Fantasy hero header — solid card + class glow (no empty glass slab)
+                    ZStack {
+                        Circle()
+                            .fill(character.selectedClass.themeColor.opacity(0.22))
+                            .frame(width: 200, height: 200)
+                            .blur(radius: 36)
+                            .offset(x: -70, y: -10)
+                        
+                        VStack(spacing: 0) {
+                            HStack(alignment: .center, spacing: 14) {
+                                Button(action: { showAvatarSelector = true }) {
+                                    ZStack(alignment: .bottomTrailing) {
+                                        ZStack {
+                                            if let avatar = character.avatarName, let uiImage = loadLocalAvatar(named: avatar) {
+                                                Image(platformImage: uiImage)
+                                                    .resizable()
+                                                    .scaledToFill()
+                                                    .frame(width: 76, height: 76)
+                                                    .clipShape(Circle())
+                                            } else {
+                                                let emblem = AvatarEmblem.all.first { $0.id == character.avatarName }
+                                                let tint = emblem?.tint ?? character.selectedClass.themeColor
+                                                Circle()
+                                                    .fill(
+                                                        LinearGradient(
+                                                            colors: [tint.opacity(0.4), Theme.secondaryCard],
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        )
+                                                    )
+                                                    .frame(width: 76, height: 76)
+                                                Image(systemName: emblem?.symbol ?? classIcon(for: character.selectedClass))
+                                                    .font(.system(size: 28, weight: .bold))
+                                                    .foregroundStyle(tint)
+                                            }
+                                        }
+                                        .overlay(
                                             Circle()
-                                                .fill(character.selectedClass.themeColor.opacity(0.15))
-                                                .frame(width: 90, height: 90)
-                                                .overlay(
-                                                    Image(systemName: "person.crop.circle.fill")
-                                                        .font(.system(size: 70))
-                                                        .foregroundColor(character.selectedClass.themeColor)
+                                                .stroke(
+                                                    LinearGradient(
+                                                        colors: [
+                                                            character.selectedClass.themeColor,
+                                                            character.selectedClass.themeColor.opacity(0.35)
+                                                        ],
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    ),
+                                                    lineWidth: 2.5
                                                 )
-                                        }
-                                    }
-                                    .overlay(
+                                        )
+                                        .glow(color: character.selectedClass.themeColor.opacity(0.45), radius: 8)
+                                        
                                         Circle()
-                                            .stroke(
-                                                LinearGradient(
-                                                    colors: [character.selectedClass.themeColor, character.selectedClass.themeColor.opacity(0.4)],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                ),
-                                                lineWidth: 2.5
+                                            .fill(character.selectedClass.themeColor)
+                                            .frame(width: 24, height: 24)
+                                            .overlay(
+                                                Image(systemName: "pencil")
+                                                    .font(.system(size: 10, weight: .bold))
+                                                    .foregroundStyle(.white)
                                             )
-                                    )
-                                    .glow(color: character.selectedClass.themeColor.opacity(0.4), radius: 8)
-                                    
-                                    // Pencil/Edit badge
-                                    Circle()
-                                        .fill(character.selectedClass.themeColor)
-                                        .frame(width: 26, height: 26)
-                                        .overlay(
-                                            Image(systemName: "pencil")
-                                                .font(.system(size: 11, weight: .bold))
-                                                .foregroundColor(.white)
-                                        )
-                                        .shadow(radius: 3)
-                                        .offset(x: 2, y: 2)
+                                            .overlay(Circle().stroke(Theme.cardBackground, lineWidth: 2))
+                                            .offset(x: 2, y: 2)
+                                    }
                                 }
-                            }
-                        }
-                        .buttonStyle(TactileButtonStyle())
-                        
-                        VStack(spacing: 6) {
-                            if isEditingUsername {
-                                HStack(spacing: 8) {
-                                    TextField("Enter username...", text: $usernameInput)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(Theme.secondaryCard.opacity(0.6))
-                                        .cornerRadius(8)
-                                        .foregroundColor(Theme.textPrimary)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(character.selectedClass.themeColor.opacity(0.5), lineWidth: 1)
-                                        )
-                                        .frame(width: 180)
-                                    
-                                    Button(action: {
-                                        let cleanName = usernameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        if !cleanName.isEmpty {
-                                            var updated = character
-                                            updated.username = cleanName
-                                            firebaseService.syncCharacter(updated)
-                                            isEditingUsername = false
+                                .buttonStyle(TactileButtonStyle())
+                                .accessibilityLabel("Change avatar")
+                                
+                                VStack(alignment: .leading, spacing: 8) {
+                                    if isEditingUsername {
+                                        HStack(spacing: 6) {
+                                            TextField("Enter username...", text: $usernameInput)
+                                                .font(.system(size: 15, weight: .semibold))
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 8)
+                                                .background(Theme.secondaryCard)
+                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                                .foregroundStyle(Theme.textPrimary)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(character.selectedClass.themeColor.opacity(0.55), lineWidth: 1)
+                                                )
+                                            
+                                            Button(action: {
+                                                let cleanName = usernameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                                                if !cleanName.isEmpty {
+                                                    var updated = character
+                                                    updated.username = cleanName
+                                                    firebaseService.syncCharacter(updated)
+                                                    isEditingUsername = false
+                                                }
+                                            }) {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .font(.title3)
+                                                    .foregroundStyle(Theme.success)
+                                            }
+                                            .buttonStyle(TactileButtonStyle())
+                                            .accessibilityLabel("Save username")
+                                            
+                                            Button(action: { isEditingUsername = false }) {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.title3)
+                                                    .foregroundStyle(Theme.danger)
+                                            }
+                                            .buttonStyle(TactileButtonStyle())
+                                            .accessibilityLabel("Cancel username edit")
                                         }
-                                    }) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.title3)
-                                            .foregroundColor(Theme.success)
+                                    } else {
+                                        HStack(spacing: 6) {
+                                            Text(character.username.isEmpty ? "Hero" : character.username)
+                                                .font(.system(size: 22, weight: .black, design: .default))
+                                                .foregroundStyle(Theme.textPrimary)
+                                                .lineLimit(2)
+                                                .minimumScaleFactor(0.55)
+                                                .truncationMode(.middle)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                            
+                                            Button(action: {
+                                                usernameInput = character.username
+                                                isEditingUsername = true
+                                            }) {
+                                                Image(systemName: "pencil.circle.fill")
+                                                    .font(.system(size: 18, weight: .semibold))
+                                                    .foregroundStyle(character.selectedClass.themeColor)
+                                            }
+                                            .buttonStyle(TactileButtonStyle())
+                                            .accessibilityLabel("Edit username")
+                                            .fixedSize()
+                                        }
                                     }
-                                    .buttonStyle(TactileButtonStyle())
                                     
-                                    Button(action: {
-                                        isEditingUsername = false
-                                    }) {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.title3)
-                                            .foregroundColor(Theme.danger)
+                                    HStack(spacing: 8) {
+                                        Text(character.selectedClass.rawValue.uppercased())
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                                            .foregroundStyle(character.selectedClass.themeColor)
+                                            .tracking(1)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.7)
+                                        
+                                        Text("·")
+                                            .foregroundStyle(Theme.textMuted)
+                                        
+                                        Text("LVL \(character.level)")
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(character.selectedClass.themeColor)
+                                            .clipShape(Capsule())
+                                            .fixedSize()
                                     }
-                                    .buttonStyle(TactileButtonStyle())
-                                }
-                                .padding(.vertical, 4)
-                            } else {
-                                HStack(spacing: 6) {
-                                    Text(character.username)
-                                        .font(.title)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Theme.textPrimary)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.75)
                                     
-                                    Button(action: {
-                                        usernameInput = character.username
-                                        isEditingUsername = true
-                                    }) {
-                                        Image(systemName: "pencil.circle.fill")
-                                            .font(.title3)
-                                            .foregroundColor(character.selectedClass.themeColor)
+                                    GeometryReader { geo in
+                                        let progress = min(1.0, Double(character.xp) / Double(max(1, character.xpForNextLevel)))
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .fill(Theme.secondaryCard)
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .fill(
+                                                    LinearGradient(
+                                                        colors: [
+                                                            character.selectedClass.themeColor,
+                                                            character.selectedClass.themeColor.opacity(0.65)
+                                                        ],
+                                                        startPoint: .leading,
+                                                        endPoint: .trailing
+                                                    )
+                                                )
+                                                .frame(width: geo.size.width * progress)
+                                        }
                                     }
-                                    .buttonStyle(TactileButtonStyle())
+                                    .frame(height: 5)
+                                    
+                                    Text("\(character.xp) / \(character.xpForNextLevel) XP")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(Theme.textMuted)
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            
-                            Text(character.selectedClass.rawValue.uppercased())
-                                .font(.system(.caption, design: .monospaced))
-                                .fontWeight(.bold)
-                                .foregroundColor(character.selectedClass.themeColor)
-                                .tracking(1.5)
-                        }
-                        
-                        // Level tag
-                        Text("LEVEL \(character.level)")
-                            .font(.system(.caption2, design: .monospaced))
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
-                            .background(character.selectedClass.themeColor)
-                            .cornerRadius(20)
+                            .padding(.top, 16)
+                            .padding(.bottom, 14)
+                            
+                            Divider().background(Theme.border)
+                            
+                            HStack(spacing: 8) {
+                                Button(action: { showAvatarSelector = true }) {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "person.crop.circle.badge.pencil")
+                                            .font(.system(size: 11, weight: .bold))
+                                        Text("AVATAR")
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    }
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Theme.secondaryCard.opacity(0.95))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Theme.border, lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(TactileButtonStyle())
+                                
+                                Button(action: {
+                                    usernameInput = character.username
+                                    isEditingUsername = true
+                                }) {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "textformat")
+                                            .font(.system(size: 11, weight: .bold))
+                                        Text("NAME")
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    }
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Theme.secondaryCard.opacity(0.95))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Theme.border, lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(TactileButtonStyle())
+                                
+                                Button(action: { showArmoryShop = true }) {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "cart.fill")
+                                            .font(.system(size: 11, weight: .bold))
+                                        Text("ARMORY")
+                                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                                    }
+                                    .foregroundStyle(.black)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Theme.warning)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .shadow(color: Theme.warning.opacity(0.35), radius: 5, y: 2)
+                                }
+                                .buttonStyle(TactileButtonStyle())
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 12)
+                        }
+                        .background(Theme.cardBackground.opacity(0.92))
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            character.selectedClass.themeColor.opacity(0.55),
+                                            Color.white.opacity(0.08),
+                                            Color.clear
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                        )
+                        .shadow(color: character.selectedClass.themeColor.opacity(0.14), radius: 14, y: 6)
+                        .dndBorder(color: character.selectedClass.themeColor.opacity(0.55), length: 16, lineWidth: 1.5)
                     }
-                    .padding(.vertical, 24)
-                    .frame(maxWidth: .infinity)
-                    .glassmorphicCard()
                     .padding(.horizontal)
                     
                     // Equipped Gear Card
@@ -252,7 +381,7 @@ struct PlayerProfileView: View {
                         VStack(spacing: 10) {
                             // Armor row
                             ProfileGearRow(
-                                icon: equippedArmor?.getIconName() ?? "tshirt",
+                                icon: equippedArmor?.getIconName() ?? "shield.fill",
                                 label: "ARMOR",
                                 item: equippedArmor,
                                 emptyText: "No Armor Equipped",
@@ -277,7 +406,7 @@ struct PlayerProfileView: View {
 
                             // Ring row
                             ProfileGearRow(
-                                icon: equippedRing?.getIconName() ?? "circle.dotted",
+                                icon: equippedRing?.getIconName() ?? "circle.circle.fill",
                                 label: "RING",
                                 item: equippedRing,
                                 emptyText: "No Ring Equipped",
@@ -289,7 +418,7 @@ struct PlayerProfileView: View {
 
                             // Amulet row
                             ProfileGearRow(
-                                icon: equippedAmulet?.getIconName() ?? "sparkles",
+                                icon: equippedAmulet?.getIconName() ?? "diamond.fill",
                                 label: "AMULET",
                                 item: equippedAmulet,
                                 emptyText: "No Amulet Equipped",
@@ -444,7 +573,7 @@ struct PlayerProfileView: View {
                             .tracking(1)
                         
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-                            AttributeCard(name: "Strength (STR)", value: strength, icon: "figure.strength.strength", color: Theme.swordsmanColor)
+                            AttributeCard(name: "Strength (STR)", value: strength, icon: "flame.fill", color: Theme.swordsmanColor)
                             AttributeCard(name: "Dexterity (DEX)", value: dexterity, icon: "figure.run", color: Theme.archerColor)
                             AttributeCard(name: "Vitality (VIT)", value: vitality, icon: "heart.fill", color: Theme.healerColor)
                             AttributeCard(name: "Intelligence (INT)", value: intelligence, icon: "sparkles", color: Theme.mageColor)
@@ -825,83 +954,85 @@ struct AvatarSelectorView: View {
     @Binding var selectedAvatar: String
     let accentColor: Color
     @Environment(\.dismiss) private var dismiss
-    
-    let avatarOptions = [
-        "avatar_knight", "avatar_mage", "avatar_archer", "avatar_healer",
-        "avatar_dragon", "avatar_phoenix", "avatar_dumbbell", "avatar_shield",
-        "avatar_potion", "avatar_crown"
-    ]
-    
+
+    private let avatarOptions: [AvatarEmblem] = AvatarEmblem.all
+
     let columnLayout = [
         GridItem(.flexible(), spacing: 16),
         GridItem(.flexible(), spacing: 16),
         GridItem(.flexible(), spacing: 16)
     ]
-    
+
     var body: some View {
         ZStack {
             Theme.background
                 .ignoresSafeArea()
-            
+
             VStack(spacing: 20) {
-                // Header
                 VStack(spacing: 6) {
                     Text("SELECT AVATAR")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundColor(Theme.textSecondary)
                         .tracking(2)
                         .padding(.top, 24)
-                    
+
                     Text("CHOOSE YOUR ICON")
                         .font(.system(.subheadline, design: .monospaced))
                         .fontWeight(.black)
                         .foregroundColor(Theme.textPrimary)
                 }
-                
+
                 ScrollView {
                     LazyVGrid(columns: columnLayout, spacing: 20) {
-                        ForEach(avatarOptions, id: \.self) { avatar in
-                            let isSelected = selectedAvatar == avatar
+                        ForEach(avatarOptions) { emblem in
+                            let isSelected = selectedAvatar == emblem.id
                             Button(action: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    selectedAvatar = avatar
+                                    selectedAvatar = emblem.id
                                 }
                             }) {
-                                VStack {
-                                    if let uiImage = loadLocalAvatar(named: avatar) {
+                                ZStack {
+                                    Circle()
+                                        .fill(emblem.tint.opacity(0.22))
+                                        .frame(width: 80, height: 80)
+
+                                    if let uiImage = loadLocalAvatar(named: emblem.id) {
                                         Image(platformImage: uiImage)
                                             .resizable()
                                             .aspectRatio(contentMode: .fill)
                                             .frame(width: 80, height: 80)
                                             .clipShape(Circle())
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(isSelected ? accentColor : Color.clear, lineWidth: 3)
-                                            )
-                                            .glow(color: isSelected ? accentColor.opacity(0.5) : Color.clear, radius: 6)
                                     } else {
-                                        Image(systemName: "person.crop.circle.fill")
-                                            .resizable()
-                                            .frame(width: 80, height: 80)
-                                            .foregroundColor(Theme.textMuted)
+                                        Image(systemName: emblem.symbol)
+                                            .font(.system(size: 30, weight: .bold))
+                                            .foregroundColor(emblem.tint)
                                     }
+
+                                    // Corner emblem so even grey art reads as distinct
+                                    Image(systemName: emblem.symbol)
+                                        .font(.system(size: 11, weight: .black))
+                                        .foregroundColor(.white)
+                                        .padding(5)
+                                        .background(emblem.tint)
+                                        .clipShape(Circle())
+                                        .offset(x: 28, y: 28)
                                 }
-                                .padding(4)
-                                .background(Theme.cardBackground.opacity(0.8))
-                                .clipShape(Circle())
                                 .overlay(
                                     Circle()
-                                        .stroke(isSelected ? accentColor : Theme.border, lineWidth: 1.5)
+                                        .stroke(isSelected ? accentColor : emblem.tint.opacity(0.55), lineWidth: isSelected ? 3 : 1.5)
                                 )
+                                .glow(color: isSelected ? accentColor.opacity(0.45) : emblem.tint.opacity(0.2), radius: isSelected ? 6 : 3)
                                 .scaleEffect(isSelected ? 1.05 : 0.95)
+                                .padding(4)
                             }
                             .buttonStyle(TactileButtonStyle())
+                            .accessibilityLabel(emblem.label)
                         }
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 16)
                 }
-                
+
                 Button(action: { dismiss() }) {
                     Text("CONFIRM SELECTION")
                         .font(.system(.subheadline, design: .monospaced))
@@ -920,7 +1051,29 @@ struct AvatarSelectorView: View {
             }
         }
     }
-    
+}
+
+/// Distinct colored emblem per avatar slot — avoids a grid of identical grey placeholders.
+struct AvatarEmblem: Identifiable {
+    let id: String
+    let symbol: String
+    let tint: Color
+    let label: String
+
+    static let all: [AvatarEmblem] = [
+        AvatarEmblem(id: "avatar_knight", symbol: "shield.fill", tint: Theme.swordsmanColor, label: "Knight"),
+        AvatarEmblem(id: "avatar_mage", symbol: "wand.and.stars", tint: Theme.mageColor, label: "Mage"),
+        AvatarEmblem(id: "avatar_archer", symbol: "arrow.up.forward", tint: Theme.archerColor, label: "Archer"),
+        AvatarEmblem(id: "avatar_healer", symbol: "cross.case.fill", tint: Theme.healerColor, label: "Healer"),
+        AvatarEmblem(id: "avatar_dragon", symbol: "flame.fill", tint: Color(hex: "F97316"), label: "Dragon"),
+        AvatarEmblem(id: "avatar_phoenix", symbol: "flame.circle.fill", tint: Color(hex: "E11D48"), label: "Phoenix"),
+        AvatarEmblem(id: "avatar_goblin", symbol: "leaf.fill", tint: Color(hex: "65A30D"), label: "Goblin"),
+        AvatarEmblem(id: "avatar_orc", symbol: "hammer.fill", tint: Color(hex: "A16207"), label: "Orc"),
+        AvatarEmblem(id: "avatar_dumbbell", symbol: "dumbbell.fill", tint: Theme.primary, label: "Athlete"),
+        AvatarEmblem(id: "avatar_shield", symbol: "shield.lefthalf.filled", tint: Theme.success, label: "Guardian"),
+        AvatarEmblem(id: "avatar_potion", symbol: "drop.fill", tint: Color(hex: "06B6D4"), label: "Alchemist"),
+        AvatarEmblem(id: "avatar_crown", symbol: "crown.fill", tint: Theme.warning, label: "Crown"),
+    ]
 }
 
 struct AttributeCard: View {
@@ -1067,9 +1220,9 @@ struct ProfileGearRow: View {
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(accentColor.opacity(0.3), lineWidth: 1.2)
                     )
-                
-                Image(systemName: icon)
-                    .font(.title3)
+
+                ItemIconView(item: item, fallbackIcon: icon)
+                    .frame(width: 28, height: 28)
                     .foregroundColor(accentColor)
             }
             .glow(color: accentColor.opacity(0.35), radius: 6)
@@ -1081,7 +1234,9 @@ struct ProfileGearRow: View {
                             .font(.subheadline)
                             .fontWeight(.bold)
                             .foregroundColor(Theme.textPrimary)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
+                            .fixedSize(horizontal: false, vertical: true)
                         
                         Text(item.rarity.rawValue.uppercased())
                             .font(.system(size: 8, design: .monospaced))

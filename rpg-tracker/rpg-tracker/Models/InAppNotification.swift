@@ -9,11 +9,24 @@ enum NotificationType: String, Codable {
     
     var iconName: String {
         switch self {
-        case .duel: return "swords"
+        case .duel: return "bolt.shield.fill"
         case .clan: return "shield.fill"
         case .system: return "info.circle.fill"
         case .reward: return "gift.fill"
         }
+    }
+
+    /// Prefer action-specific icons (team invite vs duel) when actionData is present.
+    func iconName(actionData: [String: String]?) -> String {
+        if let type = actionData?["type"] {
+            switch type {
+            case "teamInvite": return "person.3.fill"
+            case "duel": return "bolt.shield.fill"
+            case "friendRequest": return "person.badge.plus"
+            default: break
+            }
+        }
+        return iconName
     }
 }
 
