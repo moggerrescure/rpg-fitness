@@ -186,6 +186,11 @@ final class SocialAuthService {
         try await user.reauthenticate(with: credential)
         // Google does not require token revocation for App Store account deletion.
     }
+
+    func signOut() async throws {
+        GIDSignIn.sharedInstance.signOut()
+        try Auth.auth().signOut()
+    }
 }
 
 enum AuthError: LocalizedError {

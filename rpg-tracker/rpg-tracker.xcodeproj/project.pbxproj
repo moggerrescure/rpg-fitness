@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		ACPIV1E92FF7D100165755 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = ACPIV1E82FF7D100165755 /* PrivacyInfo.xcprivacy */; };
 		009D58E12B1874F82A0427B0 /* FitRPGWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = E17EF1D2C58DAEDDB74FBADD /* FitRPGWidget.appex */; };
 		5DE1D6C17416B44F14E90709 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5FB13102CFD3F5C27BFC044 /* Foundation.framework */; };
 		8E806396EF342D6A3044CC3D /* FitRPGWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6449F96403895101857D41DF /* FitRPGWidget.swift */; };
@@ -47,6 +48,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		ACPIV1E82FF7D100165755 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = "rpg-tracker/PrivacyInfo.xcprivacy"; sourceTree = "<group>"; };
 		14FCF11A86FEFA7A2C6674C2 /* FitRPGWidget-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "FitRPGWidget-Info.plist"; path = "FitRPGWidget/FitRPGWidget-Info.plist"; sourceTree = "<group>"; };
 		6449F96403895101857D41DF /* FitRPGWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FitRPGWidget.swift; path = FitRPGWidget/FitRPGWidget.swift; sourceTree = "<group>"; };
 		64891D2319AF89FD8223E730 /* LiveActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveActivityAttributes.swift; path = "rpg-tracker/Models/LiveActivityAttributes.swift"; sourceTree = "<group>"; };
@@ -103,6 +105,7 @@
 			isa = PBXGroup;
 			children = (
 				93E04F1C2FE41A0700C2384D /* rpg-tracker */,
+				ACPIV1E82FF7D100165755 /* PrivacyInfo.xcprivacy */,
 				AC7769582FE73A9B0067B7D3 /* Frameworks */,
 				93E04F1B2FE41A0700C2384D /* Products */,
 				94999E9769E42475B26538D0 /* FitRPGWidgetSources */,
@@ -248,6 +251,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ACPIV1E92FF7D100165755 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -442,8 +446,7 @@
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "RPG Fitness reads your steps, calories and workouts to reward you with XP, gold and in-game power.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RPG Fitness needs permission to save workout data to your Health app.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitRPG reads your steps, active energy, and workouts (with your permission) to award XP, gold, and in-game power. We do not write data to Apple Health.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -495,8 +498,7 @@
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "RPG Fitness reads your steps, calories and workouts to reward you with XP, gold and in-game power.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "RPG Fitness needs permission to save workout data to your Health app.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitRPG reads your steps, active energy, and workouts (with your permission) to award XP, gold, and in-game power. We do not write data to Apple Health.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;

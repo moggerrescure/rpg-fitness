@@ -1,5 +1,10 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { onRequest as onRequestV2, onCall as onCallV2, HttpsError as HttpsErrorV2 } from "firebase-functions/v2/https";
+import { onDocumentCreated as onDocCreated } from "firebase-functions/v2/firestore";
+import { defineSecret } from "firebase-functions/params";
+import { getAppCheck } from "firebase-admin/app-check";
+import { getAuth } from "firebase-admin/auth";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -642,6 +647,40 @@ export const acceptFriendRequest = functions.https.onCall(async (data, context) 
 });
 
 // -------------------------------------------------------------------
+// 6b. HTTP Callable: Decline Friend Request
+// -------------------------------------------------------------------
+export const declineFriendRequest = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+
+    const myUid = context.auth.uid;
+    const senderUid = data.senderUid;
+
+    if (!senderUid || myUid === senderUid) {
+        throw new functions.https.HttpsError("invalid-argument", "Invalid sender.");
+    }
+
+    const myRef = db.collection("users").doc(myUid);
+    const senderRef = db.collection("users").doc(senderUid);
+
+    await db.runTransaction(async (transaction) => {
+        const myDoc = await transaction.get(myRef);
+        const senderDoc = await transaction.get(senderRef);
+
+        if (!myDoc.exists || !senderDoc.exists) return;
+
+        const myData = myDoc.data() || {};
+        const myRequests: string[] = myData.friendRequests || [];
+        const requestIndex = myRequests.indexOf(senderUid);
+        if (requestIndex > -1) {
+            myRequests.splice(requestIndex, 1);
+            transaction.update(myRef, { friendRequests: myRequests });
+        }
+    });
+
+    return { success: true };
+});
+
+// -------------------------------------------------------------------
 // 7. HTTP Callable: Join Team
 // -------------------------------------------------------------------
 export const joinTeam = functions.https.onCall(async (data, context) => {
@@ -1109,3 +1148,435 @@ export const getLeaderboards = functions.https.onCall(async (data, context) => {
 
     return result;
 });
+
+// =============================================================================
+// SHARED AI PROXY FUNCTIONS
+// (FoodTracker + WorkoutTracker AI endpoints)
+// Re-added here because rpg-fitness deploys to the same Firebase project
+// (serzhanovich-ecosystem-ce700) and was wiping these functions on each deploy.
+// =============================================================================
+
+const GEMINI_API_KEY_SECRET = defineSecret("GEMINI_API_KEY");
+const PEXELS_API_KEY_SECRET = defineSecret("PEXELS_API_KEY");
+
+const AI_SERVICE_ACCOUNT = "firebase-adminsdk-fbsvc@serzhanovich-ecosystem-ce700.iam.gserviceaccount.com";
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
+const AI_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_AI_WEEKLY_LIMIT = 150;
+const AUTO_BLOCK_REPORT_THRESHOLD_AI = 3;
+
+const SAFETY_SETTINGS_USER = [
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_LOW_AND_ABOVE" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+];
+
+const SAFETY_SETTINGS_MODERATOR = [
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+];
+
+class RateLimitError extends Error {
+  retryAfterSeconds: number;
+  limit: number;
+  constructor(retryAfterSeconds: number, limit: number) {
+    super("rate_limited");
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.limit = limit;
+  }
+}
+
+async function enforceAIRateLimit(uid: string): Promise<void> {
+  const firestoreDb = admin.firestore();
+  const configSnap = await firestoreDb.collection("config").doc("ai_settings").get();
+  const configData = configSnap.data() || {};
+  const aiWeeklyLimit = typeof configData["weeklyLimit"] === "number"
+    ? configData["weeklyLimit"] as number
+    : DEFAULT_AI_WEEKLY_LIMIT;
+  const ref = firestoreDb.collection("ai_usage").doc(uid);
+
+  await firestoreDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const now = Date.now();
+    let windowStart = now;
+    let count = 0;
+
+    if (snap.exists) {
+      const data = snap.data() || {};
+      const ws = typeof data["windowStart"] === "number" ? data["windowStart"] as number : 0;
+      if (now - ws < AI_WINDOW_MS) {
+        windowStart = ws;
+        count = (data["count"] as number) || 0;
+      }
+    }
+
+    if (count >= aiWeeklyLimit) {
+      const retryAfterSeconds = Math.ceil((windowStart + AI_WINDOW_MS - now) / 1000);
+      throw new RateLimitError(retryAfterSeconds, aiWeeklyLimit);
+    }
+
+    tx.set(ref, {
+      windowStart,
+      count: count + 1,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+}
+
+async function geminiApiFetch(body: Record<string, unknown>, apiKey: string): Promise<Record<string, unknown>> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await resp.text();
+  if (!resp.ok) throw new Error(`Gemini error ${resp.status}: ${text}`);
+  return JSON.parse(text) as Record<string, unknown>;
+}
+
+function normalizeImageKey(keywords: unknown, title: string): string {
+  let parts: string[] = Array.isArray(keywords)
+    ? (keywords as unknown[]).map((k) => String(k).toLowerCase().trim()).filter(Boolean)
+    : [];
+  if (parts.length === 0 && title) {
+    parts = String(title).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
+  }
+  parts = [...new Set(parts)].sort();
+  return parts.slice(0, 4).join("-") || "food-meal";
+}
+
+// ── 1. vertexProxy ─────────────────────────────────────────────────────────
+export const vertexProxy = onRequestV2(
+  {
+    region: "us-central1",
+    serviceAccount: AI_SERVICE_ACCOUNT,
+    secrets: [GEMINI_API_KEY_SECRET],
+    memory: "512MiB",
+    timeoutSeconds: 300,
+  },
+  async (req, res) => {
+    const appCheckToken = req.header("X-Firebase-AppCheck");
+    if (!appCheckToken) {
+      res.status(401).json({ error: "Missing App Check token" });
+      return;
+    }
+    try {
+      await getAppCheck().verifyToken(appCheckToken);
+    } catch {
+      res.status(401).json({ error: "Invalid App Check token" });
+      return;
+    }
+
+    const authHeader = req.header("Authorization") || "";
+    const m = authHeader.match(/^Bearer (.+)$/i);
+    if (!m) {
+      res.status(401).json({ error: "Missing Firebase ID token" });
+      return;
+    }
+    let uid: string;
+    try {
+      const decoded = await getAuth().verifyIdToken(m[1]);
+      uid = decoded.uid;
+    } catch {
+      res.status(401).json({ error: "Invalid Firebase ID token" });
+      return;
+    }
+
+    try {
+      await enforceAIRateLimit(uid);
+    } catch (e) {
+      if (e instanceof RateLimitError) {
+        try {
+          await admin.firestore().collection("limit_hits").add({
+            uid,
+            limit: e.limit,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        } catch (logErr) {
+          console.error("Failed to log limit hit:", logErr);
+        }
+        res.set("Retry-After", String(e.retryAfterSeconds));
+        res.status(429).json({
+          error: "weekly_limit_reached",
+          message: `You've reached your weekly limit of ${e.limit} AI requests.`,
+          retryAfter: e.retryAfterSeconds,
+        });
+        return;
+      }
+      console.error("Rate limit check failed:", e);
+      res.status(500).json({ error: "Rate limit check failed" });
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = (req.body || {}) as any;
+    body.safetySettings = SAFETY_SETTINGS_USER;
+
+    const streaming = req.query["stream"] === "true";
+    const method = streaming ? "streamGenerateContent" : "generateContent";
+    const sse = streaming ? "&alt=sse" : "";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:${method}?key=${GEMINI_API_KEY_SECRET.value()}${sse}`;
+
+    const upstream = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!streaming) {
+      const data = await upstream.text();
+      if (!upstream.ok) console.error(`Vertex API Error: ${upstream.status} - ${data}`);
+      res.status(upstream.status).set("Content-Type", "application/json").send(data);
+      return;
+    }
+
+    if (!upstream.ok) console.error(`Vertex API Error (Streaming): ${upstream.status}`);
+    res.status(upstream.status).set("Content-Type", "text/event-stream");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reader = (upstream.body as any).getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read() as { done: boolean; value: Uint8Array };
+      if (done) break;
+      res.write(decoder.decode(value, { stream: true }));
+    }
+    res.end();
+  }
+);
+
+// ── 2. imageProxy ──────────────────────────────────────────────────────────
+export const imageProxy = onRequestV2(
+  {
+    region: "us-central1",
+    serviceAccount: AI_SERVICE_ACCOUNT,
+    secrets: [PEXELS_API_KEY_SECRET],
+    memory: "256MiB",
+    timeoutSeconds: 30,
+  },
+  async (req, res) => {
+    const appCheckToken = req.header("X-Firebase-AppCheck");
+    if (!appCheckToken) {
+      res.status(401).json({ error: "Missing App Check token" });
+      return;
+    }
+    try {
+      await getAppCheck().verifyToken(appCheckToken);
+    } catch {
+      res.status(401).json({ error: "Invalid App Check token" });
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = (req.body || {}) as any;
+    const keywords: unknown = body.keywords;
+    const title: string = body.title || "";
+    const key = normalizeImageKey(keywords, title);
+
+    const firestoreDb = admin.firestore();
+    const ref = firestoreDb.collection("meal_images").doc(key);
+
+    try {
+      const snap = await ref.get();
+      const snapData = snap.data();
+      if (snap.exists && snapData && snapData["url"]) {
+        res.status(200).json({ url: snapData["url"], cached: true });
+        return;
+      }
+    } catch (e) {
+      console.error("meal_images read error:", e);
+    }
+
+    const query = Array.isArray(keywords) && (keywords as unknown[]).length
+      ? (keywords as unknown[]).join(" ")
+      : title || "food meal";
+    try {
+      const pexUrl = "https://api.pexels.com/v1/search?per_page=1&orientation=landscape&query=" +
+        encodeURIComponent(query);
+      const r = await fetch(pexUrl, { headers: { "Authorization": PEXELS_API_KEY_SECRET.value() } });
+      if (!r.ok) {
+        console.error("PEXELS ERROR", r.status, (await r.text()).slice(0, 200));
+        res.status(200).json({ url: null });
+        return;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await r.json() as any;
+      const photoUrl: string | null = data?.photos?.[0]?.src?.large || null;
+      console.log("PEXELS OK", { query, total: data?.total_results, photoUrl });
+
+      if (photoUrl) {
+        await ref.set({
+          url: photoUrl,
+          query,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+      res.status(200).json({ url: photoUrl });
+    } catch (e) {
+      console.error("pexels error:", e);
+      res.status(200).json({ url: null });
+    }
+  }
+);
+
+// ── 3. deleteAccount ────────────────────────────────────────────────────────
+export const deleteAccount = onCallV2(
+  {
+    region: "us-central1",
+    serviceAccount: AI_SERVICE_ACCOUNT,
+    enforceAppCheck: true,
+    memory: "512MiB",
+    timeoutSeconds: 300,
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsErrorV2("unauthenticated", "You must be signed in to delete your account.");
+    }
+
+    const firestoreDb = admin.firestore();
+    const sharedSnap = await firestoreDb.collection("shared_workouts")
+      .where("creatorUid", "==", uid).get();
+    const reportsSnap = await firestoreDb.collection("reports")
+      .where("reporterUid", "==", uid).get();
+
+    const refs = [
+      ...sharedSnap.docs.map((d) => d.ref),
+      ...reportsSnap.docs.map((d) => d.ref),
+    ];
+    for (let i = 0; i < refs.length; i += 450) {
+      const batch = firestoreDb.batch();
+      refs.slice(i, i + 450).forEach((r) => batch.delete(r));
+      await batch.commit();
+    }
+
+    await firestoreDb.recursiveDelete(firestoreDb.collection("users").doc(uid));
+    return { ok: true };
+  }
+);
+
+// ── 4. moderateSharedWorkout ────────────────────────────────────────────────
+export const moderateSharedWorkout = onDocCreated(
+  {
+    document: "shared_workouts/{workoutId}",
+    region: "us-central1",
+    serviceAccount: AI_SERVICE_ACCOUNT,
+    secrets: [GEMINI_API_KEY_SECRET],
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = snap.data() as any || {};
+    const ref = snap.ref;
+
+    const title = String(data.title || "").slice(0, 300);
+    const description = String(data.description || "").slice(0, 2000);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const exercises: any[] = Array.isArray(data.exercises) ? data.exercises.slice(0, 50) : [];
+    const exerciseTexts = exercises
+      .map((e) => {
+        const name = String(e?.name || "").slice(0, 200);
+        const notes = String(e?.notes || "").slice(0, 500);
+        return notes ? `${name} — ${notes}` : name;
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    const systemPrompt = `You are a strict content moderator for a fitness app.\nDecide if user-submitted workout text is acceptable on a public platform that may be used by minors.\nBLOCK any of:\n- Sexual content, suggestive language, or pornography\n- Hate speech, slurs, harassment of any group\n- Threats, violence promotion, self-harm encouragement\n- Illegal activity, drug promotion (including PEDs as instructions), spam, advertising\n- Personal data (phone numbers, emails, home addresses)\n- Off-topic content unrelated to fitness/workouts\nAPPROVE otherwise.\nRespond ONLY with JSON: {"decision":"approved"|"blocked","reason":"short reason"}.`;
+    const userPayload = `TITLE: ${title}\nDESCRIPTION: ${description}\nEXERCISES:\n${exerciseTexts}`;
+
+    let decision = "blocked";
+    let reason = "Moderation service error";
+
+    try {
+      const body: Record<string, unknown> = {
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userPayload }] }],
+        generationConfig: {
+          temperature: 0.0,
+          maxOutputTokens: 100,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "object",
+            properties: {
+              decision: { type: "string", enum: ["approved", "blocked"] },
+              reason: { type: "string" },
+            },
+            required: ["decision", "reason"],
+          },
+        },
+        safetySettings: SAFETY_SETTINGS_MODERATOR,
+      };
+      const resp = await geminiApiFetch(body, GEMINI_API_KEY_SECRET.value());
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const textRaw = (resp as any)?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      const parsed = JSON.parse(textRaw) as { decision?: string; reason?: string };
+      if (parsed.decision === "approved" || parsed.decision === "blocked") {
+        decision = parsed.decision;
+        reason = String(parsed.reason || "").slice(0, 500);
+      }
+    } catch (e) {
+      console.error("Moderation error:", e);
+      decision = "blocked";
+      reason = "Moderation service error";
+    }
+
+    await ref.update({
+      status: decision,
+      moderationReason: reason,
+      moderatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log(`Moderated workout ${event.params.workoutId}: ${decision} — ${reason}`);
+  }
+);
+
+// ── 5. onReportCreated ─────────────────────────────────────────────────────
+export const onReportCreated = onDocCreated(
+  {
+    document: "reports/{reportId}",
+    region: "us-central1",
+    serviceAccount: AI_SERVICE_ACCOUNT,
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = snap.data() as any || {};
+    const workoutId: unknown = data.workoutId;
+    if (!workoutId || typeof workoutId !== "string") {
+      console.warn("Report has no workoutId:", event.params.reportId);
+      return;
+    }
+
+    const firestoreDb = admin.firestore();
+    const workoutRef = firestoreDb.collection("shared_workouts").doc(workoutId);
+
+    try {
+      await firestoreDb.runTransaction(async (tx) => {
+        const doc = await tx.get(workoutRef);
+        if (!doc.exists) {
+          console.warn(`Reported workout ${workoutId} does not exist`);
+          return;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const current = doc.data() as any || {};
+        const newCount = ((current.reportCount as number) || 0) + 1;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const updates: any = { reportCount: newCount };
+        if (newCount >= AUTO_BLOCK_REPORT_THRESHOLD_AI && current.status !== "blocked") {
+          updates.status = "blocked";
+          updates.moderationReason = `Auto-blocked after ${newCount} user reports`;
+          updates.moderatedAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+        tx.update(workoutRef, updates);
+      });
+      console.log(`Report ${event.params.reportId} processed for workout ${workoutId}`);
+    } catch (e) {
+      console.error("Report processing error:", e);
+    }
+  }
+);

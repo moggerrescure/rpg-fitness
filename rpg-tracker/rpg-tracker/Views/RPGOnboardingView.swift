@@ -9,64 +9,64 @@ struct RPGOnboardingView: View {
     // NPC dialogue content with D&D interactive choices and responses
     private let dialogues: [NPCDialogue] = [
         NPCDialogue(
-            name: "Аларик",
-            role: "Мастер Гильдии",
-            message: "Приветствую тебя, путник! Я Мастер Гильдии. Рад видеть новое лицо в нашей Таверне. В этом мире твоя реальная физическая сила превращается в могущественную магию и опыт персонажа. Готов ли ты совершить свой первый подвиг?",
+            name: "Alaric",
+            role: "Guild Master",
+            message: "Greetings, traveler! I am the Guild Master. Good to see a new face in our Tavern. In this realm, your real-world strength becomes powerful magic and character XP. Are you ready for your first quest?",
             themeColor: Theme.accent,
             avatarIcon: "shield.fill",
-            featureText: "Синхронизация здоровья и автоматический опыт за шаги",
-            choiceA: "⚔️ [Склонить голову] \"Я готов к тренировкам, Мастер!\"",
-            choiceB: "💰 [Вопросить] \"Какая награда меня ждет?\"",
-            replyA: "\"Славный дух! Твои ежедневные старания окупятся сполна. Ступай же вперед к первым квестам!\"",
-            replyB: "\"Золото, почет и великая слава! Сильные бойцы получают здесь лучшее обмундирование и уважение клана.\""
+            featureText: "Health sync and automatic XP from daily steps",
+            choiceA: "⚔️ [Bow your head] \"I'm ready to train, Master!\"",
+            choiceB: "💰 [Ask] \"What reward awaits me?\"",
+            replyA: "\"Noble spirit! Your daily effort will pay off handsomely. Now go forth to your first quests!\"",
+            replyB: "\"Gold, glory, and great renown! Strong fighters earn the finest gear and their clan's respect here.\""
         ),
         NPCDialogue(
-            name: "Каэлин",
-            role: "Мастер Классов",
-            message: "Я обучаю воинов и лучников. Выбери свой путь: круши врагов мечом, выпускай стрелы, твори заклинания или исцеляй союзников. Каждое приседание в реальной жизни — это сокрушительный выпад твоим клинком здесь!",
+            name: "Caelin",
+            role: "Class Master",
+            message: "I train warriors and archers. Choose your path: crush foes with a blade, loose arrows, weave spells, or heal allies. Every squat in the real world is a crushing lunge with your blade here!",
             themeColor: Theme.archerColor,
             avatarIcon: "person.fill.viewfinder",
-            featureText: "4 игровых класса со своими упражнениями и бонусами",
-            choiceA: "🗡️ [Сжать рукоять] \"Я буду доблестным Воином!\"",
-            choiceB: "🏹 [Натянуть тетиву] \"Предпочитаю лук и стрелы!\"",
-            replyA: "\"Отличный выбор! Твои приседания станут смертоносными выпадами, сокрушающими броню монстров!\"",
-            replyB: "\"Меткий выстрел! Каждое твоё отжимание — это призрачная стрела, летящая прямо в сердце врага.\""
+            featureText: "4 hero classes with unique exercises and bonuses",
+            choiceA: "🗡️ [Grip the hilt] \"I shall be a valiant Warrior!\"",
+            choiceB: "🏹 [Draw the bow] \"I prefer bow and arrow!\"",
+            replyA: "\"Excellent choice! Your squats will become deadly lunges that shatter monster armor!\"",
+            replyB: "\"A true marksman! Every push-up you do sends a phantom arrow straight into the enemy's heart.\""
         ),
         NPCDialogue(
-            name: "Магистр Вариус",
-            role: "Хранитель Подземелий",
-            message: "Вглядись в эти темные катакомбы... Там таятся древние боссы. С помощью камеры твоего телефона мы отследим твои приседания и отжимания в реальном времени. Твой пот и усердие нанесут прямой урон монстрам!",
+            name: "Magister Varius",
+            role: "Dungeon Keeper",
+            message: "Behold these dark catacombs... ancient bosses lurk within. With your phone's camera we track squats and push-ups in real time. Your sweat and effort deal direct damage to monsters!",
             themeColor: Theme.danger,
             avatarIcon: "eye.fill",
-            featureText: "Камера-трекинг повторений, заклинания в реальном времени",
-            choiceA: "🔥 [Приготовиться] \"Они пожалеют, что проснулись!\"",
-            choiceB: "📱 [Спросить] \"Как правильно расположить камеру?\"",
-            replyA: "\"Ха! Вот это боевой азарт! Помни: точная техника выполнения удваивает урон от заклинания!\"",
-            replyB: "\"Просто положи телефон на ровную поверхность в двух метрах от себя, чтобы скелет полностью попал в кадр.\""
+            featureText: "Camera rep tracking and real-time spellcasting",
+            choiceA: "🔥 [Ready yourself] \"They'll regret waking up!\"",
+            choiceB: "📱 [Ask] \"How should I position the camera?\"",
+            replyA: "\"Ha! Now that's fighting spirit! Remember: perfect form doubles your spell damage!\"",
+            replyB: "\"Just place your phone on a flat surface about two meters away so your full body stays in frame.\""
         ),
         NPCDialogue(
-            name: "Герцог Бранбран",
-            role: "Геральд Арены",
-            message: "Слышишь рев толпы? Это Арена Славы! Здесь ты можешь бросить вызов другим игрокам на PvP дуэлях или объединиться в могущественный клан для эпических совместных рейдов. Прославь свое имя в бою!",
+            name: "Duke Branbran",
+            role: "Arena Herald",
+            message: "Hear the roar of the crowd? This is the Arena of Glory! Challenge other players in PvP duels or join a mighty clan for epic co-op raids. Make your name in battle!",
             themeColor: Theme.primary,
             avatarIcon: "flame.fill",
-            featureText: "PvP Дуэли, Кооперативные рейды и Клановые залы",
-            choiceA: "🛡️ [Принять вызов] \"Я одолею лучших на Арене!\"",
-            choiceB: "🤝 [Примкнуть] \"Гильдии — моя настоящая семья.\"",
-            replyA: "\"Арена приветствует отважных гладиаторов! За победы в дуэлях ты поднимешься в глобальном рейтинге.\"",
-            replyB: "\"Мудрое решение. Совместные клановые рейды приносят легендарные трофеи, недоступные одиночкам.\""
+            featureText: "PvP Duels, Co-op Raids, and Clan Halls",
+            choiceA: "🛡️ [Accept the challenge] \"I'll best the Arena's finest!\"",
+            choiceB: "🤝 [Rally together] \"Guilds are my true family.\"",
+            replyA: "\"The Arena welcomes bold gladiators! Duel victories raise your rank on the global leaderboard.\"",
+            replyB: "\"Wise choice. Clan raids drop legendary trophies you can't earn alone.\""
         ),
         NPCDialogue(
-            name: "Гримли",
-            role: "Хозяин Таверны",
-            message: "Ха-ха! За каждую каплю пота я отсыплю тебе золота и опыта. Заглядывай в мою лавку: я припас для тебя легендарные мечи, посохи и броню. Ну что, по рукам? Заходи к нам в Таверну, эль уже остывает!",
+            name: "Grimli",
+            role: "Tavern Keeper",
+            message: "Ha-ha! For every drop of sweat I'll pay you gold and XP. Visit my shop — I've stocked legendary swords, staves, and armor. Deal? Come inside, the ale is getting cold!",
             themeColor: Theme.warning,
             avatarIcon: "cart.fill",
-            featureText: "Покупка экипировки, улучшение характеристик героя",
-            choiceA: "🛍️ [Сделка] \"Показывай свои товары, Гримли!\"",
-            choiceB: "🍻 [Поднять кубок] \"За встречу в таверне!\"",
-            replyA: "\"О-о, у меня припасены эпические артефакты! Качайся, зарабатывай золото на тренировках и забирай их!\"",
-            replyB: "\"За твое здоровье, путник! А теперь проходи внутрь, твои великие приключения начинаются прямо сейчас!\""
+            featureText: "Buy gear and upgrade your hero's stats",
+            choiceA: "🛍️ [Strike a deal] \"Show me your wares, Grimli!\"",
+            choiceB: "🍻 [Raise a mug] \"To meeting at the tavern!\"",
+            replyA: "\"Oh, I've got epic artifacts in stock! Train hard, earn gold from workouts, and claim them!\"",
+            replyB: "\"To your health, traveler! Now step inside — your great adventure begins right now!\""
         )
     ]
     
@@ -98,13 +98,22 @@ struct RPGOnboardingView: View {
                         Image(systemName: "shield.lefthalf.filled")
                             .font(.title2)
                             .foregroundColor(Theme.warning)
-                        Text("FITNESS RPG")
+                        Text("FITRPG")
                             .font(.system(.headline, design: .monospaced))
                             .fontWeight(.black)
                             .foregroundColor(.white)
                             .tracking(2.0)
                     }
                     .padding(.top, 20)
+
+                    if currentSlide == 0 {
+                        Text("FitRPG is for entertainment and fitness motivation only. It is not medical advice. Consult a physician before starting any exercise program.")
+                            .font(.system(.caption2, design: .rounded))
+                            .foregroundColor(.white.opacity(0.65))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 28)
+                            .padding(.top, 8)
+                    }
                     
                     // Dialog page slider
                     TabView(selection: $currentSlide) {
@@ -119,7 +128,7 @@ struct RPGOnboardingView: View {
                     VStack(spacing: 12) {
                         if currentSlide < dialogues.count - 1 {
                             HStack {
-                                Button("ПРОПУСТИТЬ") {
+                                Button("SKIP") {
                                     withAnimation {
                                         currentSlide = dialogues.count - 1
                                     }
@@ -136,7 +145,7 @@ struct RPGOnboardingView: View {
                                     }
                                 }) {
                                     HStack(spacing: 6) {
-                                        Text("ДАЛЕЕ")
+                                        Text("NEXT")
                                         Image(systemName: "chevron.right")
                                     }
                                     .font(.system(.subheadline, design: .monospaced))
@@ -157,7 +166,7 @@ struct RPGOnboardingView: View {
                         } else {
                             // Let's Enter the Tavern!
                             Button(action: startTavernTransition) {
-                                Text("ПОПАСТЬ В ТАВЕРНУ")
+                                Text("ENTER THE TAVERN")
                                     .font(.system(.headline, design: .monospaced))
                                     .fontWeight(.black)
                                     .foregroundColor(.white)
@@ -272,7 +281,7 @@ private struct NPCSpeechView: View {
                     
                     if !isTypewritingComplete {
                         HStack(spacing: 3) {
-                            Text("ТАП ДЛЯ ПРОПУСКА")
+                            Text("TAP TO SKIP")
                                 .font(.system(size: 7, weight: .bold, design: .monospaced))
                                 .foregroundColor(Theme.textMuted)
                             Image(systemName: "hand.tap.fill")

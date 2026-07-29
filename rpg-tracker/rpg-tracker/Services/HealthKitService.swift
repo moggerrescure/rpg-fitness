@@ -21,24 +21,45 @@ class HealthKitService: ObservableObject {
     @Published var isSyncing: Bool = false
     
     private let healthStore = HKHealthStore()
+
+    private var readTypes: Set<HKObjectType> {
+        [
+            HKQuantityType(.stepCount),
+            HKQuantityType(.activeEnergyBurned),
+            HKObjectType.workoutType()
+        ]
+    }
     
-    private init() { }
+    private init() {
+        Task { await refreshAuthorizationStatus() }
+    }
     
     var isAvailable: Bool {
         return HKHealthStore.isHealthDataAvailable()
+    }
+
+    /// HealthKit does not expose read authorization status directly. We treat the user as connected
+    /// after they have completed the authorization prompt (`.unnecessary` request status).
+    func refreshAuthorizationStatus() async {
+        guard isAvailable else {
+            isAuthorized = false
+            return
+        }
+
+        let status = await withCheckedContinuation { (continuation: CheckedContinuation<HKAuthorizationRequestStatus, Never>) in
+            healthStore.getRequestStatusForAuthorization(toShare: [], read: readTypes) { status, _ in
+                continuation.resume(returning: status)
+            }
+        }
+
+        isAuthorized = status == .unnecessary
     }
     
     func requestAuthorization() async throws {
         guard isAvailable else { throw NSError(domain: "HealthKit", code: 1, userInfo: [NSLocalizedDescriptionKey: "HealthKit is not available on this device"]) }
         
-        let typesToRead: Set<HKObjectType> = [
-            HKQuantityType(.stepCount),
-            HKQuantityType(.activeEnergyBurned),
-            HKObjectType.workoutType()
-        ]
-        
-        try await healthStore.requestAuthorization(toShare: [], read: typesToRead)
-        self.isAuthorized = true
+        try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+        await refreshAuthorizationStatus()
     }
     
     func syncHealthData(since lastSync: Date?) async throws -> HealthSyncResult {

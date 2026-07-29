@@ -2,10 +2,12 @@ import SwiftUI
 
 struct UpdateRequiredView: View {
     @ObservedObject var versionManager = VersionManager.shared
+    @ObservedObject private var remoteConfig = RemoteConfigManager.shared
     @Environment(\.openURL) var openURL
-    
-    // Replace with your actual App Store link when available
-    private let appStoreURL = URL(string: "https://apps.apple.com/app/id0000000000")!
+
+    private var appStoreURL: URL? {
+        AppStoreConfig.appStoreURL(remoteConfig: remoteConfig)
+    }
     
     var isHardUpdate: Bool {
         versionManager.updateRequirement == .hardUpdate
@@ -54,22 +56,30 @@ struct UpdateRequiredView: View {
                 Spacer()
                 
                 // Primary Action Button
-                Button(action: {
-                    openURL(appStoreURL)
-                }) {
-                    Text("Ascend Now")
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(
-                            LinearGradient(gradient: Gradient(colors: [.yellow, .orange]), startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .cornerRadius(12)
-                        .shadow(color: .orange.opacity(0.4), radius: 8, x: 0, y: 4)
+                if let appStoreURL {
+                    Button(action: {
+                        openURL(appStoreURL)
+                    }) {
+                        Text("Ascend Now")
+                            .font(.headline)
+                            .fontWeight(.bold)
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                LinearGradient(gradient: Gradient(colors: [.yellow, .orange]), startPoint: .topLeading, endPoint: .bottomTrailing)
+                            )
+                            .cornerRadius(12)
+                            .shadow(color: .orange.opacity(0.4), radius: 8, x: 0, y: 4)
+                    }
+                    .padding(.horizontal, 40)
+                } else {
+                    Text("App Store link is not configured yet. Set `AppStoreConfig.bundledAppStoreID` or Remote Config key `rpg_ios_app_store_id`.")
+                        .font(.footnote)
+                        .foregroundColor(.white.opacity(0.65))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
                 }
-                .padding(.horizontal, 40)
                 
                 // Secondary Action Button (Only for Soft Update)
                 if !isHardUpdate {

@@ -48,31 +48,10 @@ class FirebaseService: ObservableObject {
                    let boss = try? doc.data(as: WorldBoss.self) {
                     DispatchQueue.main.async { self.activeWorldBoss = boss }
                 } else {
-                    // No active world boss – create one locally so raids still work
-                    DispatchQueue.main.async { self.ensureWorldBossExists() }
+                    // No active world boss — wait for server cron; do not fabricate client-side
+                    DispatchQueue.main.async { self.activeWorldBoss = nil }
                 }
             }
-    }
-    
-    private func ensureWorldBossExists() {
-        if activeWorldBoss == nil {
-            let template = Boss.templates.last! // Use strongest boss (dragon)
-            let newBoss = WorldBoss(
-                id: "current",
-                bossTemplateId: template.id,
-                maxHealth: template.maxHealth,
-                currentHealth: template.maxHealth,
-                isActive: true,
-                startedAt: Date(),
-                topAttackers: [:]
-            )
-            // Store locally so raids work immediately
-            self.activeWorldBoss = newBoss
-            // Try to persist to Firestore in background
-            Task {
-                try? Firestore.firestore().collection("world_bosses").document(newBoss.id).setData(from: newBoss)
-            }
-        }
     }
     
     private var characterListener: ListenerRegistration?
@@ -710,138 +689,51 @@ class FirebaseService: ObservableObject {
     }
     
     func startClanWar() {
-        guard var clan = userClan else { return }
-        
-        // Show "searching" state immediately
-        let endsAt = Date().addingTimeInterval(3600) // 1 hour search timeout roughly
-        clan.activeWar = ClanWar(
-            phase: .searching,
-            phaseEndsAt: endsAt,
-            opponentClanId: nil,
-            opponentClanName: nil,
-            myClanScore: 0,
-            opponentClanScore: 0
-        )
-        self.userClan = clan
-        self.syncClan(clan)
-        
+        guard userClan != nil else { return }
+
         Task {
             do {
-                let db = Firestore.firestore()
-                // Search for an opponent searching for war
-                let snapshot = try await db.collection("matchmaking")
-                    .whereField("type", isEqualTo: "clan_war")
-                    .whereField("status", isEqualTo: "searching")
-                    .limit(to: 5)
-                    .getDocuments()
-                
-                // Find first ticket not from our clan
-                if let doc = snapshot.documents.first(where: { ($0.data()["clanId"] as? String) != clan.id }),
-                   let opponentClanId = doc.data()["clanId"] as? String {
-                    
-                    // Claim the ticket
-                    try await doc.reference.updateData(["status": "matched", "matchedWith": clan.id])
-                    
-                    // Fetch opponent clan
-                    let oppDoc = try await db.collection("clans").document(opponentClanId).getDocument()
-                    let oppName = oppDoc.data()?["name"] as? String ?? "Unknown Clan"
-                    
-                    let warDuration: TimeInterval = 86400 // 24 hours
-                    let warEndsAt = Date().addingTimeInterval(warDuration)
-                    
-                    // Update My Clan
-                    var myClan = clan
-                    myClan.activeWar = ClanWar(phase: .active, phaseEndsAt: warEndsAt, opponentClanId: opponentClanId, opponentClanName: oppName, myClanScore: 0, opponentClanScore: 0)
-                    self.syncClan(myClan)
-                    
-                    // Update Opponent Clan
-                    if var oppClan = try? oppDoc.data(as: Clan.self) {
-                        oppClan.activeWar = ClanWar(phase: .active, phaseEndsAt: warEndsAt, opponentClanId: clan.id, opponentClanName: clan.name, myClanScore: 0, opponentClanScore: 0)
-                        self.syncClan(oppClan)
-                    }
-                } else {
-                    // Create our own searching ticket
-                    try await db.collection("matchmaking").addDocument(data: [
-                        "type": "clan_war",
-                        "clanId": clan.id,
-                        "status": "searching",
-                        "createdAt": FieldValue.serverTimestamp()
-                    ])
+                let functions = Functions.functions()
+                let result = try await functions.httpsCallable("matchmakeClanWar").call()
+                if let data = result.data as? [String: Any] {
+                    let opponent = data["opponentName"] as? String ?? "Unknown"
+                    let isBot = data["isBot"] as? Bool ?? false
+                    print("Clan war started vs \(opponent) (bot: \(isBot))")
                 }
+                // Clan listener picks up server-written activeWar state
             } catch {
-                print("Error starting clan war: \(error)")
+                print("Error starting clan war: \(error.localizedDescription)")
             }
         }
     }
-    
+
     func cancelClanWarSearch() {
-        guard var clan = userClan else { return }
-        
-        // Remove active war locally and in DB
+        guard var clan = userClan, clan.activeWar?.phase == .searching else { return }
+
         clan.activeWar = nil
         self.userClan = clan
-        self.syncClan(clan)
-        
+        syncClan(clan)
+    }
+
+    func contributeWarScore(points: Int) {
+        guard points > 0 else { return }
+        recordClanWarAttack(won: true)
+    }
+
+    func recordClanWarAttack(won: Bool) {
         Task {
             do {
-                let db = Firestore.firestore()
-                let snapshot = try await db.collection("matchmaking")
-                    .whereField("type", isEqualTo: "clan_war")
-                    .whereField("clanId", isEqualTo: clan.id)
-                    .whereField("status", isEqualTo: "searching")
-                    .getDocuments()
-                
-                for doc in snapshot.documents {
-                    try await doc.reference.delete()
-                }
+                let functions = Functions.functions()
+                _ = try await functions.httpsCallable("recordClanWarAttack").call(["won": won])
+                // Clan listener reflects server-updated scores and member stats
             } catch {
-                print("Error cancelling clan war search: \(error)")
+                print("Error recording clan war attack: \(error.localizedDescription)")
             }
         }
     }
-    
-    func contributeWarScore(points: Int) {
-        guard var clan = userClan, let charId = currentCharacter?.id else { return }
-        
-        // Find my member in clan and update their stats
-        if let idx = clan.members.firstIndex(where: { $0.id == charId }) {
-            if points > 0 {
-                clan.members[idx].warScoreContributed += points
-            }
-        }
-        
-        if var war = clan.activeWar, points > 0 {
-            war.myClanScore += points
-            clan.activeWar = war
-        }
-        
-        self.userClan = clan
-        self.syncClan(clan)
-    }
-    
+
     func recordClanWarBattle(won: Bool) {
-        guard var clan = userClan, let charId = currentCharacter?.id else { return }
-        
-        if let idx = clan.members.firstIndex(where: { $0.id == charId }) {
-            clan.members[idx].warAttacksUsed += 1
-        }
-        
-        self.userClan = clan
-        // Sync before contributing points to ensure attacks are saved
-        self.syncClan(clan)
-        
-        if won {
-            contributeWarScore(points: 2)
-        } else {
-            // Update opponent clan score locally for the loser
-            guard var currentClan = userClan else { return }
-            if var war = currentClan.activeWar {
-                war.opponentClanScore += 2
-                currentClan.activeWar = war
-                self.userClan = currentClan
-                self.syncClan(currentClan)
-            }
-        }
+        recordClanWarAttack(won: won)
     }
     
     // MARK: - Leaderboard Fetch
@@ -911,18 +803,18 @@ class FirebaseService: ObservableObject {
     }
     
     func equipItem(itemId: String, slot: EquipmentSlot) {
-        guard var char = currentCharacter else { return }
-        switch slot {
-        case .weapon:
-            char.equipWeapon(itemId: itemId)
-        case .armor:
-            char.equipArmor(itemId: itemId)
-        case .ring:
-            char.equipRing(itemId: itemId)
-        case .amulet:
-            char.equipAmulet(itemId: itemId)
+        Task {
+            do {
+                let functions = Functions.functions()
+                _ = try await functions.httpsCallable("equipItem").call([
+                    "itemId": itemId,
+                    "slot": slot.rawValue
+                ])
+                // Character listener refreshes equipped ids from Firestore
+            } catch {
+                print("Error equipping item: \(error.localizedDescription)")
+            }
         }
-        syncCharacter(char)
     }
     
     // MARK: - FCM Token
@@ -931,5 +823,53 @@ class FirebaseService: ObservableObject {
         char.fcmToken = token
         // Persist to Firestore without triggering full character sync overhead
         Firestore.firestore().collection("users").document(char.id).updateData(["fcmToken": token])
+    }
+
+    // MARK: - Account deletion (FitRPG data only — preserves shared users/{uid} fields for other apps)
+
+    /// FitRPG-specific Firestore field keys stored on `users/{uid}`.
+    private static let fitRPGUserFieldKeys: [String] = [
+        "username", "usernameLower", "selectedClass", "energy", "maxEnergy", "basePower", "gold",
+        "avatarName", "statPoints", "baseStrength", "baseDexterity", "baseIntelligence", "baseVitality",
+        "stats", "equippedWeaponId", "equippedArmorId", "equippedRingId", "equippedAmuletId",
+        "ownedEquipmentIds", "clanId", "pvpWins", "pvpTrophies", "friends", "friendRequests",
+        "currentLevel", "classTrophies", "lastActive", "lastHealthSyncDate", "progressions"
+    ]
+
+    /// Removes FitRPG game data and in-app notifications. Does not delete `blocked` or other subcollections.
+    func deleteFitRPGAccountData(uid: String) async throws {
+        let db = Firestore.firestore()
+        let userRef = db.collection("users").document(uid)
+
+        if currentCharacter?.clanId != nil {
+            leaveClan()
+        }
+
+        let notifications = try await userRef.collection("notifications").getDocuments()
+        if !notifications.documents.isEmpty {
+            let batch = db.batch()
+            notifications.documents.forEach { batch.deleteDocument($0.reference) }
+            try await batch.commit()
+        }
+
+        var deletions: [String: Any] = [:]
+        for key in Self.fitRPGUserFieldKeys {
+            deletions[key] = FieldValue.delete()
+        }
+        deletions["fcmToken"] = FieldValue.delete()
+
+        let snapshot = try await userRef.getDocument()
+        if snapshot.exists {
+            try await userRef.updateData(deletions)
+        }
+
+        characterListener?.remove()
+        clanListener?.remove()
+        currentListenedClanId = nil
+        currentCharacter = nil
+        userClan = nil
+        friends = []
+        UserDefaults.standard.removeObject(forKey: "saved_character")
+        UserDefaults.standard.removeObject(forKey: "saved_friends")
     }
 }

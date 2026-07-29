@@ -238,7 +238,7 @@ class MultiplayerService: ObservableObject {
     /// Fills remaining team slots with bots, creates opponent team, sets battle to active.
     private func startTeamBattle(battleId: String) {
         teamLobbyListener?.remove()
- % ;        let ticketIdToDelete = currentTicketId
+        let ticketIdToDelete = currentTicketId
         teamLobbyTicketId = nil
         isInTeamLobby = false
         

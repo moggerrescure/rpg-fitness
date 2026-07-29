@@ -1,8 +1,10 @@
 import SwiftUI
 import HealthKit
+import GoogleSignIn
 
 struct PlayerProfileView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) private var dismiss
     @State private var profileToastMessage: String? = nil
     @State private var showArmoryShop = false
@@ -11,6 +13,12 @@ struct PlayerProfileView: View {
     @State private var showAvatarSelector = false
     @State private var showInventory = false
     @State private var showConstellations = false
+    @State private var isProcessingAccountAction = false
+    @State private var showDeleteAccountAlert = false
+    @State private var showDeleteAccountError = false
+    @State private var deleteAccountError: String? = nil
+    @State private var authErrorMessage: String? = nil
+    @State private var showAccountDeletedConfirmation = false
     
     init(character: Character) {
         // Direct observation of FirebaseService handles reactivity; signature kept for compatibility.
@@ -300,6 +308,25 @@ struct PlayerProfileView: View {
                             .shadow(color: Theme.warning.opacity(0.4), radius: 6)
                         }
                         .buttonStyle(TactileButtonStyle())
+
+                        Button(action: { showInventory = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "backpack.fill")
+                                Text("INVENTORY")
+                            }
+                            .font(.system(size: 12, design: .monospaced))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Theme.secondaryCard.opacity(0.9))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Theme.border, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(TactileButtonStyle())
                         
                         Button(action: { showConstellations = true }) {
                             HStack(spacing: 8) {
@@ -438,6 +465,9 @@ struct PlayerProfileView: View {
                     // Health Sync Section
                     HealthSyncTabView()
                         .padding(.horizontal)
+
+                    settingsSection
+                        .padding(.horizontal)
                     
                     // Achievements
                     VStack(alignment: .leading, spacing: 16) {
@@ -449,10 +479,30 @@ struct PlayerProfileView: View {
                         
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 16) {
-                                AchievementBadge(title: "First Rep", desc: "Start journey", icon: "bolt.fill", unlocked: true)
-                                AchievementBadge(title: "Squat Adept", desc: "50 squats", icon: "figure.walk", unlocked: character.stats.totalSquats >= 50)
-                                AchievementBadge(title: "Push Master", desc: "100 pushups", icon: "crown.fill", unlocked: character.stats.totalPushups >= 100)
-                                AchievementBadge(title: "Gladiator", desc: "First PvP win", icon: "suit.spade.fill", unlocked: true)
+                                AchievementBadge(
+                                    title: "First Rep",
+                                    desc: "Start journey",
+                                    icon: "bolt.fill",
+                                    unlocked: character.stats.totalReps >= 1
+                                )
+                                AchievementBadge(
+                                    title: "Squat Adept",
+                                    desc: "50 squats",
+                                    icon: "figure.walk",
+                                    unlocked: character.stats.totalSquats >= 50
+                                )
+                                AchievementBadge(
+                                    title: "Push Master",
+                                    desc: "100 pushups",
+                                    icon: "crown.fill",
+                                    unlocked: character.stats.totalPushups >= 100
+                                )
+                                AchievementBadge(
+                                    title: "Gladiator",
+                                    desc: "First PvP win",
+                                    icon: "suit.spade.fill",
+                                    unlocked: character.unwrappedPvPWins >= 1
+                                )
                             }
                         }
                     }
@@ -490,6 +540,223 @@ struct PlayerProfileView: View {
         }
         .fullScreenCover(isPresented: $showConstellations) {
             ConstellationSkillTreeView()
+        }
+        .alert("Delete Account", isPresented: $showDeleteAccountAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete Account", role: .destructive) {
+                Task { await deleteAccount() }
+            }
+        } message: {
+            Text("This permanently deletes your FitRPG character, notifications, and game progress. This cannot be undone.")
+        }
+        .alert("Couldn't Delete Account", isPresented: $showDeleteAccountError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(deleteAccountError ?? "Unknown error")
+        }
+        .alert("Authentication Error", isPresented: Binding(
+            get: { authErrorMessage != nil },
+            set: { if !$0 { authErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(authErrorMessage ?? "")
+        }
+        .alert("Account Deleted", isPresented: $showAccountDeletedConfirmation) {
+            Button("OK", role: .cancel) { dismiss() }
+        } message: {
+            Text("Your FitRPG data has been removed.")
+        }
+    }
+
+    private var settingsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("SETTINGS")
+                .font(.system(.caption, design: .monospaced))
+                .fontWeight(.bold)
+                .foregroundColor(Theme.textSecondary)
+                .tracking(1)
+
+            VStack(spacing: 0) {
+                settingsLinkRow(title: "Privacy Policy", icon: "hand.raised.fill", url: LegalURLs.privacyPolicy)
+                Divider().background(Theme.border)
+                settingsLinkRow(title: "Terms of Use", icon: "doc.text.fill", url: LegalURLs.termsOfUse)
+                Divider().background(Theme.border)
+                settingsLinkRow(title: "Support", icon: "questionmark.circle.fill", url: LegalURLs.support)
+            }
+            .background(Theme.cardBackground.opacity(0.85))
+            .cornerRadius(14)
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border, lineWidth: 0.8))
+
+            Text("FitRPG is for entertainment and fitness motivation only. It is not medical advice. Consult a physician before starting any exercise program.")
+                .font(.system(.caption2, design: .rounded))
+                .foregroundColor(Theme.textMuted)
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 4)
+
+            if authManager.isAnonymous {
+                VStack(spacing: 10) {
+                    Button(action: { Task { await signInWithApple() } }) {
+                        HStack {
+                            Image(systemName: "apple.logo")
+                            Text("Sign in with Apple")
+                            Spacer()
+                            if isProcessingAccountAction { ProgressView().tint(.white) }
+                        }
+                        .font(.system(.subheadline, design: .rounded))
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.black.opacity(0.85))
+                        .cornerRadius(12)
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                    .disabled(isProcessingAccountAction)
+
+                    Button(action: { Task { await signInWithGoogle() } }) {
+                        HStack {
+                            Image(systemName: "globe")
+                            Text("Continue with Google")
+                            Spacer()
+                            if isProcessingAccountAction { ProgressView() }
+                        }
+                        .font(.system(.subheadline, design: .rounded))
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.textPrimary)
+                        .padding()
+                        .background(Theme.secondaryCard.opacity(0.85))
+                        .cornerRadius(12)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border, lineWidth: 1))
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                    .disabled(isProcessingAccountAction)
+
+                    Text("Link an account to save progress across devices.")
+                        .font(.caption2)
+                        .foregroundColor(Theme.textMuted)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let email = authManager.currentUserEmail ?? authManager.currentUser?.displayName {
+                        Text("Signed in as \(email)")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    Button(action: { Task { await signOut() } }) {
+                        HStack {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Text("Sign Out")
+                            Spacer()
+                            if isProcessingAccountAction { ProgressView() }
+                        }
+                        .font(.system(.subheadline, design: .rounded))
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.warning)
+                        .padding()
+                        .background(Theme.warning.opacity(0.12))
+                        .cornerRadius(12)
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                    .disabled(isProcessingAccountAction)
+                }
+            }
+
+            Button(role: .destructive, action: { showDeleteAccountAlert = true }) {
+                HStack {
+                    Image(systemName: "person.crop.circle.badge.xmark")
+                    Text("Delete Account")
+                    Spacer()
+                    if isProcessingAccountAction { ProgressView() }
+                }
+                .font(.system(.subheadline, design: .monospaced))
+                .fontWeight(.bold)
+                .foregroundColor(Theme.danger)
+                .padding()
+                .background(Theme.danger.opacity(0.12))
+                .cornerRadius(12)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.danger.opacity(0.35), lineWidth: 1))
+            }
+            .buttonStyle(TactileButtonStyle())
+            .disabled(isProcessingAccountAction)
+        }
+    }
+
+    @ViewBuilder
+    private func settingsLinkRow(title: String, icon: String, url: URL) -> some View {
+        Link(destination: url) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(Theme.primary)
+                    .frame(width: 24)
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.textPrimary)
+                Spacer()
+                Image(systemName: "arrow.up.forward")
+                    .font(.caption)
+                    .foregroundColor(Theme.textMuted)
+            }
+            .padding()
+        }
+    }
+
+    private func signInWithApple() async {
+        isProcessingAccountAction = true
+        defer { isProcessingAccountAction = false }
+        do {
+            try await SocialAuthService.shared.signInWithApple()
+        } catch {
+            authErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func signInWithGoogle() async {
+        isProcessingAccountAction = true
+        defer { isProcessingAccountAction = false }
+        do {
+            try await SocialAuthService.shared.signInWithGoogle()
+        } catch let error as NSError where error.code == GIDSignInError.canceled.rawValue {
+            // User cancelled — no alert
+        } catch {
+            authErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func signOut() async {
+        isProcessingAccountAction = true
+        defer { isProcessingAccountAction = false }
+        do {
+            try await SocialAuthService.shared.signOut()
+        } catch {
+            authErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func deleteAccount() async {
+        guard let uid = authManager.currentUser?.uid else {
+            deleteAccountError = "No signed-in user found."
+            showDeleteAccountError = true
+            return
+        }
+
+        isProcessingAccountAction = true
+        defer { isProcessingAccountAction = false }
+
+        do {
+            try await SocialAuthService.shared.reauthenticateForDeletion()
+            try await firebaseService.deleteFitRPGAccountData(uid: uid)
+
+            if authManager.isAnonymous {
+                try await authManager.deleteCurrentUser()
+            } else {
+                try await SocialAuthService.shared.signOut()
+            }
+
+            showAccountDeletedConfirmation = true
+        } catch {
+            deleteAccountError = error.localizedDescription
+            showDeleteAccountError = true
         }
     }
     

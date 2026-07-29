@@ -57,8 +57,8 @@ struct NotificationCenterView: View {
                             .font(.headline)
                             .foregroundColor(Theme.textSecondary)
                         Spacer()
-                        
-                        // DEBUG BUTTON
+
+                        #if DEBUG
                         Button(action: {
                             if let uid = FirebaseService.shared.currentCharacter?.id {
                                 NotificationManager.sendInAppNotification(to: uid, title: "Test Reward!", message: "You received 100 gold from an anonymous admirer.", type: .reward)
@@ -70,6 +70,7 @@ struct NotificationCenterView: View {
                         }
                         .buttonStyle(TactileButtonStyle())
                         .padding(.bottom, 24)
+                        #endif
                     }
                 } else {
                     List {

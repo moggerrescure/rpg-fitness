@@ -10,26 +10,11 @@ final class NetworkMonitor: ObservableObject {
     @Published var isConnected: Bool = true
     @Published var connectionType: NWInterface.InterfaceType? = nil
 
-    private let monitor = NWPathMonitor()
+    private var monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "com.rpgfitness.network", qos: .background)
 
     private init() {
-        monitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor [weak self] in
-                let wasConnected = self?.isConnected ?? true
-                self?.isConnected = (path.status == .satisfied)
-                self?.connectionType = path.availableInterfaces.first?.type
-
-                if !wasConnected && path.status == .satisfied {
-                    // Reconnected — re-authenticate and refresh data
-                    if AuthManager.shared.currentUser == nil {
-                        Auth.auth().signInAnonymously { _, _ in }
-                    }
-                    FirebaseService.shared.fetchLeaderboards()
-                }
-            }
-        }
-        monitor.start(queue: queue)
+        startMonitoring()
     }
 
     var connectionTypeName: String {
@@ -38,6 +23,36 @@ final class NetworkMonitor: ObservableObject {
         case .cellular: return "Cellular"
         case .wiredEthernet: return "Ethernet"
         default: return "Unknown"
+        }
+    }
+
+    /// Re-reads the current network path and restarts monitoring so Retry can recover without relaunching.
+    func retryConnectionCheck() {
+        applyPath(monitor.currentPath)
+        monitor.cancel()
+        startMonitoring()
+    }
+
+    private func startMonitoring() {
+        monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor [weak self] in
+                self?.applyPath(path)
+            }
+        }
+        monitor.start(queue: queue)
+    }
+
+    private func applyPath(_ path: NWPath) {
+        let wasConnected = isConnected
+        isConnected = (path.status == .satisfied)
+        connectionType = path.availableInterfaces.first?.type
+
+        if !wasConnected && path.status == .satisfied {
+            if AuthManager.shared.currentUser == nil {
+                Auth.auth().signInAnonymously { _, _ in }
+            }
+            FirebaseService.shared.fetchLeaderboards()
         }
     }
 }

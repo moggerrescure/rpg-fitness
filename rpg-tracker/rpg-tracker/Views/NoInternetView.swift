@@ -1,9 +1,11 @@
 import SwiftUI
 
 struct NoInternetView: View {
+    @ObservedObject private var networkMonitor = NetworkMonitor.shared
     @State private var isAnimating = false
     @State private var pulseScale: CGFloat = 1.0
     @State private var showRetryFlash = false
+    @State private var isRetrying = false
 
     var body: some View {
         ZStack {
@@ -114,10 +116,10 @@ struct NoInternetView: View {
                     .font(.caption2)
                     .foregroundColor(Color(white: 0.45))
                     .tracking(1)
-                Text("Disconnected")
+                Text(networkMonitor.isConnected ? "Connected" : "Disconnected")
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundColor(.red.opacity(0.9))
+                    .foregroundColor(networkMonitor.isConnected ? .green.opacity(0.9) : .red.opacity(0.9))
             }
 
             Spacer()
@@ -145,15 +147,25 @@ struct NoInternetView: View {
 
     private var retryButton: some View {
         Button(action: {
+            guard !isRetrying else { return }
+            isRetrying = true
             withAnimation(.easeOut(duration: 0.15)) { showRetryFlash = true }
+            networkMonitor.retryConnectionCheck()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 withAnimation { showRetryFlash = false }
+                isRetrying = false
             }
         }) {
             HStack(spacing: 10) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 14, weight: .bold))
-                Text("RETRY CONNECTION")
+                if isRetrying {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.85)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                Text(isRetrying ? "CHECKING..." : "RETRY CONNECTION")
                     .font(.system(size: 13, weight: .black, design: .monospaced))
                     .tracking(1.5)
             }

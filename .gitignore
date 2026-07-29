@@ -26,3 +26,7 @@ functions/lib/
 .firebase/
 firebase-debug.log
 
+# Local agent indexes (regenerable; root graph includes .agents/skills noise)
+.codebase-memory/
+.code-review-graph/
+

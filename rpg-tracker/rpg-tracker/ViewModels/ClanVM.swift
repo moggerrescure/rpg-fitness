@@ -108,7 +108,7 @@ class ClanVM: ObservableObject {
     }
     
     func contributeWarScore() {
-        // Simulate contributing points from exercises
+        // Server-authoritative score via recordClanWarAttack (+100 on win during active phase)
         firebaseService.contributeWarScore(points: 5)
     }
     

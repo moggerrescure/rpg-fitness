@@ -38,6 +38,10 @@ class CameraTrackingVM: ObservableObject {
     private var bossName: String?
     private var bossImage: String?
     private var endDate: Date = Date()
+
+    private static let freeTrainingRepsKey = "freeTrainingRepsCount"
+    private static let freeTrainingDateKey = "freeTrainingDate"
+    private static let freeTrainingDailyCap = 50
     
     init(selectedClass: CharacterClass, targetReps: Int? = nil, bossMaxHP: Int? = nil, damagePerRep: Int? = nil, bossName: String? = nil, bossImage: String? = nil, isDungeonMode: Bool = false, onComplete: ((Int) -> Void)? = nil) {
         self.selectedClass = selectedClass
@@ -166,8 +170,9 @@ class CameraTrackingVM: ObservableObject {
                 let isCritical = activeCombo >= 1.5
                 BattleEngine.shared.registerPlayerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
                 MultiplayerService.shared.registerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
-            } else {
+            } else if canAwardFreeTrainingReward() {
                 firebaseService.awardBattleRewards(xp: 15, gold: 5)
+                recordFreeTrainingRep()
             }
         }
         
@@ -193,6 +198,22 @@ class CameraTrackingVM: ObservableObject {
         updateLiveActivity()
     }
     
+    private func canAwardFreeTrainingReward() -> Bool {
+        let defaults = UserDefaults.standard
+        let today = Calendar.current.startOfDay(for: Date())
+        let storedDay = defaults.object(forKey: Self.freeTrainingDateKey) as? Date ?? .distantPast
+        if !Calendar.current.isDate(storedDay, inSameDayAs: today) {
+            defaults.set(today, forKey: Self.freeTrainingDateKey)
+            defaults.set(0, forKey: Self.freeTrainingRepsKey)
+        }
+        return defaults.integer(forKey: Self.freeTrainingRepsKey) < Self.freeTrainingDailyCap
+    }
+
+    private func recordFreeTrainingRep() {
+        let defaults = UserDefaults.standard
+        defaults.set(defaults.integer(forKey: Self.freeTrainingRepsKey) + 1, forKey: Self.freeTrainingRepsKey)
+    }
+
     private func startLiveActivity() {
         let bName = bossName ?? BattleEngine.shared.activeBoss?.name
         let bImg = bossImage ?? BattleEngine.shared.activeBoss?.avatarName

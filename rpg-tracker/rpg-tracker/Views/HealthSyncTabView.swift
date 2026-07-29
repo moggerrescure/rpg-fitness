@@ -135,7 +135,10 @@ struct HealthSyncTabView: View {
             )
             .shadow(color: Theme.danger.opacity(0.15), radius: 10, x: 0, y: 4)
         }
-        .onAppear { pulseAnimation = true }
+        .onAppear {
+            pulseAnimation = true
+            Task { await healthService.refreshAuthorizationStatus() }
+        }
         .sheet(isPresented: $showRewards) {
             if let res = recentResult {
                 HealthRewardsView(result: res)
