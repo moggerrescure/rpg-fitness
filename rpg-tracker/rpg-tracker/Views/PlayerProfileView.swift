@@ -19,6 +19,7 @@ struct PlayerProfileView: View {
     @State private var deleteAccountError: String? = nil
     @State private var authErrorMessage: String? = nil
     @State private var showAccountDeletedConfirmation = false
+    @State private var presentedLegalDocument: LegalDocumentRef? = nil
     
     init(character: Character) {
         // Direct observation of FirebaseService handles reactivity; signature kept for compatibility.
@@ -578,15 +579,27 @@ struct PlayerProfileView: View {
                 .tracking(1)
 
             VStack(spacing: 0) {
-                settingsLinkRow(title: "Privacy Policy", icon: "hand.raised.fill", url: LegalURLs.privacyPolicy)
+                settingsDocumentRow(title: "Privacy Policy", icon: "hand.raised.fill", document: "privacy")
                 Divider().background(Theme.border)
-                settingsLinkRow(title: "Terms of Use", icon: "doc.text.fill", url: LegalURLs.termsOfUse)
+                settingsDocumentRow(title: "Terms of Use", icon: "doc.text.fill", document: "terms")
                 Divider().background(Theme.border)
-                settingsLinkRow(title: "Support", icon: "questionmark.circle.fill", url: LegalURLs.support)
+                settingsDocumentRow(title: "Support", icon: "questionmark.circle.fill", document: "support")
             }
             .background(Theme.cardBackground.opacity(0.85))
             .cornerRadius(14)
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border, lineWidth: 0.8))
+            .sheet(item: $presentedLegalDocument) { doc in
+                NavigationStack {
+                    LegalDocumentView(documentName: doc.name)
+                        .navigationTitle(doc.title)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Close") { presentedLegalDocument = nil }
+                            }
+                        }
+                }
+            }
 
             Text("FitRPG is for entertainment and fitness motivation only. It is not medical advice. Consult a physician before starting any exercise program.")
                 .font(.system(.caption2, design: .rounded))
@@ -682,6 +695,28 @@ struct PlayerProfileView: View {
     }
 
     @ViewBuilder
+    private func settingsDocumentRow(title: String, icon: String, document: String) -> some View {
+        Button {
+            presentedLegalDocument = LegalDocumentRef(name: document, title: title)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(Theme.primary)
+                    .frame(width: 24)
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.textPrimary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(Theme.textMuted)
+            }
+            .padding()
+        }
+        .buttonStyle(.plain)
+    }
+
     private func settingsLinkRow(title: String, icon: String, url: URL) -> some View {
         Link(destination: url) {
             HStack(spacing: 12) {

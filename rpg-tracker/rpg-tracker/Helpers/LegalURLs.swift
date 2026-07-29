@@ -1,9 +1,23 @@
 import Foundation
+import SwiftUI
 
 enum LegalURLs {
-    // Served from main via jsDelivr until dedicated GitHub Pages hosting is configured.
-    // Prefer publishing `fitrpg-legal/` to https://borisserz.github.io/fitrpg-legal/ for App Store.
-    static let privacyPolicy = URL(string: "https://cdn.jsdelivr.net/gh/moggerrescure/rpg-fitness@main/fitrpg-legal/privacy.html")!
-    static let termsOfUse = URL(string: "https://cdn.jsdelivr.net/gh/moggerrescure/rpg-fitness@main/fitrpg-legal/terms.html")!
-    static let support = URL(string: "https://cdn.jsdelivr.net/gh/moggerrescure/rpg-fitness@main/fitrpg-legal/support.html")!
+    /// Bundled copies for reliable in-app viewing (also required for App Store Connect as a public HTTPS URL — publish `fitrpg-legal/`).
+    static var privacyPolicy: URL { bundled("privacy") ?? remote("privacy") }
+    static var termsOfUse: URL { bundled("terms") ?? remote("terms") }
+    static var support: URL { bundled("support") ?? remote("support") }
+
+    /// Public URL for App Store Connect (update after GitHub Pages / custom domain is live).
+    static let publicPrivacyPolicy = URL(string: "https://borisserz.github.io/fitrpg-legal/privacy.html")!
+    static let publicTermsOfUse = URL(string: "https://borisserz.github.io/fitrpg-legal/terms.html")!
+    static let publicSupport = URL(string: "https://borisserz.github.io/fitrpg-legal/support.html")!
+
+    private static func bundled(_ name: String) -> URL? {
+        Bundle.main.url(forResource: name, withExtension: "html", subdirectory: "Legal")
+            ?? Bundle.main.url(forResource: name, withExtension: "html")
+    }
+
+    private static func remote(_ name: String) -> URL {
+        URL(string: "https://borisserz.github.io/fitrpg-legal/\(name).html")!
+    }
 }
