@@ -3,7 +3,7 @@
 **Date:** 2026-07-29  
 **Project (shared):** `serzhanovich-ecosystem-ce700`  
 **App:** FitRPG (`rpg-tracker`, bundle `com.borisdev.rpg-tracker`, App Store ID `6785639478`)  
-**Source of truth:** [KI-audit-drop-READY-2026-07-29.md](./KI-audit-drop-READY-2026-07-29.md) + this card
+**Source of truth:** [KI-audit-FINAL-DROP-2026-07-29.md](./KI-audit-FINAL-DROP-2026-07-29.md) + this card
 
 > **RU:** Делай только FitRPG-scoped шаги. Не трогай Food / Workout / Yoga функции, Storage buckets и RC-ключи чужих приложений.  
 > **EN:** FitRPG-scoped only. Do not touch sibling apps’ functions, buckets, or Remote Config keys.

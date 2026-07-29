@@ -10,10 +10,11 @@
 | [KI-firebase-ecosystem.md](./KI-firebase-ecosystem.md) | Shared Firebase deploy safety; never wipe sibling CF |
 | [KI-app-store-compliance.md](./KI-app-store-compliance.md) | App Store Review, блокеры, privacy/deletion/UGC |
 | [KI-feature-reality.md](./KI-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN матрица, моки, CF bypass (historical counts — prefer LAST audit) |
-| [KI-audit-drop-READY-2026-07-29.md](./KI-audit-drop-READY-2026-07-29.md) | **DROP gate CONDITIONAL (86/100)** — build green post WIP fixes; ASC + commit blockers |
+| [KI-audit-FINAL-DROP-2026-07-29.md](./KI-audit-FINAL-DROP-2026-07-29.md) | **FINAL DROP gate CONDITIONAL (88/100)** — start here for Submit |
+| [KI-audit-drop-READY-2026-07-29.md](./KI-audit-drop-READY-2026-07-29.md) | Prior DROP CONDITIONAL (86/100) — superseded by FINAL DROP |
 | [KI-firebase-operator-checklist-2026-07-29.md](./KI-firebase-operator-checklist-2026-07-29.md) | Firebase Console + RC `fitrpg_*` values |
 | [KI-xcode-asc-operator-2026-07-29.md](./KI-xcode-asc-operator-2026-07-29.md) | Xcode/ASC manual steps; iOS **18.6** floor |
-| [KI-audit-merged-LAST-2026-07-29.md](./KI-audit-merged-LAST-2026-07-29.md) | Prior LAST CONDITIONAL — code READY; ASC residual (superseded by DROP card for submit) |
+| [KI-audit-merged-LAST-2026-07-29.md](./KI-audit-merged-LAST-2026-07-29.md) | Prior LAST CONDITIONAL — superseded by FINAL DROP |
 | [KI-audit-merged-REAUDIT3-FIX-2026-07-29.md](./KI-audit-merged-REAUDIT3-FIX-2026-07-29.md) | Prior REAUDIT3-FIX YES (code) — superseded by LAST |
 | [KI-audit-merged-REAUDIT3-2026-07-29.md](./KI-audit-merged-REAUDIT3-2026-07-29.md) | Prior REAUDIT3 CONDITIONAL (superseded) |
 | [KI-audit-merged-FINAL-2026-07-29.md](./KI-audit-merged-FINAL-2026-07-29.md) | Prior FINAL YES (overstated vs REAUDIT3 UX) |
@@ -26,13 +27,14 @@
 
 ## Audits (2026-07-29)
 
-**Start here (KI):** [KI-audit-drop-READY-2026-07-29](./KI-audit-drop-READY-2026-07-29.md) — **CONDITIONAL 86/100** (build green; ASC + commit).  
-Prior: [LAST](./KI-audit-merged-LAST-2026-07-29.md).  
+**Start here (KI):** [KI-audit-FINAL-DROP-2026-07-29](./KI-audit-FINAL-DROP-2026-07-29.md) — **CONDITIONAL 88/100** (build green; ASC + safe CF deploy).  
+Prior: [DROP READY](./KI-audit-drop-READY-2026-07-29.md) → [LAST](./KI-audit-merged-LAST-2026-07-29.md).  
 **Long-form dumps:** [MASTER — Full Audit](../../docs/audit/2026-07-29-MASTER.md)
 
 | Report | Focus |
 |--------|-------|
-| [DROP READY](./KI-audit-drop-READY-2026-07-29.md) | Submit gate after parallel WIP + build verify |
+| [FINAL DROP](./KI-audit-FINAL-DROP-2026-07-29.md) | **Current** submit gate — equip/train honesty + build verify |
+| [DROP READY](./KI-audit-drop-READY-2026-07-29.md) | Prior DROP (86/100) — superseded |
 | [LAST](./KI-audit-merged-LAST-2026-07-29.md) | Final 3-lens audit on `d143f99` |
 | [REAUDIT3-FIX](./KI-audit-merged-REAUDIT3-FIX-2026-07-29.md) | Celebrations, energy omit, HK Update key, Block |
 | [REAUDIT3](./KI-audit-merged-REAUDIT3-2026-07-29.md) | Prior CONDITIONAL (holes) |
