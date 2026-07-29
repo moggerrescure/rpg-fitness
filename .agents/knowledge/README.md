@@ -11,6 +11,8 @@
 | [KI-app-store-compliance.md](./KI-app-store-compliance.md) | App Store Review, блокеры, privacy/deletion/UGC |
 | [KI-feature-reality.md](./KI-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN матрица, моки, CF bypass (historical counts — prefer LAST audit) |
 | [KI-audit-drop-READY-2026-07-29.md](./KI-audit-drop-READY-2026-07-29.md) | **DROP gate CONDITIONAL (86/100)** — build green post WIP fixes; ASC + commit blockers |
+| [KI-firebase-operator-checklist-2026-07-29.md](./KI-firebase-operator-checklist-2026-07-29.md) | Firebase Console + RC `fitrpg_*` values |
+| [KI-xcode-asc-operator-2026-07-29.md](./KI-xcode-asc-operator-2026-07-29.md) | Xcode/ASC manual steps; iOS **18.6** floor |
 | [KI-audit-merged-LAST-2026-07-29.md](./KI-audit-merged-LAST-2026-07-29.md) | Prior LAST CONDITIONAL — code READY; ASC residual (superseded by DROP card for submit) |
 | [KI-audit-merged-REAUDIT3-FIX-2026-07-29.md](./KI-audit-merged-REAUDIT3-FIX-2026-07-29.md) | Prior REAUDIT3-FIX YES (code) — superseded by LAST |
 | [KI-audit-merged-REAUDIT3-2026-07-29.md](./KI-audit-merged-REAUDIT3-2026-07-29.md) | Prior REAUDIT3 CONDITIONAL (superseded) |
