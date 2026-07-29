@@ -130,7 +130,8 @@ service cloud.firestore {
     // FitRPG economy + social graph fields — never client-authoritative on update.
     // Gold may only decrease client-side (deposits); increases are CF-only.
     // Energy may only decrease client-side; increases via adjustEnergy CF.
-    // Base stats / equipped slots / clanId are CF-only (equipItem + clan flows).
+    // Base stats / equipped slots are CF-only (equipItem). clanId: leave or
+    // join only when auth.uid is already in that clan's memberIds.
     function fitrpgProtectedKeys() {
       return [
         'progressions', 'ownedEquipmentIds', 'classTrophies',
@@ -138,8 +139,32 @@ service cloud.firestore {
         'friends', 'friendRequests',
         'baseStrength', 'baseDexterity', 'baseIntelligence', 'baseVitality',
         'equippedWeaponId', 'equippedArmorId', 'equippedRingId', 'equippedAmuletId',
-        'lastEnergyRegenAt'
+        'lastEnergyRegenAt', 'pendingEnergyCharges'
       ].toSet();
+    }
+
+    // Energy never increases via client (path-1 sibling apps + FitRPG sync).
+    function fitrpgEnergyNotIncreased() {
+      return !('energy' in resource.data)
+        || !('energy' in request.resource.data)
+        || (
+          request.resource.data.energy is int
+          && request.resource.data.energy >= 0
+          && request.resource.data.energy <= resource.data.energy
+        );
+    }
+
+    // clanId: unchanged, cleared (leave), or set to a clan that already lists this uid.
+    function fitrpgClanIdOk() {
+      return !('clanId' in request.resource.data.diff(resource.data).affectedKeys())
+        || !('clanId' in request.resource.data)
+        || request.resource.data.clanId == null
+        || (
+          request.resource.data.clanId is string
+          && exists(/databases/$(database)/documents/clans/$(request.resource.data.clanId))
+          && get(/databases/$(database)/documents/clans/$(request.resource.data.clanId)).data.memberIds is list
+          && request.auth.uid in get(/databases/$(database)/documents/clans/$(request.resource.data.clanId)).data.memberIds
+        );
     }
 
     function fitrpgEconomyUnchanged() {
@@ -151,7 +176,8 @@ service cloud.firestore {
         && request.resource.data.energy <= resource.data.energy
         && request.resource.data.gold is int
         && request.resource.data.gold >= 0
-        && request.resource.data.gold <= resource.data.gold;
+        && request.resource.data.gold <= resource.data.gold
+        && fitrpgClanIdOk();
     }
 
     function fitrpgCreateEconomyOk() {
@@ -176,11 +202,13 @@ service cloud.firestore {
                       || fitrpgCreateEconomyOk()
                     );
 
-      // Owner may update profile / energy / equipment slots / stats — not economy.
+      // Owner may update profile / stats — not economy increases (energy/gold CF-only up).
       allow update: if isUser(userId) && (
         // Non-FitRPG / partial merges (FoodTracker etc.): no protected keys touched
         (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(fitrpgProtectedKeys())
+          && fitrpgEnergyNotIncreased()
+          && fitrpgClanIdOk()
           && (
             !('gold' in resource.data)
             || !('gold' in request.resource.data)
@@ -270,7 +298,9 @@ service cloud.firestore {
                     && request.resource.data.participantUids is list
                     && request.auth.uid in request.resource.data.participantUids
                     && !('rewardsSettled' in request.resource.data)
-                    && !('winnerId' in request.resource.data);
+                    && !('winnerId' in request.resource.data)
+                    && !('surrenderedBy' in request.resource.data)
+                    && !('createdByServer' in request.resource.data);
 
       allow update: if isSignedIn()
                     && resource.data.participantUids is list
@@ -296,6 +326,10 @@ service cloud.firestore {
                       !('winnerId' in request.resource.data)
                       || ('winnerId' in resource.data
                           && request.resource.data.winnerId == resource.data.winnerId)
+                    )
+                    // createdByServer is CF-only (immutable once set; client cannot add)
+                    && (
+                      !('createdByServer' in request.resource.data.diff(resource.data).affectedKeys())
                     )
                     // Surrender: only set surrenderedBy to self
                     && (

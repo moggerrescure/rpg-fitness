@@ -92,6 +92,55 @@ export function applyXpToProgression(
   return { progressions: next, updates };
 }
 
+/** Pending energy spend charges — refund only against unused charge within TTL. */
+export const ENERGY_REFUND_TTL_MS = 15 * 60 * 1000;
+
+export type EnergyCharge = { amount: number; at: number };
+
+export function pruneEnergyCharges(
+  charges: Record<string, EnergyCharge> | undefined | null,
+  nowMs: number,
+  ttlMs: number = ENERGY_REFUND_TTL_MS
+): Record<string, EnergyCharge> {
+  const next: Record<string, EnergyCharge> = {};
+  for (const [id, c] of Object.entries(charges || {})) {
+    if (!c || typeof c.amount !== "number" || typeof c.at !== "number") continue;
+    if (nowMs - c.at <= ttlMs && c.amount > 0) next[id] = c;
+  }
+  return next;
+}
+
+export function registerEnergySpend(
+  charges: Record<string, EnergyCharge> | undefined | null,
+  chargeId: string,
+  amount: number,
+  nowMs: number
+): Record<string, EnergyCharge> {
+  const next = pruneEnergyCharges(charges, nowMs);
+  next[chargeId] = { amount, at: nowMs };
+  return next;
+}
+
+export function consumeEnergyChargeForRefund(
+  charges: Record<string, EnergyCharge> | undefined | null,
+  chargeId: string,
+  requestedAmount: number,
+  nowMs: number,
+  ttlMs: number = ENERGY_REFUND_TTL_MS
+): { ok: true; refundAmount: number; remaining: Record<string, EnergyCharge> } | { ok: false; reason: string } {
+  const next = pruneEnergyCharges(charges, nowMs, ttlMs);
+  const charge = next[chargeId];
+  if (!charge) return { ok: false, reason: "no_charge" };
+  if (nowMs - charge.at > ttlMs) {
+    delete next[chargeId];
+    return { ok: false, reason: "expired" };
+  }
+  const refundAmount = Math.min(Math.max(0, Math.floor(requestedAmount)), charge.amount);
+  if (refundAmount <= 0) return { ok: false, reason: "bad_amount" };
+  delete next[chargeId];
+  return { ok: true, refundAmount, remaining: next };
+}
+
 export const FITRPG_USER_FIELD_KEYS = [
   "username",
   "usernameLower",

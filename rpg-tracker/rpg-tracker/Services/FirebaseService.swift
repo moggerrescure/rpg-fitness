@@ -387,6 +387,9 @@ class FirebaseService: ObservableObject {
         self.currentCharacter = char
         writeWidgetSnapshot(from: char)
         syncCharacter(char) // stats only — gold/xp via CF below
+
+        // Advance daily free-train counter once at FINISH (not mid-session).
+        CameraTrackingVM.recordFreeTrainingRepsAwarded(cappedReps)
         
         if xpReward > 0 || goldReward > 0 {
             Task {
@@ -644,23 +647,31 @@ class FirebaseService: ObservableObject {
         }
     }
     
+    /// Last spend charge id for matchmaking refund (must match server ledger).
+    private(set) var lastEnergyChargeId: String?
+
     func consumeEnergy(amount: Int) -> Bool {
         guard amount > 0 else { return false }
         applyEnergyRegenIfNeeded()
         guard var char = currentCharacter else { return false }
         guard char.energy >= amount else { return false }
         
+        let chargeId = UUID().uuidString
+        lastEnergyChargeId = chargeId
         char.energy -= amount
         self.currentCharacter = char
         scheduleEnergyRestoredNotification(for: char.energy, maxEnergy: char.maxEnergy)
         Task {
             do {
                 let result = try await Functions.functions().httpsCallable("adjustEnergy").call([
-                    "op": "spend", "amount": amount
+                    "op": "spend", "amount": amount, "chargeId": chargeId
                 ])
                 if let data = result.data as? [String: Any], let energy = data["energy"] as? Int {
                     await MainActor.run {
                         self.currentCharacter?.energy = energy
+                        if let serverCharge = data["chargeId"] as? String {
+                            self.lastEnergyChargeId = serverCharge
+                        }
                     }
                 }
             } catch {
@@ -669,6 +680,9 @@ class FirebaseService: ObservableObject {
                     if var c = self.currentCharacter {
                         c.energy = min(c.maxEnergy, c.energy + amount)
                         self.currentCharacter = c
+                    }
+                    if self.lastEnergyChargeId == chargeId {
+                        self.lastEnergyChargeId = nil
                     }
                     self.lastActionError = "Not enough energy (server)."
                 }
@@ -680,13 +694,18 @@ class FirebaseService: ObservableObject {
     func refundEnergy(amount: Int) {
         guard amount > 0 else { return }
         guard var char = currentCharacter else { return }
+        let chargeId = lastEnergyChargeId
+        lastEnergyChargeId = nil
         char.energy = min(char.maxEnergy, char.energy + amount)
         self.currentCharacter = char
+        guard let chargeId else {
+            lastActionError = "Couldn't refund energy (no spend charge)."
+            return
+        }
         Task {
             do {
-                let result = try await Functions.functions().httpsCallable("adjustEnergy").call([
-                    "op": "refund", "amount": amount
-                ])
+                var payload: [String: Any] = ["op": "refund", "amount": amount, "chargeId": chargeId]
+                let result = try await Functions.functions().httpsCallable("adjustEnergy").call(payload)
                 if let data = result.data as? [String: Any], let energy = data["energy"] as? Int {
                     await MainActor.run { self.currentCharacter?.energy = energy }
                 }
@@ -760,7 +779,7 @@ class FirebaseService: ObservableObject {
     func handleHealthSync(result: HealthSyncResult) {
         guard var char = currentCharacter else { return }
         
-        char.energy = min(char.maxEnergy, char.energy + result.energyGained)
+        // Energy increases are CF-only — do not bump locally (would not persist).
         char.lastHealthSyncDate = Date()
         // Optimistic UI for gold/xp; persist via CF (rules block client increases)
         _ = char.addXP(result.xpGained)
@@ -778,6 +797,9 @@ class FirebaseService: ObservableObject {
                         "reason": "health_sync"
                     ])
                 } catch {
+                    await MainActor.run {
+                        self.lastActionError = "Couldn't save Health Sync rewards."
+                    }
                     print("health sync rewards failed: \(error)")
                 }
             }
@@ -792,12 +814,7 @@ class FirebaseService: ObservableObject {
         if result.goldGained > 0 {
             DailyQuestProgressStore.record(.goldEarned, amount: result.goldGained)
         }
-        
-        if result.damageDealt > 0 {
-            // Opt-in: Health sync no longer auto-attacks World Boss without confirmation.
-            // Damage is stored on the result UI; user attacks from Raids tab.
-            print("Health sync dealt \(result.damageDealt) potential WB damage — attack from Raids tab.")
-        }
+        // World Boss is not attacked from Health Sync — attack from Raids tab.
     }
     
     func updateClanDescription(description: String) {

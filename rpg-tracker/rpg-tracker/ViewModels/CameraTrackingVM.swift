@@ -181,11 +181,8 @@ class CameraTrackingVM: ObservableObject {
                 let isCritical = activeCombo >= 1.5
                 BattleEngine.shared.registerPlayerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
                 MultiplayerService.shared.registerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
-            } else if canAwardFreeTrainingReward() {
-                // Rewards granted once on FINISH via awardWorkoutRewards — avoid per-rep double pay.
-                DailyQuestProgressStore.recordExercise(for: selectedClass, amount: 1)
-                recordFreeTrainingRep()
             }
+            // Free-train: quests + daily cap advanced once on FINISH via awardWorkoutRewards.
         }
         
         // Check complete conditions
@@ -221,9 +218,22 @@ class CameraTrackingVM: ObservableObject {
         return defaults.integer(forKey: Self.freeTrainingRepsKey) < Self.freeTrainingDailyCap
     }
 
-    private func recordFreeTrainingRep() {
+    /// Advance daily free-train counter once at FINISH (not mid-session).
+    static func recordFreeTrainingRepsAwarded(_ count: Int) {
+        guard count > 0 else { return }
         let defaults = UserDefaults.standard
-        defaults.set(defaults.integer(forKey: Self.freeTrainingRepsKey) + 1, forKey: Self.freeTrainingRepsKey)
+        let today = Calendar.current.startOfDay(for: Date())
+        let storedDay = defaults.object(forKey: freeTrainingDateKey) as? Date ?? .distantPast
+        if !Calendar.current.isDate(storedDay, inSameDayAs: today) {
+            defaults.set(today, forKey: freeTrainingDateKey)
+            defaults.set(0, forKey: freeTrainingRepsKey)
+        }
+        let used = defaults.integer(forKey: freeTrainingRepsKey)
+        defaults.set(min(freeTrainingDailyCap, used + count), forKey: freeTrainingRepsKey)
+    }
+
+    private func recordFreeTrainingRep() {
+        Self.recordFreeTrainingRepsAwarded(1)
     }
 
     private func startLiveActivity() {

@@ -130,24 +130,15 @@ struct HealthRewardsView: View {
                         
                         HStack(spacing: 12) {
                             RewardBadge(icon: "star.fill", value: "+\(result.xpGained) XP", color: Theme.warning)
-                            RewardBadge(icon: "bolt.fill", value: "+\(result.energyGained) NRG", color: Theme.primary)
                             RewardBadge(icon: "dollarsign.circle.fill", value: "+\(result.goldGained) G", color: .yellow)
                         }
                         
-                        if result.damageDealt > 0 {
-                            HStack {
-                                Image(systemName: "flame.fill")
-                                    .foregroundColor(.red)
-                                Text("Dealt \(result.damageDealt) DMG to World Boss!")
-                                    .font(.system(.subheadline, design: .monospaced))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                            }
-                            .padding()
-                            .background(Color.red.opacity(0.2))
-                            .cornerRadius(12)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.red.opacity(0.5), lineWidth: 1))
-                            .padding(.top, 8)
+                        if result.steps > 0 || result.activeCalories > 0 {
+                            Text("Reps & activity logged. Attack the World Boss from the Raids tab.")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(Theme.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.top, 8)
                         }
                     }
                 }

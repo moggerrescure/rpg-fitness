@@ -919,8 +919,7 @@ struct LeaderboardListView: View {
                                 .foregroundColor(Theme.textMuted.opacity(0.6))
                             Button(action: {
                                 isLoading = true
-                                viewModel.fetchClans()
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { isLoading = false }
+                                viewModel.fetchClans { isLoading = false }
                             }) {
                                 Label("Refresh", systemImage: "arrow.clockwise")
                                     .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -949,7 +948,6 @@ struct LeaderboardListView: View {
                             Button(action: {
                                 isLoading = true
                                 FirebaseService.shared.fetchLeaderboards(for: [viewModel.leaderboardType])
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { isLoading = false }
                             }) {
                                 Label("Refresh", systemImage: "arrow.clockwise")
                                     .font(.system(size: 11, weight: .bold, design: .monospaced))

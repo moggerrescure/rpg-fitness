@@ -47,7 +47,7 @@ struct RPGOnboardingView: View {
         NPCDialogue(
             name: "Duke Branbran",
             role: "Arena Herald",
-            message: "Hear the roar of the crowd? This is the Arena of Glory! Challenge other players in PvP duels or join a mighty clan for epic co-op raids. Make your name in battle!",
+            message: "Hear the roar of the crowd? This is the Arena of Glory! Challenge other players in PvP duels or join a mighty clan. Make your name in battle!",
             themeColor: Theme.primary,
             avatarIcon: "flame.fill",
             featureText: "PvP Duels, Story Campaigns, and Clan Halls",

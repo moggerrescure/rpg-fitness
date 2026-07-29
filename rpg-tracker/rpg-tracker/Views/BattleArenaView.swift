@@ -406,11 +406,11 @@ struct PvPModeSelectorView: View {
                     ArenaHeroCard(
                         title: "STORY\nCAMPAIGN",
                         subtitle: "20 Islands · Epic Bosses",
-                        detail: "CO-OP / SOLO",
+                        detail: "SOLO ADVENTURE",
                         icon: "map.fill",
                         gradient: [Color(hex: "1A4D2E"), Color(hex: "071C10")],
                         accentColor: Color(hex: "34D399"),
-                        badge: "CO-OP",
+                        badge: "SOLO",
                         badgeColor: Color(hex: "34D399"),
                         animDelay: 0.08,
                         appear: appear,
@@ -3083,7 +3083,7 @@ struct StoryStagePrepView: View {
                             if isCoop {
                                 HStack {
                                     Spacer()
-                                    Text("🤝 +25% Co-op Damage Buff Active")
+                                    Text("+25% Companion Damage Buff Active")
                                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                                         .foregroundColor(Theme.success)
                                         .padding(.top, 4)

@@ -1053,6 +1053,13 @@ class MultiplayerService: ObservableObject {
         do {
             let battleRef = db.collection("battles").document(battleId)
             let existing = try await battleRef.getDocument()
+            if existing.exists,
+               (existing.data()?["createdByServer"] as? Bool) == true {
+                // CF already stamped this match — listen only (do not wipe stamp).
+                self.matchmakingError = nil
+                self.listenToBattle(battleId: battleId)
+                return
+            }
             if existing.exists, var lobbyBattle = try? existing.data(as: Battle.self) {
                 // Preserve human teammates already on a 3v3 lobby battle doc
                 if !lobbyBattle.localTeam.isEmpty {

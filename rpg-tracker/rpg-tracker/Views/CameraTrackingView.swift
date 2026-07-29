@@ -1091,9 +1091,8 @@ struct CameraTrackingView: View {
     private var finishWorkoutCTA: some View {
         if viewModel.bossMaxHP == 0 && FirebaseService.shared.activeBattle == nil {
             Button(action: {
-                let remaining = max(0, CameraTrackingVM.freeTrainingDailyCapPublic - CameraTrackingVM.freeTrainingRepsUsedToday())
-                let awardable = min(viewModel.repCount, remaining)
-                let earned = FirebaseService.shared.awardWorkoutRewards(reps: awardable)
+                // Cap applied inside awardWorkoutRewards against daily remaining (counter advanced there).
+                let earned = FirebaseService.shared.awardWorkoutRewards(reps: viewModel.repCount)
                 withAnimation {
                     workoutCompletionRewards = earned
                 }

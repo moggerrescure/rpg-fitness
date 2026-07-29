@@ -166,6 +166,13 @@ struct FitRPGApp: App {
                        let uid = components.queryItems?.first(where: { $0.name == "uid" })?.value {
                         Task {
                             await firebaseService.sendFriendRequest(to: uid)
+                            await MainActor.run {
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("FitRPGOpenFriendsSegment"),
+                                    object: nil
+                                )
+                                NotificationManager.shared.pendingDeepLink = "friends"
+                            }
                         }
                     }
                 }

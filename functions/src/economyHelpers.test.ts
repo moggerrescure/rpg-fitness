@@ -1,7 +1,9 @@
 import {
   applyXpToProgression,
   clampPvERewards,
+  consumeEnergyChargeForRefund,
   pvpOutcomeForPlayer,
+  registerEnergySpend,
   rewardsForPvpOutcome,
   rollClanWarWin,
 } from "./economyHelpers";
@@ -29,5 +31,17 @@ const { updates } = applyXpToProgression(
 );
 assert(updates.progressions.Archer.level === 2, "level up");
 assert(updates.statPoints === 3, "stat points");
+
+const t0 = 1_000_000;
+let charges = registerEnergySpend({}, "c1", 10, t0);
+assert(charges.c1.amount === 10, "spend registered");
+const refundOk = consumeEnergyChargeForRefund(charges, "c1", 10, t0 + 1000);
+assert(refundOk.ok === true && refundOk.ok && refundOk.refundAmount === 10, "refund ok");
+assert(!refundOk.ok || Object.keys(refundOk.remaining).length === 0, "charge cleared");
+const refundDup = consumeEnergyChargeForRefund({}, "c1", 10, t0 + 1000);
+assert(refundDup.ok === false, "no double refund");
+charges = registerEnergySpend({}, "c2", 10, t0);
+const expired = consumeEnergyChargeForRefund(charges, "c2", 10, t0 + 16 * 60 * 1000);
+assert(expired.ok === false, "expired charge");
 
 console.log("economyHelpers.test.ts: OK");

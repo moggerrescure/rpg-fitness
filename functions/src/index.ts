@@ -15,8 +15,10 @@ import {
     applyXpToProgression,
     clampActivityRewards,
     clampPvERewards,
+    consumeEnergyChargeForRefund,
     FITRPG_USER_FIELD_KEYS,
     pvpOutcomeForPlayer,
+    registerEnergySpend,
     rewardsForPvpOutcome,
     rollClanWarWin,
 } from "./economyHelpers";
@@ -983,6 +985,7 @@ export const acceptFriendDuel = fitRpgOnCall(async (data, context) => {
             opponentTeam: [acceptorPlayer],
             status: "active",
             participantUids: participantUidsFromTeams(localTeam, [acceptorPlayer]),
+            createdByServer: true,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
         transaction.update(ticketRef, {
@@ -1157,6 +1160,23 @@ export const matchWithOpponent = fitRpgOnCall(async (data, context) => {
             status: "matched",
             battleId: resolvedBattleId
         });
+
+        const localTeam = myTicket.team || [];
+        const opponentTeam = currentOpp.team || [];
+        const battleRef = db.collection("battles").doc(resolvedBattleId);
+        transaction.set(battleRef, {
+            id: resolvedBattleId,
+            type: myTicket.teamType || currentOpp.teamType || "1v1 Duel",
+            status: "active",
+            localTeam,
+            opponentTeam,
+            participantUids: participantUidsFromTeams(localTeam, opponentTeam),
+            secondsRemaining: 60,
+            combatLog: [],
+            createdByServer: true,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+
         success = true;
     });
     
@@ -1383,6 +1403,14 @@ export const resolvePvPBattle = fitRpgOnCall(async (data, context) => {
             throw new functions.https.HttpsError("permission-denied", "Not a battle participant.");
         }
 
+        // Ranked settle requires a CF matchmaking/duel/bot stamp (blocks client-forged battles).
+        if (battle.createdByServer !== true) {
+            throw new functions.https.HttpsError(
+                "failed-precondition",
+                "Battle is not server-stamped; ranked rewards unavailable."
+            );
+        }
+
         const settled = battle.rewardsSettled || {};
         if (settled[uid]) {
             return { alreadySettled: true, outcome: settled[uid] };
@@ -1469,33 +1497,67 @@ export const adjustEnergy = fitRpgOnCall(async (data, context) => {
         if (!Number.isFinite(energy)) energy = maxEnergy;
 
         const now = admin.firestore.Timestamp.now();
+        const nowMs = now.toMillis();
         const lastMs = userData.lastEnergyRegenAt?.toMillis
             ? userData.lastEnergyRegenAt.toMillis()
             : Number(userData.lastEnergyRegenAt || 0);
 
         // Always apply pending regen first
         if (energy < maxEnergy && lastMs > 0) {
-            const points = Math.floor((now.toMillis() - lastMs) / (ENERGY_REGEN_INTERVAL_SEC * 1000));
+            const points = Math.floor((nowMs - lastMs) / (ENERGY_REGEN_INTERVAL_SEC * 1000));
             if (points > 0) {
                 energy = Math.min(maxEnergy, energy + points);
             }
         }
+
+        const updates: any = {
+            energy,
+            lastEnergyRegenAt: now,
+        };
+        let chargeIdOut: string | undefined;
 
         if (op === "spend") {
             if (energy < amount) {
                 throw new functions.https.HttpsError("failed-precondition", "Not enough energy.");
             }
             energy -= amount;
+            const chargeId = String(data.chargeId || randomUUID()).slice(0, 64);
+            if (!chargeId) {
+                throw new functions.https.HttpsError("invalid-argument", "chargeId required.");
+            }
+            updates.energy = energy;
+            updates.pendingEnergyCharges = registerEnergySpend(
+                userData.pendingEnergyCharges,
+                chargeId,
+                amount,
+                nowMs
+            );
+            chargeIdOut = chargeId;
         } else if (op === "refund") {
-            energy = Math.min(maxEnergy, energy + amount);
+            const chargeId = String(data.chargeId || "");
+            if (!chargeId) {
+                throw new functions.https.HttpsError("invalid-argument", "chargeId required for refund.");
+            }
+            const consumed = consumeEnergyChargeForRefund(
+                userData.pendingEnergyCharges,
+                chargeId,
+                amount,
+                nowMs
+            );
+            if (!consumed.ok) {
+                throw new functions.https.HttpsError(
+                    "failed-precondition",
+                    `Refund rejected (${consumed.reason}).`
+                );
+            }
+            energy = Math.min(maxEnergy, energy + consumed.refundAmount);
+            updates.energy = energy;
+            updates.pendingEnergyCharges = consumed.remaining;
         }
         // regen: energy already topped up above
 
-        transaction.update(userRef, {
-            energy,
-            lastEnergyRegenAt: now,
-        });
-        return { energy, maxEnergy };
+        transaction.update(userRef, updates);
+        return { energy, maxEnergy, chargeId: chargeIdOut };
     });
 
     return { success: true, ...result };
@@ -1806,7 +1868,8 @@ export const triggerOpponentBotFallback = fitRpgOnCall(async (data, context) => 
             opponentTeam: opponentTeam,
             participantUids: participantUidsFromTeams(ticket.team || [], opponentTeam),
             secondsRemaining: 60,
-            combatLog: []
+            combatLog: [],
+            createdByServer: true,
         };
         
         const battleRef = db.collection("battles").doc(battleId);
@@ -1819,6 +1882,7 @@ export const triggerOpponentBotFallback = fitRpgOnCall(async (data, context) => 
                 opponentTeam: newBattle.opponentTeam,
                 participantUids: newBattle.participantUids,
                 secondsRemaining: newBattle.secondsRemaining,
+                createdByServer: true,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
         } else {

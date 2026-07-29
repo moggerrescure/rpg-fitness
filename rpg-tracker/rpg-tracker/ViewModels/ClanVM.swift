@@ -116,17 +116,21 @@ class ClanVM: ObservableObject {
     
     private var clansListener: ListenerRegistration?
     
-    func fetchClans() {
+    func fetchClans(completion: (() -> Void)? = nil) {
         clansListener?.remove()
         clansListener = Firestore.firestore().collection("clans")
             .order(by: "trophies", descending: true)
             .limit(to: 50)
             .addSnapshotListener { [weak self] snapshot, error in
-                guard let self = self, let snapshot = snapshot else { return }
-                let clans = snapshot.documents.compactMap { try? $0.data(as: Clan.self) }
+                guard let self = self else {
+                    DispatchQueue.main.async { completion?() }
+                    return
+                }
+                let clans = snapshot?.documents.compactMap { try? $0.data(as: Clan.self) } ?? []
                 DispatchQueue.main.async {
                     self.searchResults = clans
                     self.leaderboardClans = clans
+                    completion?()
                 }
             }
     }

@@ -10,7 +10,8 @@
 | [KI-firebase-ecosystem.md](./KI-firebase-ecosystem.md) | Shared Firebase deploy safety; never wipe sibling CF |
 | [KI-app-store-compliance.md](./KI-app-store-compliance.md) | App Store Review, блокеры, privacy/deletion/UGC |
 | [KI-feature-reality.md](./KI-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN матрица, моки, CF bypass |
-| [KI-audit-merged-SHIP-2026-07-29.md](./KI-audit-merged-SHIP-2026-07-29.md) | **Ship YES** (honesty bar) after forge/energy/clan/UI fixes |
+| [KI-audit-merged-FINAL-2026-07-29.md](./KI-audit-merged-FINAL-2026-07-29.md) | **FINAL YES (honesty bar)** — P0/P1 closed; residuals listed |
+| [KI-audit-merged-SHIP-2026-07-29.md](./KI-audit-merged-SHIP-2026-07-29.md) | Ship pass (superseded by FINAL) |
 | [KI-audit-merged-REAUDIT2-2026-07-29.md](./KI-audit-merged-REAUDIT2-2026-07-29.md) | Prior YES (overstated — superseded by SHIP) |
 | [KI-audit-merged-REAUDIT-2026-07-29.md](./KI-audit-merged-REAUDIT-2026-07-29.md) | Prior CONDITIONAL YES (P0 only) |
 | [KI-audit-merged-2026-07-29.md](./KI-audit-merged-2026-07-29.md) | Original NOT ready + TOP 10 |
@@ -19,15 +20,15 @@
 
 ## Audits (2026-07-29)
 
-**Start here (KI):** [KI-audit-merged-SHIP-2026-07-29](./KI-audit-merged-SHIP-2026-07-29.md) — **YES** App Store ready (honesty bar).  
+**Start here (KI):** [KI-audit-merged-FINAL-2026-07-29](./KI-audit-merged-FINAL-2026-07-29.md) — **YES (honesty bar)** after P0/P1 closure.  
 **Long-form dumps:** [MASTER — Full Audit](../../docs/audit/2026-07-29-MASTER.md)
 
 | Report | Focus |
 |--------|-------|
-| [SHIP merged](./KI-audit-merged-SHIP-2026-07-29.md) | YES after forge/energy/clan/honesty |
-| [SHIP backend](./KI-audit-backend-SHIP-2026-07-29.md) | participant battles, adjustEnergy |
-| [SHIP iOS](./KI-audit-ios-SHIP-2026-07-29.md) | surrender, URL scheme, train/WB honesty |
-| [REAUDIT2 merged](./KI-audit-merged-REAUDIT2-2026-07-29.md) | Prior YES (superseded) |
+| [FINAL merged](./KI-audit-merged-FINAL-2026-07-29.md) | YES — residuals: HP forge, users read, App Attest |
+| [FINAL backend](./KI-audit-backend-FINAL-2026-07-29.md) | Energy rules + refund ledger + battle stamp |
+| [FINAL iOS](./KI-audit-ios-FINAL-2026-07-29.md) | Free-train, quests, Health, co-op copy |
+| [SHIP merged](./KI-audit-merged-SHIP-2026-07-29.md) | Prior YES (stale) |
 | [MASTER](../../docs/audit/2026-07-29-MASTER.md) | Сводный: scores, P0/P1, roadmap, deploy ban |
 | [Feature reality](../../docs/audit/2026-07-29-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN matrix, CF bypass |
 | [App Store readiness](../../docs/audit/2026-07-29-app-store-readiness.md) | Historical 4/10 NOT READY |
