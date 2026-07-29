@@ -28,6 +28,12 @@ struct PlayerProfileView: View {
     private var character: Character {
         firebaseService.currentCharacter ?? Character(id: "local", username: "FitnessHero", selectedClass: .archer)
     }
+
+    private var appVersionLabel: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "FitRPG v\(version) (\(build))"
+    }
     
     var equippedWeapon: EquipmentItem? {
         guard let weaponId = character.equippedWeaponId else { return nil }
@@ -195,6 +201,8 @@ struct PlayerProfileView: View {
                                         .font(.title)
                                         .fontWeight(.bold)
                                         .foregroundColor(Theme.textPrimary)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.75)
                                     
                                     Button(action: {
                                         usernameInput = character.username
@@ -606,6 +614,18 @@ struct PlayerProfileView: View {
                 .foregroundColor(Theme.textMuted)
                 .multilineTextAlignment(.leading)
                 .padding(.horizontal, 4)
+
+            HStack {
+                Text(appVersionLabel)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(Theme.textMuted)
+                Spacer()
+                Link("Open Support in Safari", destination: LegalURLs.publicSupport)
+                    .font(.system(.caption2, design: .rounded))
+                    .foregroundColor(Theme.accent)
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
 
             if authManager.isAnonymous {
                 VStack(spacing: 10) {

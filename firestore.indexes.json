@@ -39,6 +39,23 @@
         { "fieldPath": "selectedClass", "order": "ASCENDING" },
         { "fieldPath": "level", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "clans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "activeWar.phase", "order": "ASCENDING" },
+        { "fieldPath": "activeWar.phaseEndsAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "matchmaking",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "teamType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

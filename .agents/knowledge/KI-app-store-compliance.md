@@ -1,70 +1,26 @@
-# KI: App Store Compliance (FitRPG)
+# App Store compliance (FitRPG)
 
-## Scope
-App Store Review readiness для `rpg-tracker/`. Блокеры, порядок фиксов, ссылки на sibling-проекты.
+Updated: 2026-07-29
 
-**Score:** 4/10 — **NOT READY**
+## Public legal URLs (GitHub Pages)
 
-**Полный отчёт:** [docs/audit/2026-07-29-app-store-readiness.md](../../docs/audit/2026-07-29-app-store-readiness.md)
+Host `fitrpg-legal/` then set in App Store Connect:
 
----
+- Privacy: `https://borisserz.github.io/fitrpg-legal/privacy.html`
+- Support: `https://borisserz.github.io/fitrpg-legal/support.html`
+- Terms: `https://borisserz.github.io/fitrpg-legal/terms.html`
 
-## Reject-Risk Blockers (P0)
+In-app copies live under `rpg-tracker/rpg-tracker/Legal/` (bundled HTML via `LegalDocumentView`).
 
-| ID | Issue | Fix hint |
-|----|-------|----------|
-| **F-01** | Account deletion: нет UI, нет CF `deleteAccount` | Profile → delete flow; `AuthManager.deleteCurrentUser` + CF cleanup |
-| **F-02** | Privacy/Terms/Support: нет ссылок в `PlayerProfileView`, нет FitRPG pages | Publish pages; add links in Settings |
-| **F-03** | `PrivacyInfo.xcprivacy` не в pbxproj | Add to Xcode target |
-| **F-04** | HealthKit: нет Health в manifest; `NSHealthUpdateUsageDescription` при `toShare:[]`; auto-request on launch | Fix plist; defer request to user action |
-| **F-05** | Нет fitness medical disclaimer | Onboarding + settings text |
-| **F-06** | `UpdateRequiredView` App Store ID = `id0000000000` | Real ID from App Store Connect |
-| **F-07** | UGC (username/clan) без report/block | Report UI + CF moderation queue |
+Contact email used in pages: `borisserzh5@gmail.com`
 
----
+## Checklist
 
-## Warnings (P1)
-
-| ID | Issue |
-|----|-------|
-| F-08 | Sign in with Apple — no UI (required if Google visible) |
-| F-09 | Analytics/Crashlytics not in Privacy Manifest |
-| F-10 | `aps-environment` = development (need production) |
-| F-11 | RU/EN localization mix |
-| F-12 | Review Notes not prepared |
-| F-13 | Widget placeholder, no App Group |
-| F-14 | Client-side gold shop (cheat risk) |
-
----
-
-## OK (no action)
-
-F-15 gold-only (no IAP) · F-16 iOS 26.2 · F-17 ATT absent (correct) · F-18 Discord OK · F-19 age rating OK · F-20 not crypto
-
----
-
-## Fix Order
-
-```
-legal → deletion → privacy manifest → HealthKit → force update URL
-→ UGC → push prod → widget → economy server → P0 tests
-→ Apple Sign In UI (if Google) → localization
-```
-
----
-
-## Sibling Reference
-
-| Project | Path |
-|---------|------|
-| WorkoutTracker | `/Users/borisserzhanovich/projects/WorkoutTracker-repo` |
-| FoodTracker | `/Users/borisserzhanovich/projects/FoodTracker` |
-| Privacy templates | `/Users/borisserzhanovich/projects/workouttracker-privacy/` |
-
-WorkoutTracker: 12+ tests. FitRPG: **0 tests** — добавить P0 suite перед submit.
-
----
-
-## Agent Tip
-
-Перед App Store работой читай этот KI + полный audit. Не трогай код без явного запроса на конкретный F-XX fix. Privacy/HealthKit/deletion — отдельные PR по fix order.
+- [x] Privacy / Terms / Support HTML (EN)
+- [x] In-app Profile links + version string
+- [x] Delete Account (FitRPG-scoped)
+- [x] App Store ID `6785639478`
+- [ ] Enable GitHub Pages for `fitrpg-legal` (or push to `borisserz/fitrpg-legal`)
+- [ ] Paste Privacy URL in ASC → App Information
+- [ ] App Group `group.com.borisdev.rpg-tracker` in Developer portal
+- [ ] TestFlight smoke: 1v1, 3v3, clan war, world boss empty state

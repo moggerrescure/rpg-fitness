@@ -5,46 +5,87 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FitRPG — Privacy Policy</title>
 <style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 760px; margin: 0 auto; padding: 24px; }
-h2 { margin-top: 2rem; }
-.muted { color: #8e8e93; font-size: 0.9rem; }
+:root { color-scheme: light dark; --ink:#1c1c1e; --bg:#f7f4ef; --card:#fff; --accent:#b45309; --muted:#6b7280; --line:rgba(0,0,0,.12); }
+@media (prefers-color-scheme: dark) {
+  :root { --ink:#f3f0ea; --bg:#12141a; --card:#1c1f28; --accent:#f59e0b; --muted:#9ca3af; --line:rgba(255,255,255,.12); }
+  a { color:#60a5fa; }
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  line-height:1.65; color:var(--ink); background:
+    radial-gradient(900px 420px at 10% -10%, rgba(180,83,9,.18), transparent 60%),
+    radial-gradient(700px 380px at 100% 0%, rgba(30,64,175,.16), transparent 55%),
+    var(--bg);
+}
+.wrap { max-width:760px; margin:0 auto; padding:28px 20px 64px; }
+nav { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:28px; font-size:.95rem; }
+.brand { font-size:.8rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 8px; }
+h1 { font-size:1.9rem; margin:0 0 8px; letter-spacing:-.02em; }
+h2 { font-size:1.2rem; margin:2rem 0 .7rem; }
+.muted { color:var(--muted); font-size:.9rem; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin:1rem 0; }
+ul { padding-left:1.2rem; }
+li { margin:.35rem 0; }
+footer { margin-top:2.5rem; padding-top:1rem; border-top:1px solid var(--line); font-size:.85rem; color:var(--muted); }
 </style>
 </head>
 <body>
-<h1>Privacy Policy — FitRPG</h1>
-<p class="muted">Last updated: 29 July 2026</p>
+<div class="wrap">
+<nav>
+  <a href="index.html">Home</a>
+  <a href="privacy.html">Privacy</a>
+  <a href="terms.html">Terms</a>
+  <a href="support.html">Support</a>
+</nav>
 
-<p>FitRPG (“the App”) turns real-world exercise into RPG progress. This policy explains what we collect and why.</p>
+<p class="brand">FitRPG</p>
+<h1>Privacy Policy</h1>
+<p class="muted">Last updated: 29 July 2026 · Developer: Boris Serzhanovich</p>
 
-<h2>1. Data We Collect</h2>
+<p>FitRPG turns real-world exercise into RPG progress on iOS. This page explains what data the app uses and why.</p>
+
+<div class="card">
+<strong>Short version:</strong> gameplay data syncs through Firebase. Camera pose tracking stays on your device. HealthKit is read-only when you allow it. You can delete your FitRPG account in the app.
+</div>
+
+<h2>1. Data we collect</h2>
 <ul>
-<li><strong>Account:</strong> Firebase anonymous user ID; optional Apple/Google sign-in identifiers and email if you link an account.</li>
-<li><strong>Profile:</strong> username, character class, avatar, in-game stats (XP, gold, equipment, clan membership).</li>
-<li><strong>Health &amp; fitness:</strong> with your permission, HealthKit read access for steps, active energy, and workouts to award in-game rewards. We do not write to HealthKit.</li>
-<li><strong>Camera:</strong> on-device pose estimation for repetition counting. Video is processed on device and is not uploaded for training tracking.</li>
-<li><strong>Multiplayer:</strong> friend lists, battle results, clan data, push notification tokens (FCM).</li>
-<li><strong>Diagnostics:</strong> crash logs and basic analytics (Firebase Crashlytics / Analytics) to improve stability.</li>
+<li><strong>Account:</strong> Firebase user ID (including anonymous auth). If you Sign in with Apple or Google, we receive the identifiers those services provide (and email when you choose to share it).</li>
+<li><strong>Profile &amp; progress:</strong> username, class, avatar, XP, gold, equipment, energy, clan membership, quest progress, and related game stats.</li>
+<li><strong>Health &amp; fitness:</strong> with your permission, HealthKit read access for steps, active energy, and workouts so we can award in-game rewards. FitRPG does not write to HealthKit.</li>
+<li><strong>Camera:</strong> used on device for pose estimation and rep counting. Video frames are processed locally and are not uploaded as training video.</li>
+<li><strong>Multiplayer:</strong> friends, matchmaking tickets, battle results, clan data, and push notification tokens (FCM) when notifications are enabled.</li>
+<li><strong>Diagnostics:</strong> crash logs and basic analytics (Firebase Crashlytics / Analytics) to find bugs and improve stability.</li>
 </ul>
 
-<h2>2. How We Use Data</h2>
-<p>To run gameplay, sync progress across devices, matchmaking, leaderboards, push notifications, fraud prevention, and App Store compliance (including account deletion).</p>
+<h2>2. How we use data</h2>
+<p>To run the game, sync progress across devices, matchmaking and leaderboards, push notifications, abuse prevention, and App Store requirements such as account deletion.</p>
 
 <h2>3. Sharing</h2>
-<p>We use Google Firebase (Auth, Firestore, Cloud Functions, Cloud Messaging, Remote Config, Analytics, Crashlytics) under Google’s terms. We do not sell personal data.</p>
+<p>We use Google Firebase (Auth, Firestore, Cloud Functions, Cloud Messaging, Remote Config, Analytics, Crashlytics) under Google’s terms. We do not sell your personal data. Other players can see public gameplay info you choose to show (username, clan name/description, leaderboard stats).</p>
 
-<h2>4. Health Disclaimer</h2>
-<p>FitRPG is for entertainment and fitness motivation only. It is <strong>not medical advice</strong>. Consult a physician before starting any exercise program. Exercise at your own risk.</p>
+<h2>4. Health disclaimer</h2>
+<p>FitRPG is for entertainment and fitness motivation only. It is <strong>not medical advice</strong>. Talk to a doctor before starting a new exercise program. Exercise at your own risk.</p>
 
-<h2>5. User-Generated Content</h2>
-<p>Usernames and clan names/descriptions are visible to other players. Do not include personal data of others. We may remove abusive content and suspend accounts that violate our Terms.</p>
+<h2>5. User-generated content</h2>
+<p>Usernames and clan text are visible to other players. Do not post personal data about other people. We may remove abusive content and restrict accounts that break the Terms.</p>
 
-<h2>6. Retention &amp; Deletion</h2>
-<p>You may delete your FitRPG account in the App (Profile → Delete Account). This removes your FitRPG character data associated with your account. Contact support if you need help.</p>
+<h2>6. Retention &amp; deletion</h2>
+<p>Open Profile → Delete Account to remove FitRPG character data tied to your account. Shared ecosystem apps under the same Firebase user (if any) are handled separately. For help, email <a href="mailto:borisserzh5@gmail.com">borisserzh5@gmail.com</a>.</p>
 
 <h2>7. Children</h2>
-<p>The App is not directed at children under 13. Do not use the App if you are under the age required in your region.</p>
+<p>FitRPG is not directed at children under 13 (or the minimum age in your region). Do not use the app if you are under that age.</p>
 
-<h2>8. Contact</h2>
-<p>Support: see the Support page linked in the App, or email the developer address listed on the App Store listing.</p>
+<h2>8. Changes</h2>
+<p>We may update this policy. The “Last updated” date at the top will change when we do. Continued use after an update means you accept the revised policy.</p>
+
+<h2>9. Contact</h2>
+<p>Privacy and support: <a href="mailto:borisserzh5@gmail.com">borisserzh5@gmail.com</a> · <a href="support.html">Support page</a></p>
+
+<footer>
+  FitRPG · Bundle ID com.borisdev.rpg-tracker · Apple ID 6785639478
+</footer>
+</div>
 </body>
 </html>

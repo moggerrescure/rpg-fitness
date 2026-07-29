@@ -655,7 +655,7 @@ struct ActiveClanView: View {
                                 Spacer()
                             }
                             
-                            Text("If no opponent is found within 1 hour, search will timeout.")
+                            Text("If no opponent is found within ~2 minutes, a shadow clan is assigned.")
                                 .font(.caption2)
                                 .foregroundColor(Theme.textSecondary)
                                 

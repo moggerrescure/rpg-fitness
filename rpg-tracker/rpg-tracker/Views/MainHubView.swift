@@ -18,9 +18,11 @@ struct MainHubView: View {
                 case 0:
                     AnimatedBackgroundView(backgroundType: .tavern)
                 case 1:
-                    AnimatedBackgroundView(backgroundType: .arena)
-                case 2:
+                    // TRAIN
                     AnimatedBackgroundView(backgroundType: .trainingRuins)
+                case 2:
+                    // ARENA
+                    AnimatedBackgroundView(backgroundType: .arena)
                 case 3:
                     AnimatedBackgroundView(backgroundType: .clanHall)
                 case 4:
@@ -53,6 +55,7 @@ struct MainHubView: View {
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .animation(.easeInOut(duration: 0.22), value: currentTab)
                         
                         // Custom Bottom Nav Bar
                         CustomBottomNavBar(currentTab: $currentTab, activeColor: firebaseService.currentCharacter?.selectedClass.themeColor ?? Theme.primary)
@@ -62,12 +65,19 @@ struct MainHubView: View {
                 // Floating Toast Notification
                 if let msg = toastMessage {
                     VStack {
-                        FloatingToastView(message: msg)
+                        FloatingToastView(
+                            message: msg,
+                            style: multiplayerService.matchmakingError != nil ? .error : .success
+                        )
                             .padding(.top, 40)
                         Spacer()
                     }
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(100)
+                    .onTapGesture {
+                        withAnimation { toastMessage = nil }
+                        multiplayerService.matchmakingError = nil
+                    }
                 }
                 
                 // MARK: - Friend Duel Countdown Overlay
@@ -193,7 +203,7 @@ struct MainHubView: View {
                             
                             Button(action: {
                                 multiplayerService.acceptTeamInvite(teamTicket)
-                                currentTab = 1
+                                currentTab = 2 // Arena hosts 3v3 lobby
                             }) {
                                 Text("Join Team!")
                                     .font(.headline.bold())
@@ -258,7 +268,11 @@ struct MainHubView: View {
                 case "duel", "arena":
                     currentTab = 2  // Battle Arena tab
                 case "friends":
-                    currentTab = 0  // Home tab (Friends sheet opens from there)
+                    currentTab = 3  // Clan tab embeds Friends
+                case "clan", "clanwar":
+                    currentTab = 3
+                case "raid", "worldboss":
+                    currentTab = 4
                 default:
                     break
                 }
@@ -269,6 +283,10 @@ struct MainHubView: View {
                 if newVal == nil && multiplayerService.activeBattle != nil {
                     withAnimation { currentTab = 2 }
                 }
+            }
+            .onChange(of: multiplayerService.matchmakingError) { err in
+                guard let err, !err.isEmpty else { return }
+                withAnimation { toastMessage = err }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowDungeonRun"))) { _ in
                 showDungeonRun = true
@@ -356,16 +374,20 @@ struct FriendDuelCountdownOverlay: View {
 
 // Floating Toast View for class changes
 struct FloatingToastView: View {
+    enum Style { case success, error }
     let message: String
+    var style: Style = .success
     
     var body: some View {
+        let accent = style == .error ? Theme.danger : Theme.success
         HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(Theme.success)
+            Image(systemName: style == .error ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundColor(accent)
             Text(message)
                 .font(.system(.caption, design: .monospaced))
                 .fontWeight(.bold)
                 .foregroundColor(.white)
+                .multilineTextAlignment(.leading)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -373,7 +395,7 @@ struct FloatingToastView: View {
         .cornerRadius(20)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(Theme.success.opacity(0.4), lineWidth: 1)
+                .stroke(accent.opacity(0.45), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.3), radius: 6, x: 0, y: 3)
     }

@@ -1,9 +1,8 @@
 import Foundation
 
 enum AppStoreConfig {
-    /// TODO: Replace with the real numeric App Store ID after the FitRPG listing is created in App Store Connect.
-    /// Example: `static let bundledAppStoreID: String? = "1234567890"`
-    static let bundledAppStoreID: String? = nil
+    /// Numeric App Store ID from App Store Connect (Apple ID).
+    static let bundledAppStoreID: String? = "6785639478"
 
     /// Remote Config key: set `rpg_ios_app_store_id` to override the bundled ID without an app update.
     static let remoteConfigKey = "rpg_ios_app_store_id"

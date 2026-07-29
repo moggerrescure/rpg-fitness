@@ -5,27 +5,99 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FitRPG — Support</title>
 <style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 760px; margin: 0 auto; padding: 24px; }
-.muted { color: #8e8e93; font-size: 0.9rem; }
+:root { color-scheme: light dark; --ink:#1c1c1e; --bg:#f7f4ef; --card:#fff; --accent:#b45309; --muted:#6b7280; --line:rgba(0,0,0,.12); }
+@media (prefers-color-scheme: dark) {
+  :root { --ink:#f3f0ea; --bg:#12141a; --card:#1c1f28; --accent:#f59e0b; --muted:#9ca3af; --line:rgba(255,255,255,.12); }
+  a { color:#60a5fa; }
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  line-height:1.65; color:var(--ink); background:
+    radial-gradient(900px 420px at 10% -10%, rgba(180,83,9,.18), transparent 60%),
+    radial-gradient(700px 380px at 100% 0%, rgba(30,64,175,.16), transparent 55%),
+    var(--bg);
+}
+.wrap { max-width:760px; margin:0 auto; padding:28px 20px 64px; }
+nav { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:28px; font-size:.95rem; }
+.brand { font-size:.8rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 8px; }
+h1 { font-size:1.9rem; margin:0 0 8px; letter-spacing:-.02em; }
+h2 { font-size:1.2rem; margin:2rem 0 .7rem; }
+.muted { color:var(--muted); font-size:.9rem; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin:1rem 0; }
+details { border-bottom:1px solid var(--line); padding:12px 0; }
+summary { cursor:pointer; font-weight:600; }
+details p { margin:8px 0 0; color:var(--muted); }
+footer { margin-top:2.5rem; padding-top:1rem; border-top:1px solid var(--line); font-size:.85rem; color:var(--muted); }
 </style>
 </head>
 <body>
-<h1>Support — FitRPG</h1>
-<p class="muted">Last updated: 29 July 2026</p>
+<div class="wrap">
+<nav>
+  <a href="index.html">Home</a>
+  <a href="privacy.html">Privacy</a>
+  <a href="terms.html">Terms</a>
+  <a href="support.html">Support</a>
+</nav>
 
-<p>Need help with FitRPG?</p>
-<ul>
-<li><strong>Account / progress:</strong> open Profile in the App for Sign In, Privacy, Terms, and Delete Account.</li>
-<li><strong>HealthKit / camera:</strong> grant permissions in iOS Settings → FitRPG if sync or form tracking fails.</li>
-<li><strong>Multiplayer:</strong> ensure a stable network connection; try again if matchmaking times out (bot opponents may fill empty slots).</li>
-</ul>
+<p class="brand">FitRPG</p>
+<h1>Support</h1>
+<p class="muted">Last updated: 29 July 2026 · Developer: Boris Serzhanovich</p>
 
-<p>For App Review or privacy requests, use the developer contact email on the App Store product page.</p>
+<p>Need help with FitRPG? Start here. Include your device model, iOS version, and what you were doing when something broke — screenshots help.</p>
 
-<p>Related:</p>
+<div class="card">
+<h2 style="margin-top:0">Contact</h2>
+<p>Email: <a href="mailto:borisserzh5@gmail.com">borisserzh5@gmail.com</a></p>
+<p class="muted">We usually reply within 1–2 business days. For App Review questions, use this same address.</p>
+</div>
+
+<h2>Common questions</h2>
+
+<details>
+<summary>How do I delete my account?</summary>
+<p>Open Profile → Delete Account. This removes FitRPG character data for your account. If you also use sibling apps on the same Firebase project, ask us if you need a broader wipe.</p>
+</details>
+
+<details>
+<summary>Camera / form tracking isn’t counting reps</summary>
+<p>Give FitRPG Camera access in iOS Settings. Use good lighting, keep your full body in frame, and pick the exercise that matches the move you’re doing.</p>
+</details>
+
+<details>
+<summary>HealthKit / steps aren’t syncing</summary>
+<p>Allow Health access for FitRPG in iOS Settings → Health → Data Access. FitRPG only reads selected metrics; it does not write workout samples.</p>
+</details>
+
+<details>
+<summary>Matchmaking times out or I fight bots</summary>
+<p>1v1 and 3v3 search for real players first. If nobody is available, the server can fill empty slots with bots so you can still train. Check your network and try again from the Arena tab.</p>
+</details>
+
+<details>
+<summary>Clan war stuck on “Searching…”</summary>
+<p>Wars look for another clan for about two minutes, then either pair with a real clan or assign a shadow opponent. Leaders can cancel search from the Clan Wars panel. Pull to refresh or reopen the Clan tab if the UI looks stale.</p>
+</details>
+
+<details>
+<summary>World Boss says “No active raid”</summary>
+<p>World bosses are server events. When none is active, wait for the next cycle or check again later. Attacking costs energy — if Attack does nothing, wait for energy to regenerate.</p>
+</details>
+
+<details>
+<summary>Widgets / notifications</summary>
+<p>Enable notifications for duel invites and clan war updates. Home Screen widgets use App Group <code>group.com.borisdev.rpg-tracker</code>; if a widget is blank, open the app once after install.</p>
+</details>
+
+<h2>Legal</h2>
 <ul>
 <li><a href="privacy.html">Privacy Policy</a></li>
 <li><a href="terms.html">Terms of Use</a></li>
 </ul>
+
+<footer>
+  FitRPG · Bundle ID com.borisdev.rpg-tracker · Apple ID 6785639478
+</footer>
+</div>
 </body>
 </html>

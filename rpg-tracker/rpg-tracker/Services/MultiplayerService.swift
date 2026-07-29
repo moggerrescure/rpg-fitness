@@ -59,6 +59,7 @@ class MultiplayerService: ObservableObject {
     @Published var teamLobbySlots: [TeamSlot] = []          // Visual lobby state
     @Published var friendDuelCountdown: Int? = nil          // 3→2→1 before friend battle shows
     @Published var isInTeamLobby: Bool = false               // True while 10s team assembly window is open
+    @Published var matchmakingError: String? = nil           // Shown when CF matchmaking fails
     
     private var pendingFriendBattle: Battle? = nil           // Held until countdown ends
     private var countdownTimer: Timer?
@@ -77,6 +78,8 @@ class MultiplayerService: ObservableObject {
     private var currentSearchType: BattleType = .duel1v1
     // Guard flag: prevents leaveMatch() from canceling a match that is in progress of being established
     private var isBattleStarting: Bool = false
+    /// Prevents duplicate XP/gold grants when battle snapshots keep firing after completion.
+    private var rewardsAwardedBattleIds = Set<String>()
     
     private init() {}
     
@@ -160,6 +163,8 @@ class MultiplayerService: ObservableObject {
             
             self.teamLobbyTicketId = docRef.documentID
             self.currentTicketId = docRef.documentID
+            self.isInTeamLobby = true
+            self.matchmakingError = nil
             
             // Set up lobby slots: Host + 2 empty Bot slots
             self.teamLobbySlots = [
@@ -254,7 +259,17 @@ class MultiplayerService: ObservableObject {
             }
 
             self.isSearching = true
+            self.matchmakingError = nil
             await fillTeammatesWithBots(ticketId: ticketId)
+
+            // Sync filled team onto the lobby battle document
+            if let ticketDoc = try? await db.collection("matchmaking").document(ticketId).getDocument(),
+               let ticket = try? ticketDoc.data(as: MatchmakingTicket.self),
+               let team = ticket.team {
+                try? await db.collection("battles").document(battleId).updateData([
+                    "localTeam": try Firestore.Encoder().encode(team)
+                ])
+            }
 
             let docRef = db.collection("matchmaking").document(ticketId)
             self.listenToTicketAsHost(docRef: docRef, type: .team3v3)
@@ -342,6 +357,7 @@ class MultiplayerService: ObservableObject {
         
         self.currentSearchType = .duel1v1
         isSearching = true
+        matchmakingError = nil
         
         let myPlayer = BattlePlayer(
             id: char.id, name: char.username,
@@ -408,6 +424,7 @@ class MultiplayerService: ObservableObject {
         } catch {
             print("Failed to challenge friend: \(error)")
             isSearching = false
+            matchmakingError = "Could not send duel challenge. Check your connection."
         }
     }
     
@@ -456,6 +473,7 @@ class MultiplayerService: ObservableObject {
                 self.startFriendBattleCountdown(battle: clientBattle)
             } catch {
                 print("acceptDuel failed: \(error)")
+                matchmakingError = "Could not join duel. The challenge may have expired."
             }
         }
     }
@@ -500,6 +518,7 @@ class MultiplayerService: ObservableObject {
         
         self.currentSearchType = type
         isSearching = true
+        matchmakingError = nil
         
         var localTeam: [BattlePlayer] = []
         localTeam.append(BattlePlayer(id: char.id, name: char.username, characterClass: characterClass, health: 100 + char.level * 10, maxHealth: 100 + char.level * 10, avatarName: char.avatarName))
@@ -515,6 +534,14 @@ class MultiplayerService: ObservableObject {
         let initialStatus: MatchmakingStatus = (type == .team3v3 && localTeam.count < 3) ? .searchingTeammates : .searchingOpponent
         
         Task {
+            if type == .worldBoss {
+                await MainActor.run {
+                    self.isSearching = false
+                    self.matchmakingError = "No active World Boss. Check the Raid tab."
+                }
+                return
+            }
+
             if type == .bossRaid {
                 // If world boss not loaded yet, create a local one immediately
                 let boss: WorldBoss
@@ -628,6 +655,9 @@ class MultiplayerService: ObservableObject {
             }
         } catch {
             print("Join team failed: \(error)")
+            await MainActor.run {
+                self.matchmakingError = "Could not join team. Try again."
+            }
         }
         return false
     }
@@ -635,9 +665,11 @@ class MultiplayerService: ObservableObject {
     private func matchWithOpponent(opponentTicketId: String, opponent: MatchmakingTicket, myTeam: [BattlePlayer]) async throws -> Bool {
         let functions = Functions.functions()
         do {
-            let result = try await functions.httpsCallable("matchWithOpponent").call([
-                "opponentTicketId": opponentTicketId
-            ])
+            var payload: [String: Any] = ["opponentTicketId": opponentTicketId]
+            if let myTicketId = currentTicketId {
+                payload["myTicketId"] = myTicketId
+            }
+            let result = try await functions.httpsCallable("matchWithOpponent").call(payload)
             
             if let data = result.data as? [String: Any], 
                let success = data["success"] as? Bool, success,
@@ -655,6 +687,9 @@ class MultiplayerService: ObservableObject {
             }
         } catch {
             print("Match with opponent failed: \(error)")
+            await MainActor.run {
+                self.matchmakingError = "Match failed. Still searching…"
+            }
         }
         return false
     }
@@ -672,6 +707,8 @@ class MultiplayerService: ObservableObject {
             self.listenToTicketAsHost(docRef: docRef, type: type)
         } catch {
             print("Failed to create ticket: \(error)")
+            isSearching = false
+            matchmakingError = "Could not enter matchmaking queue."
         }
     }
     
@@ -967,7 +1004,7 @@ class MultiplayerService: ObservableObject {
             opponentTeam = [oppPlayer]
         }
         
-        let newBattle = Battle(
+        var newBattle = Battle(
             id: battleId,
             type: self.currentSearchType,
             status: .active,
@@ -977,10 +1014,23 @@ class MultiplayerService: ObservableObject {
         )
         
         do {
-            try db.collection("battles").document(battleId).setData(from: newBattle)
+            let battleRef = db.collection("battles").document(battleId)
+            let existing = try await battleRef.getDocument()
+            if existing.exists, var lobbyBattle = try? existing.data(as: Battle.self) {
+                // Preserve human teammates already on a 3v3 lobby battle doc
+                if !lobbyBattle.localTeam.isEmpty {
+                    newBattle.localTeam = lobbyBattle.localTeam
+                }
+                try battleRef.setData(from: newBattle, merge: false)
+            } else {
+                try battleRef.setData(from: newBattle)
+            }
+            self.matchmakingError = nil
             self.listenToBattle(battleId: battleId)
         } catch {
             print("Failed to create battle document: \(error)")
+            self.isSearching = false
+            self.matchmakingError = "Could not start battle. Try again."
         }
     }
     
@@ -1071,12 +1121,15 @@ class MultiplayerService: ObservableObject {
                     ])}
                 }
                 
-                if winner == myUid {
-                    FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true, isPvPWinner: true)
-                } else if winner != "draw" {
-                    FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true, isPvPWinner: false)
-                } else {
-                    FirebaseService.shared.awardBattleRewards(xp: 100, gold: 30, isPvP: true, isPvPWinner: nil)
+                if !self.rewardsAwardedBattleIds.contains(battleId) {
+                    self.rewardsAwardedBattleIds.insert(battleId)
+                    if winner == myUid {
+                        FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true, isPvPWinner: true)
+                    } else if winner != "draw" {
+                        FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true, isPvPWinner: false)
+                    } else {
+                        FirebaseService.shared.awardBattleRewards(xp: 100, gold: 30, isPvP: true, isPvPWinner: nil)
+                    }
                 }
 
                 // Battle is fully resolved — clear the starting guard
@@ -1133,12 +1186,15 @@ class MultiplayerService: ObservableObject {
             ])}
         }
         
-        if winner == myUid {
-            FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true, isPvPWinner: true)
-        } else if winner != "draw" {
-            FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true, isPvPWinner: false)
-        } else {
-            FirebaseService.shared.awardBattleRewards(xp: 100, gold: 30, isPvP: true, isPvPWinner: nil)
+        if !rewardsAwardedBattleIds.contains(clientBattle.id) {
+            rewardsAwardedBattleIds.insert(clientBattle.id)
+            if winner == myUid {
+                FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true, isPvPWinner: true)
+            } else if winner != "draw" {
+                FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true, isPvPWinner: false)
+            } else {
+                FirebaseService.shared.awardBattleRewards(xp: 100, gold: 30, isPvP: true, isPvPWinner: nil)
+            }
         }
         
         self.isBattleStarting = false
@@ -1222,6 +1278,7 @@ class MultiplayerService: ObservableObject {
         self.isSearching = false
         self.isBattleStarting = false
         self.isInTeamLobby = false
+        self.matchmakingError = nil
         self.teammateFallbackTimer?.invalidate()
         self.teammateFallbackTimer = nil
         self.opponentFallbackTimer?.invalidate()

@@ -48,16 +48,27 @@ service cloud.firestore {
                     && resource.data.creatorUid == request.auth.uid;
     }
 
-    // === Reports ===
+    // === Reports (WorkoutTracker + FitRPG) ===
     match /reports/{reportId} {
       allow create: if request.auth != null
                     && request.resource.data.reporterUid == request.auth.uid
-                    && request.resource.data.workoutId is string
-                    && request.resource.data.reason in
+                    && (
+                      // WorkoutTracker shared-workout reports
+                      (request.resource.data.workoutId is string
+                       && request.resource.data.reason in
 ["spam", "hate", "harassment", "sexual", "violence", "dangerous", "other"]
-                    && (!("details" in request.resource.data)
-                        || (request.resource.data.details is string
-                            && request.resource.data.details.size() <= 500));
+                       && (!("details" in request.resource.data)
+                           || (request.resource.data.details is string
+                               && request.resource.data.details.size() <= 500)))
+                      ||
+                      // FitRPG player reports
+                      (request.resource.data.app == "fitrpg"
+                       && request.resource.data.targetUid is string
+                       && request.resource.data.reason is string
+                       && request.resource.data.reason.size() > 0
+                       && request.resource.data.reason.size() <= 200
+                       && request.resource.data.keys().hasAll(['reporterUid', 'targetUid', 'reason', 'createdAt', 'app']))
+                    );
       allow read, update, delete: if false;
     }
 
@@ -154,14 +165,7 @@ service cloud.firestore {
       allow create, update, delete: if request.auth != null;
     }
 
-    // FitRPG UGC reports (minimal App Store moderation)
-    match /reports/{reportId} {
-      allow create: if request.auth != null
-        && request.resource.data.reporterUid == request.auth.uid
-        && request.resource.data.keys().hasAll(['reporterUid', 'targetUid', 'reason', 'createdAt', 'app']);
-      allow read: if request.auth != null && request.auth.uid == resource.data.reporterUid;
-      allow update, delete: if false;
-    }
+    // FitRPG UGC reports are merged into the shared /reports rule above (Workout + FitRPG).
 
     // =====================================================
     // YOGA (client collections; CF yogaDeleteUserData uses Admin SDK)

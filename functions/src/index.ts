@@ -9,6 +9,14 @@ import { getAuth } from "firebase-admin/auth";
 admin.initializeApp();
 const db = admin.firestore();
 
+function resetMembersWarCounters(members: any[] = []) {
+    return members.map((m: any) => ({
+        ...m,
+        warAttacksUsed: 0,
+        warScoreContributed: 0
+    }));
+}
+
 // -------------------------------------------------------------------
 // Helper: Send Push Notification
 // -------------------------------------------------------------------
@@ -59,8 +67,9 @@ export const matchmakeClanWar = functions.https.onCall(async (data, context) => 
         
         const myClanData = myClanDoc.data()!;
         
-        // Prevent starting if already searching or in war
-        if (myClanData.activeWar && myClanData.activeWar.phase !== "none") {
+        // Prevent starting if already searching or in an active war cycle
+        const existingPhase = myClanData.activeWar?.phase;
+        if (existingPhase === "searching" || existingPhase === "preparation" || existingPhase === "active") {
             throw new functions.https.HttpsError("already-exists", "Clan is already in a war or searching.");
         }
 
@@ -75,6 +84,7 @@ export const matchmakeClanWar = functions.https.onCall(async (data, context) => 
 
         let opponentId: string | null = null;
         let opponentName: string | null = null;
+        let opponentMembers: any[] = [];
 
         // Found a real clan?
         if (!searchingClansSnapshot.empty) {
@@ -82,6 +92,7 @@ export const matchmakeClanWar = functions.https.onCall(async (data, context) => 
             if (oppDoc.id !== clanId) {
                 opponentId = oppDoc.id;
                 opponentName = oppDoc.data().name;
+                opponentMembers = oppDoc.data().members || [];
             }
         }
 
@@ -111,31 +122,71 @@ export const matchmakeClanWar = functions.https.onCall(async (data, context) => 
                 opponentClanScore: 0
             };
 
-            transaction.update(clanRef, { activeWar: myWar });
-            transaction.update(oppRef, { activeWar: oppWar });
+            transaction.update(clanRef, {
+                activeWar: myWar,
+                members: resetMembersWarCounters(myClanData.members || [])
+            });
+            transaction.update(oppRef, {
+                activeWar: oppWar,
+                members: resetMembersWarCounters(opponentMembers)
+            });
 
             return { success: true, opponentName: opponentName, isBot: false };
         } else {
-            // NO MATCH: Generate a Shadow Bot immediately
-            const botId = "bot_" + Math.random().toString(36).substring(7);
-            const botName = "ShadowFiend (Bot)";
+            // NO MATCH: enter searching queue (cron pairs clans or assigns bot after ~2 min)
+            const searchEndDate = new admin.firestore.Timestamp(now.seconds + 120, now.nanoseconds);
 
             const myWar = {
-                phase: "preparation",
-                phaseEndsAt: prepEndDate,
-                opponentClanId: botId,
-                opponentClanName: botName,
+                phase: "searching",
+                phaseEndsAt: searchEndDate,
+                opponentClanId: null,
+                opponentClanName: null,
                 myClanScore: 0,
                 opponentClanScore: 0
             };
 
-            // We don't save the bot to the DB to save reads/writes.
-            // When processing scores, if opponent is bot, we simulate their score on the fly.
             transaction.update(clanRef, { activeWar: myWar });
 
-            return { success: true, opponentName: botName, isBot: true };
+            return { success: true, opponentName: null, isBot: false, searching: true };
         }
     });
+});
+
+// -------------------------------------------------------------------
+// 1b. HTTP Callable: Cancel Clan War Search
+// -------------------------------------------------------------------
+export const cancelClanWarSearch = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+    }
+
+    const uid = context.auth.uid;
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userData = userDoc.data();
+    if (!userData || !userData.clanId) {
+        throw new functions.https.HttpsError("failed-precondition", "User is not in a clan.");
+    }
+
+    const clanRef = db.collection("clans").doc(userData.clanId);
+
+    await db.runTransaction(async (transaction) => {
+        const clanDoc = await transaction.get(clanRef);
+        if (!clanDoc.exists) {
+            throw new functions.https.HttpsError("not-found", "Clan not found.");
+        }
+        const clan = clanDoc.data()!;
+        if (clan.leaderId !== uid) {
+            throw new functions.https.HttpsError("permission-denied", "Only the clan leader can cancel search.");
+        }
+        if (!clan.activeWar || clan.activeWar.phase !== "searching") {
+            throw new functions.https.HttpsError("failed-precondition", "Clan is not searching for a war.");
+        }
+        transaction.update(clanRef, {
+            activeWar: admin.firestore.FieldValue.delete()
+        });
+    });
+
+    return { success: true };
 });
 
 
@@ -145,6 +196,76 @@ export const matchmakeClanWar = functions.https.onCall(async (data, context) => 
 // Runs every 5 minutes
 export const processClanWarPhases = functions.pubsub.schedule("*/5 * * * *").onRun(async (context) => {
     const now = admin.firestore.Timestamp.now();
+
+    // 0a. Pair searching clans with each other (real PvP)
+    const allSearching = await db.collection("clans")
+        .where("activeWar.phase", "==", "searching")
+        .get();
+
+    const searchingDocs = allSearching.docs.slice();
+    const unpaired: typeof searchingDocs = [];
+    const pairBatch = db.batch();
+    let pairedCount = 0;
+    while (searchingDocs.length >= 2) {
+        const a = searchingDocs.shift()!;
+        const b = searchingDocs.shift()!;
+        const prepEndDate = new admin.firestore.Timestamp(now.seconds + 24 * 3600, now.nanoseconds);
+        const aName = a.data().name || "Clan";
+        const bName = b.data().name || "Clan";
+        pairBatch.update(a.ref, {
+            activeWar: {
+                phase: "preparation",
+                phaseEndsAt: prepEndDate,
+                opponentClanId: b.id,
+                opponentClanName: bName,
+                myClanScore: 0,
+                opponentClanScore: 0
+            },
+            members: resetMembersWarCounters(a.data().members || [])
+        });
+        pairBatch.update(b.ref, {
+            activeWar: {
+                phase: "preparation",
+                phaseEndsAt: prepEndDate,
+                opponentClanId: a.id,
+                opponentClanName: aName,
+                myClanScore: 0,
+                opponentClanScore: 0
+            },
+            members: resetMembersWarCounters(b.data().members || [])
+        });
+        pairedCount += 2;
+    }
+    unpaired.push(...searchingDocs);
+    if (pairedCount > 0) {
+        await pairBatch.commit();
+        console.log(`Paired ${pairedCount} clans into clan wars.`);
+    }
+
+    // 0b. Searching timeout → assign Shadow Bot and enter preparation
+    const searchBatch = db.batch();
+    let botAssigned = 0;
+    for (const doc of unpaired) {
+        const war = doc.data().activeWar;
+        const endsAt = war?.phaseEndsAt;
+        if (!endsAt || endsAt.toMillis() > now.toMillis()) continue;
+        const botId = "bot_" + Math.random().toString(36).substring(7);
+        const prepEndDate = new admin.firestore.Timestamp(now.seconds + 24 * 3600, now.nanoseconds);
+        searchBatch.update(doc.ref, {
+            "activeWar.phase": "preparation",
+            "activeWar.phaseEndsAt": prepEndDate,
+            "activeWar.opponentClanId": botId,
+            "activeWar.opponentClanName": "ShadowFiend (Bot)",
+            "activeWar.myClanScore": 0,
+            "activeWar.opponentClanScore": 0,
+            members: resetMembersWarCounters(doc.data().members || [])
+        });
+        botAssigned++;
+    }
+    if (botAssigned > 0) {
+        await searchBatch.commit();
+        console.log(`Assigned bot opponents to ${botAssigned} clans after search timeout.`);
+    }
 
     // 1. Find all clans in 'preparation' where phaseEndsAt <= now
     const prepSnapshot = await db.collection("clans")
@@ -267,24 +388,40 @@ export const recordClanWarAttack = functions.https.onCall(async (data, context) 
             throw new functions.https.HttpsError("failed-precondition", "Clan is not currently in an active war.");
         }
 
-        // Increment the overall clan score
-        transaction.update(clanRef, {
-            "activeWar.myClanScore": admin.firestore.FieldValue.increment(scoreToAdd)
-        });
-
-        // Also we should ideally update the specific member's warScoreContributed
-        // Since members is an array, we read it, modify the element, and write it back.
         const members = clanData.members || [];
         const memberIndex = members.findIndex((m: any) => m.id === uid);
-        if (memberIndex !== -1) {
-            members[memberIndex].warAttacksUsed = (members[memberIndex].warAttacksUsed || 0) + 1;
-            if (won) {
-                members[memberIndex].warScoreContributed = (members[memberIndex].warScoreContributed || 0) + scoreToAdd;
-            }
-            transaction.update(clanRef, { members: members });
+        if (memberIndex === -1) {
+            throw new functions.https.HttpsError("permission-denied", "Not a clan member.");
+        }
+        if ((members[memberIndex].warAttacksUsed || 0) >= 3) {
+            throw new functions.https.HttpsError("resource-exhausted", "Attack limit reached for this war.");
         }
 
-        return { success: true, scoreAdded: scoreToAdd, opponentClanId: clanData.activeWar?.opponentClanId, myName: userData.name || "A rival" };
+        const opponentClanId = clanData.activeWar.opponentClanId || null;
+        let oppRef: admin.firestore.DocumentReference | null = null;
+        let oppDoc: admin.firestore.DocumentSnapshot | null = null;
+        if (opponentClanId && !String(opponentClanId).startsWith("bot_")) {
+            oppRef = db.collection("clans").doc(opponentClanId);
+            oppDoc = await transaction.get(oppRef);
+        }
+
+        members[memberIndex].warAttacksUsed = (members[memberIndex].warAttacksUsed || 0) + 1;
+        if (won) {
+            members[memberIndex].warScoreContributed = (members[memberIndex].warScoreContributed || 0) + scoreToAdd;
+        }
+
+        transaction.update(clanRef, {
+            "activeWar.myClanScore": admin.firestore.FieldValue.increment(scoreToAdd),
+            members: members
+        });
+
+        if (oppRef && oppDoc && oppDoc.exists && scoreToAdd > 0) {
+            transaction.update(oppRef, {
+                "activeWar.opponentClanScore": admin.firestore.FieldValue.increment(scoreToAdd)
+            });
+        }
+
+        return { success: true, scoreAdded: scoreToAdd, opponentClanId, myName: userData.name || "A rival" };
     });
 
     if (result.success && result.opponentClanId && !result.opponentClanId.startsWith("bot_")) {
@@ -686,11 +823,17 @@ export const declineFriendRequest = functions.https.onCall(async (data, context)
 export const joinTeam = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
+    const uid = context.auth.uid;
     const ticketId = data.ticketId;
     const guests = data.guests || [];
     
-    if (!ticketId || !Array.isArray(guests)) {
+    if (!ticketId || !Array.isArray(guests) || guests.length === 0) {
         throw new functions.https.HttpsError("invalid-argument", "Invalid parameters.");
+    }
+
+    const callerIsGuest = guests.some((g: any) => g && g.id === uid);
+    if (!callerIsGuest) {
+        throw new functions.https.HttpsError("permission-denied", "Caller must be included in guests.");
     }
 
     const ref = db.collection("matchmaking").doc(ticketId);
@@ -704,9 +847,11 @@ export const joinTeam = functions.https.onCall(async (data, context) => {
         if (!ticket || ticket.status !== "searchingTeammates") return;
         
         const currentTeam = ticket.team || [];
-        if (currentTeam.length + guests.length > 3) return;
+        const existingIds = new Set(currentTeam.map((p: any) => p.id));
+        const newGuests = guests.filter((g: any) => g && g.id && !existingIds.has(g.id));
+        if (currentTeam.length + newGuests.length > 3) return;
         
-        currentTeam.push(...guests);
+        currentTeam.push(...newGuests);
         
         const updates: any = { team: currentTeam };
         if (currentTeam.length === 3) {
@@ -728,35 +873,51 @@ import { randomUUID } from "crypto";
 export const matchWithOpponent = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
+    const uid = context.auth.uid;
     const opponentTicketId = data.opponentTicketId;
-    // opponent and myTeam are passed by client but we don't need them on the server side for this atomic update
+    const myTicketId = data.myTicketId;
     
-    if (!opponentTicketId) {
+    if (!opponentTicketId || !myTicketId) {
         throw new functions.https.HttpsError("invalid-argument", "Invalid opponent.");
+    }
+    if (opponentTicketId === myTicketId) {
+        throw new functions.https.HttpsError("invalid-argument", "Cannot match with own ticket.");
     }
 
     const opponentRef = db.collection("matchmaking").doc(opponentTicketId);
-    const newBattleId = randomUUID();
+    const myRef = db.collection("matchmaking").doc(myTicketId);
     
     let success = false;
     let actualOpponentData: any = null;
+    let resolvedBattleId = "";
     await db.runTransaction(async (transaction) => {
-        const opDoc = await transaction.get(opponentRef);
-        if (!opDoc.exists) return;
+        const [opDoc, myDoc] = await Promise.all([
+            transaction.get(opponentRef),
+            transaction.get(myRef)
+        ]);
+        if (!opDoc.exists || !myDoc.exists) return;
         
         const currentOpp = opDoc.data();
+        const myTicket = myDoc.data();
         if (!currentOpp || currentOpp.status !== "searchingOpponent") return;
+        if (!myTicket || myTicket.status !== "searchingOpponent") return;
+        if (myTicket.uid !== uid) return;
         
         actualOpponentData = currentOpp;
+        resolvedBattleId = currentOpp.battleId || myTicket.battleId || randomUUID();
         
         transaction.update(opponentRef, {
             status: "matched",
-            battleId: newBattleId
+            battleId: resolvedBattleId
+        });
+        transaction.update(myRef, {
+            status: "matched",
+            battleId: resolvedBattleId
         });
         success = true;
     });
     
-    return { success: success, battleId: newBattleId, opponentData: actualOpponentData };
+    return { success: success, battleId: resolvedBattleId, opponentData: actualOpponentData };
 });
 
 // -------------------------------------------------------------------
@@ -825,9 +986,10 @@ export const resolvePvEBattle = functions.https.onCall(async (data, context) => 
     
     const uid = context.auth.uid;
     const won = data.won;
-    const bossLootChance = data.bossLootChance || 0.2; // default 20%
-    const bossXp = data.xp || 0;
-    const bossGold = data.gold || 0;
+    const bossLootChance = Math.min(Math.max(Number(data.bossLootChance) || 0.2, 0), 1);
+    // Cap client-reported rewards until battles are fully server-simulated
+    const bossXp = Math.min(Math.max(Number(data.xp) || 0, 0), 500);
+    const bossGold = Math.min(Math.max(Number(data.gold) || 0, 0), 250);
     
     const userRef = db.collection("users").doc(uid);
     let droppedItemId: string | null = null;
@@ -958,17 +1120,23 @@ export const onMatchmakingTicketCreated = functions.firestore
 export const fillTeammatesWithBots = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
+    const uid = context.auth.uid;
     const ticketId = data.ticketId;
     if (!ticketId) throw new functions.https.HttpsError("invalid-argument", "Missing ticketId.");
 
     const ref = db.collection("matchmaking").doc(ticketId);
     
+    let lobbyBattleId: string | null = null;
+    let updated = false;
     await db.runTransaction(async (transaction) => {
         const doc = await transaction.get(ref);
         if (!doc.exists) return;
         
         const ticket = doc.data();
-        if (!ticket || ticket.status !== "searchingTeammates") return;
+        if (!ticket) return;
+        if (ticket.uid !== uid) return;
+        if (ticket.status !== "searchingTeammates") return;
+        lobbyBattleId = ticket.battleId || null;
         
         const team = ticket.team || [];
         const bots = ["HealerBot", "TankBot", "MageBot"];
@@ -993,7 +1161,20 @@ export const fillTeammatesWithBots = functions.https.onCall(async (data, context
             team: team,
             status: "searchingOpponent"
         });
+
+        if (lobbyBattleId) {
+            const battleRef = db.collection("battles").doc(lobbyBattleId);
+            transaction.update(battleRef, {
+                localTeam: team,
+                status: "Searching..."
+            });
+        }
+        updated = true;
     });
+
+    if (!updated) {
+        throw new functions.https.HttpsError("permission-denied", "Not ticket host or invalid ticket state.");
+    }
     
     return { success: true };
 });
@@ -1005,6 +1186,7 @@ export const fillTeammatesWithBots = functions.https.onCall(async (data, context
 export const triggerOpponentBotFallback = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
+    const uid = context.auth.uid;
     const ticketId = data.ticketId;
     const type = data.type || "duel1v1";
     if (!ticketId) throw new functions.https.HttpsError("invalid-argument", "Missing ticketId.");
@@ -1017,9 +1199,10 @@ export const triggerOpponentBotFallback = functions.https.onCall(async (data, co
         if (!doc.exists) return;
         
         const ticket = doc.data();
+        if (!ticket || ticket.uid !== uid) return;
         if (!ticket || ticket.status !== "searchingOpponent") return;
         
-        const battleId = randomUUID();
+        const battleId = ticket.battleId || randomUUID();
         finalBattleId = battleId;
         const opponentTeam: any[] = [];
         
@@ -1063,7 +1246,19 @@ export const triggerOpponentBotFallback = functions.https.onCall(async (data, co
         };
         
         const battleRef = db.collection("battles").doc(battleId);
-        transaction.set(battleRef, { ...newBattle, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+        const existingBattle = await transaction.get(battleRef);
+        if (existingBattle.exists) {
+            transaction.update(battleRef, {
+                type: newBattle.type,
+                status: newBattle.status,
+                localTeam: newBattle.localTeam,
+                opponentTeam: newBattle.opponentTeam,
+                secondsRemaining: newBattle.secondsRemaining,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        } else {
+            transaction.set(battleRef, { ...newBattle, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+        }
         
         transaction.update(ref, {
             status: "matched",
@@ -1072,6 +1267,10 @@ export const triggerOpponentBotFallback = functions.https.onCall(async (data, co
         
         return { ...newBattle, createdAt: new Date() };
     });
+
+    if (!finalBattleId || !finalBattleData) {
+        throw new functions.https.HttpsError("permission-denied", "Not ticket host or invalid ticket state.");
+    }
     
     return { success: true, battleId: finalBattleId, battleData: finalBattleData };
 });

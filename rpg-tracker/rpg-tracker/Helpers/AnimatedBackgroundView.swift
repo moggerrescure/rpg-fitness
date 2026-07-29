@@ -33,6 +33,7 @@ struct AnimatedBackgroundView: View {
     @State private var lampPulse: Bool = false
     @State private var fogOffset: CGFloat = -450
     @State private var spotlightAngle: Double = -5
+    @State private var tavernKenBurns: CGFloat = 1.0
     
     init(backgroundType: BackgroundType = .general) {
         self.backgroundType = backgroundType
@@ -47,6 +48,7 @@ struct AnimatedBackgroundView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: geo.size.width, height: geo.size.height)
+                        .scaleEffect(backgroundType == .tavern ? tavernKenBurns : 1.0)
                         .clipped()
                 } else {
                     // Fallback to beautiful radial gradient representing the aurora sky
@@ -222,11 +224,27 @@ struct AnimatedBackgroundView: View {
     }
     
     private func loadProjectImage() -> PlatformImage? {
-        let name = backgroundType.rawValue
-        if let bundleImage = PlatformImage(named: name) {
-            return bundleImage
+        // Prefer curated assets when legacy bg_* names are missing from the catalog.
+        let candidates: [String]
+        switch backgroundType {
+        case .tavern:
+            candidates = ["fitrpg_tavern_hub_bg", backgroundType.rawValue]
+        case .arena:
+            candidates = ["fitrpg_arena_hub_bg", backgroundType.rawValue]
+        case .clanHall:
+            candidates = ["fitrpg_clan_hall_bg", backgroundType.rawValue]
+        case .mountain:
+            candidates = ["fitrpg_world_boss_bg", backgroundType.rawValue]
+        default:
+            candidates = [backgroundType.rawValue]
         }
-        let path = "/Users/ilakazdan/Documents/fitness-rpg /rpg-tracker/rpg-tracker/Assets/\(name).png"
+        for name in candidates {
+            if let bundleImage = PlatformImage(named: name) {
+                return bundleImage
+            }
+        }
+        let fallback = candidates[0]
+        let path = "/Users/ilakazdan/Documents/fitness-rpg /rpg-tracker/rpg-tracker/Assets/\(fallback).png"
         return PlatformImage(contentsOfFile: path)
     }
     
@@ -257,6 +275,11 @@ struct AnimatedBackgroundView: View {
         }
         withAnimation(Animation.easeInOut(duration: 5.0).repeatForever(autoreverses: true)) {
             spotlightAngle = 8
+        }
+        if backgroundType == .tavern {
+            withAnimation(Animation.easeInOut(duration: 18).repeatForever(autoreverses: true)) {
+                tavernKenBurns = 1.06
+            }
         }
     }
 }

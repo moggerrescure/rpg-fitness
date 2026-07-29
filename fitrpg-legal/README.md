@@ -10,13 +10,16 @@ Static legal pages for App Store compliance. Host under GitHub Pages so the app 
 | Terms of Use | https://borisserz.github.io/fitrpg-legal/terms.html |
 | Support | https://borisserz.github.io/fitrpg-legal/support.html |
 
+Contact: borisserzh5@gmail.com
+
 ## Hosting steps
 
-1. Push this `fitrpg-legal/` folder to a repo (e.g. `borisserz/fitrpg-legal` or as `/fitrpg-legal` in an existing user/org site repo).
-2. Enable **GitHub Pages** for the branch/folder (Settings → Pages → source: branch + `/fitrpg-legal` or repo root).
+1. Push this folder to `Borisserz/fitrpg-legal` (or enable Pages from this monorepo `/fitrpg-legal`).
+2. Enable **GitHub Pages** (Settings → Pages → Deploy from branch `main` / root).
 3. Confirm the three URLs load in a browser.
 4. Add the Privacy Policy URL in **App Store Connect** → App Information → Privacy Policy URL.
+5. Optionally set Support URL on the App Store product page.
 
 ## App references
 
-The iOS app reads these URLs from `LegalURLs.swift` in `rpg-tracker/rpg-tracker/`.
+The iOS app reads these URLs from `LegalURLs.swift` and ships bundled copies under `rpg-tracker/rpg-tracker/Legal/`.

@@ -4,6 +4,7 @@ struct WorldBossDashboardView: View {
     @ObservedObject var firebaseService = FirebaseService.shared
     @Binding var currentTab: Int
     @State private var showingBattleArena = false
+    @State private var energyHint: String? = nil
     
     var body: some View {
         ZStack {
@@ -32,6 +33,14 @@ struct WorldBossDashboardView: View {
                     }
                     .padding(.horizontal, 24)
                     .padding(.top, 20)
+
+                    if let energyHint {
+                        Text(energyHint)
+                            .font(.caption.bold())
+                            .foregroundColor(Theme.warning)
+                            .padding(.horizontal, 24)
+                            .transition(.opacity)
+                    }
                     
                     if let boss = firebaseService.activeWorldBoss {
                         if boss.isActive {
@@ -40,13 +49,61 @@ struct WorldBossDashboardView: View {
                             defeatedBossView(boss: boss)
                         }
                     } else {
-                        VStack(spacing: 16) {
-                            ProgressView()
-                                .tint(Theme.danger)
-                            Text("Summoning World Boss...")
-                                .foregroundColor(Theme.textSecondary)
+                        switch firebaseService.worldBossStatus {
+                        case .loading:
+                            VStack(spacing: 16) {
+                                ProgressView()
+                                    .tint(Theme.danger)
+                                Text("Summoning World Boss...")
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            .frame(height: 300)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        case .empty:
+                            VStack(spacing: 14) {
+                                Image(systemName: "moon.stars.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(Theme.textMuted)
+                                Text("No active raid")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                Text("The next World Boss cycle hasn’t started yet. Check back soon.")
+                                    .font(.subheadline)
+                                    .foregroundColor(Theme.textSecondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 24)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 300)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        case .error(let message):
+                            VStack(spacing: 14) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.title)
+                                    .foregroundColor(Theme.danger)
+                                Text("Couldn’t load raid")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                Text(message)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 24)
+                                Button("Retry") {
+                                    firebaseService.retryWorldBossListener()
+                                }
+                                .buttonStyle(TactileButtonStyle())
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(Theme.danger.opacity(0.25))
+                                .cornerRadius(10)
+                                .foregroundColor(.white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 300)
+                        case .ready:
+                            EmptyView()
                         }
-                        .frame(height: 300)
                     }
                 }
                 .padding(.bottom, 100)
@@ -129,7 +186,13 @@ struct WorldBossDashboardView: View {
             .padding(.horizontal, 24)
             
             Button(action: {
-                guard firebaseService.consumeEnergy(amount: 15) else { return }
+                guard firebaseService.consumeEnergy(amount: 15) else {
+                    withAnimation {
+                        energyHint = "Not enough energy. Wait for regen (~1 every 5 min)."
+                    }
+                    return
+                }
+                energyHint = nil
                 showingBattleArena = true
             }) {
                 HStack {

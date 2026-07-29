@@ -12,6 +12,15 @@ class FirebaseService: ObservableObject {
     @Published var leaderboards: [String: [Character]] = [:]
     @Published var friends: [String] = []
     @Published var activeWorldBoss: WorldBoss?
+    /// Distinguishes first load vs confirmed empty vs listener error.
+    @Published var worldBossStatus: WorldBossLoadStatus = .loading
+
+    enum WorldBossLoadStatus: Equatable {
+        case loading
+        case ready
+        case empty
+        case error(String)
+    }
     
     private var cancellables = Set<AnyCancellable>()
     private var battleTimer: Timer?
@@ -44,19 +53,37 @@ class FirebaseService: ObservableObject {
     
     private func listenToWorldBoss() {
         worldBossListener?.remove()
+        worldBossStatus = .loading
         worldBossListener = Firestore.firestore().collection("world_bosses")
             .whereField("isActive", isEqualTo: true)
             .limit(to: 1)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self = self else { return }
+                if let error {
+                    DispatchQueue.main.async {
+                        self.activeWorldBoss = nil
+                        self.worldBossStatus = .error(error.localizedDescription)
+                    }
+                    return
+                }
                 if let doc = snapshot?.documents.first,
                    let boss = try? doc.data(as: WorldBoss.self) {
-                    DispatchQueue.main.async { self.activeWorldBoss = boss }
+                    DispatchQueue.main.async {
+                        self.activeWorldBoss = boss
+                        self.worldBossStatus = .ready
+                    }
                 } else {
                     // No active world boss — wait for server cron; do not fabricate client-side
-                    DispatchQueue.main.async { self.activeWorldBoss = nil }
+                    DispatchQueue.main.async {
+                        self.activeWorldBoss = nil
+                        self.worldBossStatus = .empty
+                    }
                 }
             }
+    }
+
+    func retryWorldBossListener() {
+        listenToWorldBoss()
     }
     
     private var characterListener: ListenerRegistration?
@@ -777,11 +804,16 @@ class FirebaseService: ObservableObject {
     }
 
     func cancelClanWarSearch() {
-        guard var clan = userClan, clan.activeWar?.phase == .searching else { return }
-
-        clan.activeWar = nil
-        self.userClan = clan
-        syncClan(clan)
+        guard userClan?.activeWar?.phase == .searching else { return }
+        Task {
+            do {
+                let functions = Functions.functions()
+                _ = try await functions.httpsCallable("cancelClanWarSearch").call()
+                // Clan listener clears activeWar from server write
+            } catch {
+                print("Error canceling clan war search: \(error.localizedDescription)")
+            }
+        }
     }
 
     func contributeWarScore(points: Int) {

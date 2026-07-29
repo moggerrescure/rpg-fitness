@@ -912,6 +912,7 @@ struct InviteFriendsSheet: View {
 // 4. Radar matchmaking screen (with .forest background)
 struct MatchmakingQueueView: View {
     let cancelAction: () -> Void
+    @ObservedObject private var multiplayerService = MultiplayerService.shared
     @State private var pulseScale: CGFloat = 1.0
     
     var body: some View {
@@ -968,6 +969,15 @@ struct MatchmakingQueueView: View {
                     Text("Securing low latency server sync...")
                         .font(.caption)
                         .foregroundColor(Theme.textMuted)
+
+                    if let error = multiplayerService.matchmakingError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(Theme.danger)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                            .padding(.top, 6)
+                    }
                 }
                 
                 Spacer()
