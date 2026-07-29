@@ -83,13 +83,13 @@ FitRPG account delete: **`cleanupFitRPGAccount`** (scoped). Do **not** call shar
 ## Fix Order (backend)
 
 ```
-1. Merge stash → main (no deploy until done)
-2. Rules hardening + yoga block merge
-3. Economy CF + deny client gold writes
-4. Clan war single path
-5. App Check on sensitive callables
-6. deleteAccount scope fix
-7. Rotate leaked secrets
+1. Merge stash → main (no deploy until done) ✅
+2. Rules hardening + yoga block merge ✅
+3. Economy CF + deny client gold writes ✅
+4. Clan war single path ✅
+5. App Check on sensitive FitRPG callables ✅ (REAUDIT2)
+6. deleteAccount scope fix ✅ (cleanupFitRPGAccount; shared deleteAccount for Food/Workout only)
+7. Rotate leaked secrets (ops)
 ```
 
 ---

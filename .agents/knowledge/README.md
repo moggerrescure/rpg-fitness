@@ -10,22 +10,27 @@
 | [KI-firebase-ecosystem.md](./KI-firebase-ecosystem.md) | Shared Firebase deploy safety; never wipe sibling CF |
 | [KI-app-store-compliance.md](./KI-app-store-compliance.md) | App Store Review, блокеры, privacy/deletion/UGC |
 | [KI-feature-reality.md](./KI-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN матрица, моки, CF bypass |
-| [KI-audit-merged-2026-07-29.md](./KI-audit-merged-2026-07-29.md) | **App Store verdict (NOT ready)** + TOP 10 merged fix order |
+| [KI-audit-merged-REAUDIT2-2026-07-29.md](./KI-audit-merged-REAUDIT2-2026-07-29.md) | **App Store verdict YES** (post P1) |
+| [KI-audit-merged-REAUDIT-2026-07-29.md](./KI-audit-merged-REAUDIT-2026-07-29.md) | Prior CONDITIONAL YES (P0 only) |
+| [KI-audit-merged-2026-07-29.md](./KI-audit-merged-2026-07-29.md) | Original NOT ready + TOP 10 |
 | [KI-audit-ios-2026-07-29.md](./KI-audit-ios-2026-07-29.md) | iOS P0×6 P1×22 P2×18, feature matrix, client fix order |
 | [KI-audit-backend-2026-07-29.md](./KI-audit-backend-2026-07-29.md) | Server P0: open rules, economy/PvP trust, deploy notes |
 
 ## Audits (2026-07-29)
 
-**Start here (KI):** [KI-audit-merged-2026-07-29](./KI-audit-merged-2026-07-29.md) — NOT App Store ready, TOP 10.  
-**Long-form dumps:** [MASTER — Full Audit](../../docs/audit/2026-07-29-MASTER.md) ⛔ no firebase deploy until Phase 2
+**Start here (KI):** [KI-audit-merged-REAUDIT2-2026-07-29](./KI-audit-merged-REAUDIT2-2026-07-29.md) — **YES** App Store ready.  
+**Long-form dumps:** [MASTER — Full Audit](../../docs/audit/2026-07-29-MASTER.md)
 
 | Report | Focus |
 |--------|-------|
+| [REAUDIT2 merged](./KI-audit-merged-REAUDIT2-2026-07-29.md) | YES verdict after P1 |
+| [REAUDIT2 backend](./KI-audit-backend-REAUDIT2-2026-07-29.md) | App Check, joinTeam, matchmaking |
+| [REAUDIT2 iOS](./KI-audit-ios-REAUDIT2-2026-07-29.md) | Friend duel UX, story gate, push entitlements |
 | [MASTER](../../docs/audit/2026-07-29-MASTER.md) | Сводный: scores, P0/P1, roadmap, deploy ban |
 | [Feature reality](../../docs/audit/2026-07-29-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN matrix, CF bypass |
-| [App Store readiness](../../docs/audit/2026-07-29-app-store-readiness.md) | 4/10 NOT READY, F-01..F-20 |
+| [App Store readiness](../../docs/audit/2026-07-29-app-store-readiness.md) | Historical 4/10 NOT READY |
 | [iOS client](../../docs/audit/2026-07-29-ios-client.md) | F001–F032, broken flows, client↔server |
-| [Firebase ecosystem](../../docs/audit/2026-07-29-firebase-ecosystem.md) | Shared project deploy risks, F01–F32 (partially stale — prefer KI-audit) |
+| [Firebase ecosystem](../../docs/audit/2026-07-29-firebase-ecosystem.md) | Shared project deploy risks (prefer KI-audit) |
 
 ## MCP memory (экономия токенов)
 
