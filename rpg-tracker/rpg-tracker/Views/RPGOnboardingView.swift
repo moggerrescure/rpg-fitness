@@ -5,6 +5,7 @@ struct RPGOnboardingView: View {
     @State private var currentSlide: Int = 0
     @State private var isTransitioning: Bool = false
     @State private var transitionOpacity: Double = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     // NPC dialogue content with D&D interactive choices and responses
     private let dialogues: [NPCDialogue] = [
@@ -12,11 +13,13 @@ struct RPGOnboardingView: View {
             name: "Alaric",
             role: "Guild Master",
             message: "Greetings, traveler! I am the Guild Master. Good to see a new face in our Tavern. In this realm, your real-world strength becomes powerful magic and character XP. Are you ready for your first quest?",
-            themeColor: Theme.accent,
+            themeColor: Theme.warning,
             avatarIcon: "shield.fill",
             featureText: "Health sync and automatic XP from daily steps",
-            choiceA: "⚔️ [Bow your head] \"I'm ready to train, Master!\"",
-            choiceB: "💰 [Ask] \"What reward awaits me?\"",
+            choiceA: "[Bow your head] \"I'm ready to train, Master!\"",
+            choiceB: "[Ask] \"What reward awaits me?\"",
+            choiceAIcon: "hand.raised.fill",
+            choiceBIcon: "questionmark.circle.fill",
             replyA: "\"Noble spirit! Your daily effort will pay off handsomely. Now go forth to your first quests!\"",
             replyB: "\"Gold, glory, and great renown! Strong fighters earn the finest gear and their clan's respect here.\""
         ),
@@ -27,8 +30,10 @@ struct RPGOnboardingView: View {
             themeColor: Theme.archerColor,
             avatarIcon: "person.fill.viewfinder",
             featureText: "4 hero classes with unique exercises and bonuses",
-            choiceA: "🗡️ [Grip the hilt] \"I shall be a valiant Warrior!\"",
-            choiceB: "🏹 [Draw the bow] \"I prefer bow and arrow!\"",
+            choiceA: "[Grip the hilt] \"I shall be a valiant Warrior!\"",
+            choiceB: "[Draw the bow] \"I prefer bow and arrow!\"",
+            choiceAIcon: "shield.lefthalf.filled",
+            choiceBIcon: "scope",
             replyA: "\"Excellent choice! Your squats will become deadly lunges that shatter monster armor!\"",
             replyB: "\"A true marksman! Every push-up you do sends a phantom arrow straight into the enemy's heart.\""
         ),
@@ -39,8 +44,10 @@ struct RPGOnboardingView: View {
             themeColor: Theme.danger,
             avatarIcon: "eye.fill",
             featureText: "Camera rep tracking and real-time spellcasting",
-            choiceA: "🔥 [Ready yourself] \"They'll regret waking up!\"",
-            choiceB: "📱 [Ask] \"How should I position the camera?\"",
+            choiceA: "[Ready yourself] \"They'll regret waking up!\"",
+            choiceB: "[Ask] \"How should I position the camera?\"",
+            choiceAIcon: "flame.fill",
+            choiceBIcon: "camera.fill",
             replyA: "\"Ha! Now that's fighting spirit! Remember: perfect form doubles your spell damage!\"",
             replyB: "\"Just place your phone on a flat surface about two meters away so your full body stays in frame.\""
         ),
@@ -51,8 +58,10 @@ struct RPGOnboardingView: View {
             themeColor: Theme.primary,
             avatarIcon: "flame.fill",
             featureText: "PvP Duels, Story Campaigns, and Clan Halls",
-            choiceA: "🛡️ [Accept the challenge] \"I'll best the Arena's finest!\"",
-            choiceB: "🤝 [Rally together] \"Guilds are my true family.\"",
+            choiceA: "[Accept the challenge] \"I'll best the Arena's finest!\"",
+            choiceB: "[Rally together] \"Guilds are my true family.\"",
+            choiceAIcon: "flag.checkered",
+            choiceBIcon: "person.3.fill",
             replyA: "\"The Arena welcomes bold gladiators! Duel victories raise your rank on the global leaderboard.\"",
             replyB: "\"Wise choice. Clans share goals and climb the war leaderboard together.\""
         ),
@@ -63,134 +72,76 @@ struct RPGOnboardingView: View {
             themeColor: Theme.warning,
             avatarIcon: "cart.fill",
             featureText: "Buy gear and upgrade your hero's stats",
-            choiceA: "🛍️ [Strike a deal] \"Show me your wares, Grimli!\"",
-            choiceB: "🍻 [Raise a mug] \"To meeting at the tavern!\"",
+            choiceA: "[Strike a deal] \"Show me your wares, Grimli!\"",
+            choiceB: "[Raise a mug] \"To meeting at the tavern!\"",
+            choiceAIcon: "bag.fill",
+            choiceBIcon: "cup.and.saucer.fill",
             replyA: "\"Oh, I've got epic artifacts in stock! Train hard, earn gold from workouts, and claim them!\"",
             replyB: "\"To your health, traveler! Now step inside — your great adventure begins right now!\""
         )
     ]
     
+    /// Prefer curated hub art (tavern / clan hall / arena / mountain) so onboarding never falls back to flat starfield.
     private var activeBackgroundType: BackgroundType {
         switch currentSlide {
-        case 0: return .general
-        case 1: return .trainingRuins
+        case 0: return .tavern
+        case 1: return .clanHall
         case 2: return .mountain
         case 3: return .arena
         case 4: return .tavern
-        default: return .general
+        default: return .tavern
         }
+    }
+    
+    private var activeThemeColor: Color {
+        dialogues[min(currentSlide, dialogues.count - 1)].themeColor
     }
     
     var body: some View {
         ZStack {
-            // Immersive background matching active NPC's zone
             AnimatedBackgroundView(backgroundType: activeBackgroundType)
                 .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.8), value: currentSlide)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.85), value: currentSlide)
             
-            Color.black.opacity(0.45)
-                .ignoresSafeArea()
+            // Warm guild vignette — keeps art readable without washing to flat grey
+            LinearGradient(
+                colors: [
+                    Color(hex: "1A0F08").opacity(0.55),
+                    Color.black.opacity(0.28),
+                    Color(hex: "0B0604").opacity(0.72)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            
+            RadialGradient(
+                colors: [activeThemeColor.opacity(0.12), Color.clear],
+                center: .top,
+                startRadius: 20,
+                endRadius: 380
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: currentSlide)
             
             if !isTransitioning {
                 VStack(spacing: 0) {
-                    // Header logo
-                    HStack(spacing: 8) {
-                        Image(systemName: "shield.lefthalf.filled")
-                            .font(.title2)
-                            .foregroundColor(Theme.warning)
-                        Text("FITRPG")
-                            .font(.system(.headline, design: .monospaced))
-                            .fontWeight(.black)
-                            .foregroundColor(.white)
-                            .tracking(2.0)
-                    }
-                    .padding(.top, 20)
-
-                    if currentSlide == 0 {
-                        Text("FitRPG is for entertainment and fitness motivation only. It is not medical advice. Consult a physician before starting any exercise program.")
-                            .font(.system(.caption2, design: .rounded))
-                            .foregroundColor(.white.opacity(0.65))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 28)
-                            .padding(.top, 8)
-                    }
+                    brandHeader
                     
-                    // Dialog page slider
                     TabView(selection: $currentSlide) {
                         ForEach(0..<dialogues.count, id: \.self) { idx in
-                            NPCSpeechView(dialogue: dialogues[idx], index: idx)
+                            NPCSpeechView(dialogue: dialogues[idx], reduceMotion: reduceMotion)
                                 .tag(idx)
                         }
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .always))
+                    .tabViewStyle(.page(indexDisplayMode: .never))
                     
-                    // Onboarding Action Bar
-                    VStack(spacing: 12) {
-                        if currentSlide < dialogues.count - 1 {
-                            HStack {
-                                Button("SKIP") {
-                                    withAnimation {
-                                        currentSlide = dialogues.count - 1
-                                    }
-                                }
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(Theme.textSecondary)
-                                .padding(.leading, 24)
-                                
-                                Spacer()
-                                
-                                Button(action: {
-                                    withAnimation {
-                                        currentSlide += 1
-                                    }
-                                }) {
-                                    HStack(spacing: 6) {
-                                        Text("NEXT")
-                                        Image(systemName: "chevron.right")
-                                    }
-                                    .font(.system(.subheadline, design: .monospaced))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 10)
-                                    .background(dialogues[currentSlide].themeColor.opacity(0.25))
-                                    .cornerRadius(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(dialogues[currentSlide].themeColor.opacity(0.4), lineWidth: 1)
-                                    )
-                                }
-                                .padding(.trailing, 24)
-                            }
-                            .padding(.bottom, 24)
-                        } else {
-                            // Let's Enter the Tavern!
-                            Button(action: startTavernTransition) {
-                                Text("ENTER THE TAVERN")
-                                    .font(.system(.headline, design: .monospaced))
-                                    .fontWeight(.black)
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 16)
-                                    .background(
-                                        LinearGradient(colors: [Theme.warning, Theme.accent], startPoint: .leading, endPoint: .trailing)
-                                    )
-                                    .cornerRadius(16)
-                                    .shadow(color: Theme.warning.opacity(0.4), radius: 10)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16)
-                                            .stroke(Color.white.opacity(0.25), lineWidth: 1.5)
-                                    )
-                            }
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 32)
-                            .transition(.opacity.combined(with: .scale))
-                        }
-                    }
+                    onboardingFooter
                 }
             }
             
-            // Magical leaves zoom tunnel view
             if isTransitioning {
                 MagicalTunnelView()
                     .opacity(transitionOpacity)
@@ -200,13 +151,146 @@ struct RPGOnboardingView: View {
         .hideNavigationBar()
     }
     
+    // MARK: - Brand Header
+    
+    private var brandHeader: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Theme.warning, Color(hex: "FCD34D")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .glow(color: Theme.warning.opacity(0.55), radius: 10)
+                
+                Text("FITRPG")
+                    .font(.system(size: 28, weight: .black, design: .serif))
+                    .foregroundColor(Theme.textPrimary)
+                    .tracking(4)
+                    .shadow(color: Color.black.opacity(0.45), radius: 6, y: 2)
+            }
+            .padding(.top, 16)
+            
+            if currentSlide == 0 {
+                Text("For entertainment & fitness motivation only · Not medical advice · Consult a physician before exercise")
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundColor(Theme.textMuted.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    // MARK: - Footer
+    
+    private var onboardingFooter: some View {
+        VStack(spacing: 14) {
+            OnboardingPageIndicator(
+                count: dialogues.count,
+                current: currentSlide,
+                accent: activeThemeColor
+            )
+            
+            if currentSlide < dialogues.count - 1 {
+                HStack(alignment: .center) {
+                    Button("SKIP") {
+                        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.85)) {
+                            currentSlide = dialogues.count - 1
+                        }
+                    }
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                    .accessibilityHint("Jump to the final onboarding step")
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.85)) {
+                            currentSlide += 1
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Text("NEXT")
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 12)
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    activeThemeColor.opacity(0.85),
+                                    activeThemeColor.opacity(0.45)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                        )
+                        .shadow(color: activeThemeColor.opacity(0.35), radius: 10, y: 4)
+                    }
+                    .buttonStyle(TactileButtonStyle())
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 22)
+            } else {
+                Button(action: startTavernTransition) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "door.left.hand.open")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("ENTER THE TAVERN")
+                            .font(.system(size: 15, weight: .black, design: .monospaced))
+                            .tracking(1)
+                    }
+                    .foregroundColor(Color(hex: "1A0F08"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "FCD34D"), Theme.warning, Color(hex: "D97706")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.white.opacity(0.35), lineWidth: 1.5)
+                    )
+                    .shadow(color: Theme.warning.opacity(0.5), radius: 14, y: 6)
+                }
+                .buttonStyle(TactileButtonStyle())
+                .padding(.horizontal, 24)
+                .padding(.bottom, 28)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+    }
+    
     private func startTavernTransition() {
-        withAnimation(.easeInOut(duration: 0.5)) {
+        withAnimation(.easeInOut(duration: reduceMotion ? 0.2 : 0.5)) {
             isTransitioning = true
             transitionOpacity = 1.0
         }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+        let delay = reduceMotion ? 0.6 : 3.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             withAnimation(.easeInOut(duration: 0.4)) {
                 onComplete()
             }
@@ -214,198 +298,413 @@ struct RPGOnboardingView: View {
     }
 }
 
+// MARK: - Page Indicator
+
+private struct OnboardingPageIndicator: View {
+    let count: Int
+    let current: Int
+    let accent: Color
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<count, id: \.self) { idx in
+                Capsule()
+                    .fill(idx == current ? accent : Color.white.opacity(0.22))
+                    .frame(width: idx == current ? 22 : 7, height: 7)
+                    .shadow(color: idx == current ? accent.opacity(0.45) : .clear, radius: 4)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: current)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Page \(current + 1) of \(count)")
+    }
+}
+
 // MARK: - NPC Speech View Component
 
 private struct NPCSpeechView: View {
     let dialogue: NPCDialogue
-    let index: Int
+    let reduceMotion: Bool
+    
     @State private var isPortraitAnimating = false
     @State private var isTypewritingComplete = false
     @State private var selectedChoiceIndex: Int? = nil
+    @State private var panelAppeared = false
     
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer()
+        VStack(spacing: 14) {
+            Spacer(minLength: 8)
             
-            // Animated NPC Portrait with spinning runes
-            ZStack {
-                Circle()
-                    .stroke(
-                        LinearGradient(colors: [dialogue.themeColor.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom),
-                        lineWidth: 2
-                    )
-                    .frame(width: 150, height: 150)
-                    .rotationEffect(.degrees(isPortraitAnimating ? 360 : 0))
-                    .animation(.linear(duration: 10.0).repeatForever(autoreverses: false), value: isPortraitAnimating)
-                
-                Circle()
-                    .fill(dialogue.themeColor.opacity(0.10))
-                    .frame(width: 125, height: 125)
-                    .scaleEffect(isPortraitAnimating ? 1.04 : 0.96)
-                    .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: isPortraitAnimating)
-                
-                ZStack {
-                    Circle()
-                        .fill(Color.black.opacity(0.5))
-                        .frame(width: 110, height: 110)
-                        .overlay(Circle().stroke(dialogue.themeColor.opacity(0.5), lineWidth: 1.5))
-                    
-                    Image(systemName: dialogue.avatarIcon)
-                        .font(.system(size: 42))
-                        .foregroundColor(dialogue.themeColor)
-                        .glow(color: dialogue.themeColor.opacity(0.6), radius: 8)
+            portalPortrait
+                .opacity(panelAppeared ? 1 : 0)
+                .scaleEffect(panelAppeared ? 1 : 0.88)
+            
+            dialoguePanel
+                .opacity(panelAppeared ? 1 : 0)
+                .offset(y: panelAppeared ? 0 : 18)
+            
+            featureTip
+                .opacity(panelAppeared && isTypewritingComplete ? 1 : 0.55)
+            
+            Spacer(minLength: 4)
+        }
+        .onAppear {
+            isPortraitAnimating = true
+            if reduceMotion {
+                panelAppeared = true
+            } else {
+                withAnimation(.easeOut(duration: 0.55).delay(0.05)) {
+                    panelAppeared = true
                 }
             }
-            .onAppear {
-                isPortraitAnimating = true
+        }
+        .onChange(of: dialogue.name) { _, _ in
+            isTypewritingComplete = false
+            selectedChoiceIndex = nil
+            panelAppeared = false
+            if reduceMotion {
+                panelAppeared = true
+            } else {
+                withAnimation(.easeOut(duration: 0.45)) {
+                    panelAppeared = true
+                }
+            }
+        }
+    }
+    
+    // MARK: Portal / Avatar
+    
+    private var portalPortrait: some View {
+        ZStack {
+            // Soft ethereal rings
+            ForEach(0..<3, id: \.self) { ring in
+                Circle()
+                    .stroke(
+                        AngularGradient(
+                            colors: [
+                                dialogue.themeColor.opacity(0.45 - Double(ring) * 0.1),
+                                dialogue.themeColor.opacity(0.05),
+                                dialogue.themeColor.opacity(0.35 - Double(ring) * 0.08)
+                            ],
+                            center: .center
+                        ),
+                        lineWidth: 1.5
+                    )
+                    .frame(width: CGFloat(118 + ring * 22), height: CGFloat(118 + ring * 22))
+                    .rotationEffect(.degrees(isPortraitAnimating ? 360 : 0))
+                    .animation(
+                        reduceMotion
+                            ? nil
+                            : .linear(duration: 14.0 + Double(ring) * 4).repeatForever(autoreverses: false),
+                        value: isPortraitAnimating
+                    )
             }
             
-            // NPC Speech Dialogue Box (Typewriter dialogue frame + Tap to skip)
-            VStack(alignment: .leading, spacing: 14) {
-                // Name Tag header block
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            dialogue.themeColor.opacity(isPortraitAnimating ? 0.28 : 0.14),
+                            dialogue.themeColor.opacity(0.04),
+                            Color.clear
+                        ],
+                        center: .center,
+                        startRadius: 10,
+                        endRadius: 90
+                    )
+                )
+                .frame(width: 160, height: 160)
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 2.2).repeatForever(autoreverses: true),
+                    value: isPortraitAnimating
+                )
+            
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "2A1A10").opacity(0.92),
+                                Color(hex: "0E0A08").opacity(0.95)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 96, height: 96)
+                
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                dialogue.themeColor.opacity(0.85),
+                                dialogue.themeColor.opacity(0.25),
+                                Color(hex: "FCD34D").opacity(0.4)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 2
+                    )
+                    .frame(width: 96, height: 96)
+                
+                Image(systemName: dialogue.avatarIcon)
+                    .font(.system(size: 36, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [dialogue.themeColor, dialogue.themeColor.opacity(0.7)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .glow(color: dialogue.themeColor.opacity(0.7), radius: 12)
+            }
+            .shadow(color: dialogue.themeColor.opacity(0.35), radius: 18, y: 4)
+        }
+        .frame(height: 170)
+        .accessibilityHidden(true)
+    }
+    
+    // MARK: Dialogue Panel
+    
+    private var dialoguePanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                // Name plate
                 HStack(spacing: 6) {
                     Text(dialogue.name)
-                        .font(.system(.headline, design: .monospaced))
-                        .fontWeight(.black)
+                        .font(.system(size: 16, weight: .black, design: .serif))
                         .foregroundColor(dialogue.themeColor)
                     
-                    Text("•")
-                        .foregroundColor(.white.opacity(0.3))
+                    Text("·")
+                        .foregroundColor(Color.white.opacity(0.25))
                     
                     Text(dialogue.role.uppercased())
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .foregroundColor(Theme.textSecondary)
-                        .tracking(1)
-                    
-                    Spacer()
-                    
-                    if !isTypewritingComplete {
-                        HStack(spacing: 3) {
-                            Text("TAP TO SKIP")
-                                .font(.system(size: 7, weight: .bold, design: .monospaced))
-                                .foregroundColor(Theme.textMuted)
-                            Image(systemName: "hand.tap.fill")
-                                .font(.system(size: 7))
-                                .foregroundColor(Theme.textMuted)
-                        }
-                    }
+                        .tracking(1.2)
                 }
-                .padding(.bottom, 2)
                 
-                // Dialogue typewriter message
-                TypewriterText(text: dialogue.message, isComplete: $isTypewritingComplete)
-                    .frame(height: 110, alignment: .topLeading)
+                Spacer(minLength: 4)
                 
-                // Dialog decisions / Choices display
-                if isTypewritingComplete {
-                    VStack(spacing: 8) {
-                        if selectedChoiceIndex == nil {
-                            // Render two interactive buttons
-                            Button(action: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                    selectedChoiceIndex = 0
-                                }
-                            }) {
-                                Text(dialogue.choiceA)
-                                    .font(.system(size: 11, design: .rounded))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(dialogue.themeColor)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 12)
-                                    .background(dialogue.themeColor.opacity(0.12))
-                                    .cornerRadius(8)
-                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(dialogue.themeColor.opacity(0.35), lineWidth: 1))
-                            }
-                            
-                            Button(action: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                    selectedChoiceIndex = 1
-                                }
-                            }) {
-                                Text(dialogue.choiceB)
-                                    .font(.system(size: 11, design: .rounded))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(dialogue.themeColor)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 12)
-                                    .background(dialogue.themeColor.opacity(0.12))
-                                    .cornerRadius(8)
-                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(dialogue.themeColor.opacity(0.35), lineWidth: 1))
-                            }
-                        } else {
-                            // Render NPC response to selected choice
-                            HStack(alignment: .top, spacing: 8) {
-                                Text("➔")
-                                    .font(.caption)
-                                    .bold()
-                                    .foregroundColor(dialogue.themeColor)
-                                
-                                Text(selectedChoiceIndex == 0 ? dialogue.replyA : dialogue.replyB)
-                                    .font(.system(size: 11, design: .rounded))
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.white.opacity(0.85))
-                                    .italic()
-                                    .lineSpacing(3)
-                            }
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.white.opacity(0.04))
-                            .cornerRadius(8)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(dialogue.themeColor.opacity(0.15), lineWidth: 1))
-                            .transition(.opacity)
-                        }
+                if !isTypewritingComplete {
+                    HStack(spacing: 4) {
+                        Text("TAP")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        Image(systemName: "hand.tap.fill")
+                            .font(.system(size: 8))
                     }
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .foregroundColor(Theme.textMuted)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(Capsule())
                 }
             }
-            .padding(22)
-            .background(.thinMaterial)
-            .cornerRadius(20)
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
+            
+            // Warm divider
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [dialogue.themeColor.opacity(0.55), dialogue.themeColor.opacity(0.05)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 1)
+            
+            TypewriterText(text: dialogue.message, isComplete: $isTypewritingComplete)
+                .frame(minHeight: 96, alignment: .topLeading)
+            
+            if isTypewritingComplete {
+                choicesSection
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .opacity.combined(with: .move(edge: .bottom))
+                    )
+            }
+        }
+        .padding(20)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "2C2118").opacity(0.94),
+                                Color(hex: "17110C").opacity(0.96)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                
+                // Subtle parchment wash
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "F59E0B").opacity(0.07),
+                                Color.clear,
+                                Color(hex: "6366F1").opacity(0.04)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                
+                // Top edge highlight (candle catch)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(
                         LinearGradient(
-                            colors: [dialogue.themeColor.opacity(0.4), dialogue.themeColor.opacity(0.15)],
+                            colors: [
+                                Color.white.opacity(0.18),
+                                dialogue.themeColor.opacity(0.35),
+                                Color.white.opacity(0.04)
+                            ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
                         lineWidth: 1.5
                     )
-            )
-            .dndBorder(color: dialogue.themeColor.opacity(0.65), length: 16, lineWidth: 2)
-            .padding(.horizontal, 24)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                // Skip typing on tap gesture anywhere inside dialogue card
-                if !isTypewritingComplete {
-                    isTypewritingComplete = true
-                }
             }
-            .onChange(of: dialogue.name) { _, _ in
-                // Reset slide choices when switching slides
-                isTypewritingComplete = false
-                selectedChoiceIndex = nil
+        )
+        .shadow(color: Color.black.opacity(0.45), radius: 20, y: 10)
+        .shadow(color: dialogue.themeColor.opacity(0.12), radius: 24, y: 4)
+        .dndBorder(color: dialogue.themeColor.opacity(0.7), length: 18, lineWidth: 2)
+        .padding(.horizontal, 20)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !isTypewritingComplete {
+                isTypewritingComplete = true
             }
-            
-            // Feature description summary badge
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.caption)
-                    .foregroundColor(dialogue.themeColor)
-                Text(dialogue.featureText)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.6))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(12)
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.06), lineWidth: 1))
-            
-            Spacer()
         }
+    }
+    
+    @ViewBuilder
+    private var choicesSection: some View {
+        VStack(spacing: 10) {
+            if selectedChoiceIndex == nil {
+                DialogueChoiceButton(
+                    title: dialogue.choiceA,
+                    icon: dialogue.choiceAIcon,
+                    accent: dialogue.themeColor,
+                    action: {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                            selectedChoiceIndex = 0
+                        }
+                    }
+                )
+                
+                DialogueChoiceButton(
+                    title: dialogue.choiceB,
+                    icon: dialogue.choiceBIcon,
+                    accent: dialogue.themeColor,
+                    action: {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                            selectedChoiceIndex = 1
+                        }
+                    }
+                )
+            } else {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "text.bubble.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(dialogue.themeColor)
+                        .padding(.top, 2)
+                    
+                    Text(selectedChoiceIndex == 0 ? dialogue.replyA : dialogue.replyB)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundColor(Theme.textPrimary.opacity(0.9))
+                        .italic()
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(dialogue.themeColor.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(dialogue.themeColor.opacity(0.28), lineWidth: 1)
+                )
+                .transition(.opacity)
+            }
+        }
+    }
+    
+    private var featureTip: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(dialogue.themeColor.opacity(0.8))
+            Text(dialogue.featureText)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundColor(Theme.textSecondary.opacity(0.85))
+        }
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Choice Button
+
+private struct DialogueChoiceButton: View {
+    let title: String
+    let icon: String
+    let accent: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(accent.opacity(0.22))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(accent)
+                }
+                
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(Theme.textPrimary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                accent.opacity(0.2),
+                                accent.opacity(0.08)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(accent.opacity(0.45), lineWidth: 1.5)
+            )
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(accent)
+                    .frame(width: 3)
+                    .padding(.vertical, 8)
+                    .padding(.leading, 1)
+            }
+        }
+        .buttonStyle(TactileButtonStyle())
     }
 }
 
@@ -418,11 +717,12 @@ struct TypewriterText: View {
     let speed: Double = 0.012
     @State private var displayedText: String = ""
     @State private var animateTask: Task<Void, Never>? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     var body: some View {
         Text(displayedText)
-            .font(.system(.body, design: .rounded))
-            .foregroundColor(.white.opacity(0.9))
+            .font(.system(size: 15, weight: .regular, design: .rounded))
+            .foregroundColor(Theme.textPrimary.opacity(0.92))
             .multilineTextAlignment(.leading)
             .lineSpacing(5)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -445,6 +745,11 @@ struct TypewriterText: View {
     
     private func startTyping() {
         animateTask?.cancel()
+        if reduceMotion {
+            displayedText = text
+            isComplete = true
+            return
+        }
         displayedText = ""
         isComplete = false
         let chars = Array(text)
@@ -478,6 +783,8 @@ struct NPCDialogue {
     
     let choiceA: String
     let choiceB: String
+    let choiceAIcon: String
+    let choiceBIcon: String
     let replyA: String
     let replyB: String
 }
