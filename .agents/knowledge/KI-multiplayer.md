@@ -1,16 +1,14 @@
 # Multiplayer (FitRPG)
 
-Updated: 2026-07-29 (REAUDIT2 — P1 closed)
+Updated: 2026-07-29 (SHIP — honesty bar)
 
 ## Verdict
 
-**Core multiplayer + economy ready for App Store.** Details: [KI-audit-merged-REAUDIT2-2026-07-29](./KI-audit-merged-REAUDIT2-2026-07-29.md).
+**Core multiplayer + economy ready for App Store (honesty bar).** Details: [KI-audit-merged-SHIP-2026-07-29](./KI-audit-merged-SHIP-2026-07-29.md).
 
 ## Server callables (live)
 
-Prior set plus: `resolvePvPBattle`, `awardActivityRewards`, `cleanupFitRPGAccount`.
-
-Also: `matchmakeClanWar`, `cancelClanWarSearch`, `processClanWarPhases`, `recordClanWarAttack`, `joinTeam`, `matchWithOpponent`, `fillTeammatesWithBots`, `triggerOpponentBotFallback`, `acceptFriendDuel`, `declineFriendDuel`, `attackWorldBoss`, `resolvePvEBattle`, `equipItem`, `purchaseItem`, `declineFriendRequest`, `acceptFriendRequest`, …
+Prior set plus: `resolvePvPBattle`, `awardActivityRewards`, `cleanupFitRPGAccount`, **`adjustEnergy`**.
 
 All FitRPG 1st-gen HTTPS callables: **App Check enforced** (`fitRpgOnCall`).
 
@@ -18,21 +16,18 @@ Deploy: `scripts/deploy-fitrpg-safe.sh` only.
 
 ## What works
 
-- Rules: economy fields / friends / progressions CF-only; gold client decrease only
-- Shop buy → `purchaseItem`; equip → `equipItem`
+- Battles: `participantUids`; client cannot set `winnerId`; CF derives winner / honors `surrenderedBy`
+- Energy increases only via `adjustEnergy` (spend/refund/regen)
+- Clan trophies immutable for clients; `memberIds` membership checks
 - Online PvP settle → `resolvePvPBattle`
-- World boss: energy charge + rate limit; cycle settlement lock
-- Clan war: server rolls win; rewards in `recordClanWarAttack`
+- World boss: energy + rate limit; client pre-check 15 energy
 - FitRPG delete → `cleanupFitRPGAccount` (never recursive `users/{uid}`)
-- Matchmaking: client creates ticket before `matchWithOpponent` (requires `myTicketId`)
-- 3v3 lobby accept → `joinTeam` (pending invite + battle sync)
-- Friend duel fail surfaces error (no bot-queue fake success)
 
 ## Residual (non-blocking)
 
-- Combat state still client-written (rewards locked)
-- Story co-op gated / not shipped
+- Combat HP still client-synced among participants
+- Story co-op not shipped (removed from UI)
 
 ## Do not re-flag as missing
 
-`declineFriendRequest`, `cancelClanWarSearch`, `purchaseItem`, `acceptFriendDuel`, `shopCatalog.ts`, `world_bosses` write:false, `resolvePvPBattle`, `awardActivityRewards`, `cleanupFitRPGAccount`, App Check on FitRPG callables, Release `aps-environment=production`.
+`adjustEnergy`, participant battle rules, server-derived PvP winner, energy no client refill, clan trophies lock.

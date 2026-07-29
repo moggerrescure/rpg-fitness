@@ -268,7 +268,8 @@ struct MainHubView: View {
                 case "duel", "arena":
                     currentTab = 2  // Battle Arena tab
                 case "friends":
-                    currentTab = 3  // Clan tab embeds Friends
+                    currentTab = 3
+                    NotificationCenter.default.post(name: NSNotification.Name("FitRPGOpenFriendsSegment"), object: nil)
                 case "clan", "clanwar":
                     currentTab = 3
                 case "raid", "worldboss":

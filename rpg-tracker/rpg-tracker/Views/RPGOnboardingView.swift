@@ -50,7 +50,7 @@ struct RPGOnboardingView: View {
             message: "Hear the roar of the crowd? This is the Arena of Glory! Challenge other players in PvP duels or join a mighty clan for epic co-op raids. Make your name in battle!",
             themeColor: Theme.primary,
             avatarIcon: "flame.fill",
-            featureText: "PvP Duels, Co-op Raids, and Clan Halls",
+            featureText: "PvP Duels, Story Campaigns, and Clan Halls",
             choiceA: "🛡️ [Accept the challenge] \"I'll best the Arena's finest!\"",
             choiceB: "🤝 [Rally together] \"Guilds are my true family.\"",
             replyA: "\"The Arena welcomes bold gladiators! Duel victories raise your rank on the global leaderboard.\"",

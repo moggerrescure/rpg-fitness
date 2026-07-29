@@ -44,7 +44,9 @@ struct Clan: Codable, Identifiable {
     var description: String
     var emblem: String
     var leaderId: String
-    var members: [ClanMember] 
+    var members: [ClanMember]
+    /// Parallel id list for Firestore rules membership checks.
+    var memberIds: [String] = []
     var trophies: Int = 1000
     var totalReps: Int = 0
     var level: Int = 1
@@ -58,5 +60,9 @@ struct Clan: Codable, Identifiable {
     
     var isFull: Bool {
         members.count >= maxMembers
+    }
+
+    mutating func syncMemberIds() {
+        memberIds = members.map(\.id)
     }
 }

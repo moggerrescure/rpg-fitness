@@ -11,6 +11,7 @@ import {
     WORLD_BOSS_ATTACK_ENERGY,
     WORLD_BOSS_MAX_DAMAGE_PER_CALL,
     WORLD_BOSS_ATTACKS_PER_HOUR,
+    ACTIVITY_REWARDS_PER_HOUR,
     applyXpToProgression,
     clampActivityRewards,
     clampPvERewards,
@@ -19,6 +20,13 @@ import {
     rewardsForPvpOutcome,
     rollClanWarWin,
 } from "./economyHelpers";
+import {
+    derivePvpWinnerId,
+    isAllowedActivityReason,
+    isBattleParticipant,
+    participantUidsFromTeams,
+    stripUserForPublic,
+} from "./battleHelpers";
 import {
     mergeTeamGuests,
     requireMyTicketId,
@@ -737,7 +745,7 @@ export const searchPlayers = fitRpgOnCall(async (data, context) => {
         try {
             const directDoc = await db.collection("users").doc(query).get();
             if (directDoc.exists && directDoc.id !== myUid) {
-                results.push({ id: directDoc.id, ...directDoc.data() });
+                results.push(stripUserForPublic({ id: directDoc.id, ...directDoc.data() }));
                 return { players: results };
             }
         } catch (_) { /* ignore */ }
@@ -753,7 +761,7 @@ export const searchPlayers = fitRpgOnCall(async (data, context) => {
     
     for (const doc of snap.docs) {
         if (doc.id !== myUid) {
-            results.push({ id: doc.id, ...doc.data() });
+            results.push(stripUserForPublic({ id: doc.id, ...doc.data() }));
         }
     }
     
@@ -765,7 +773,7 @@ export const searchPlayers = fitRpgOnCall(async (data, context) => {
             .get();
         for (const doc of exactSnap.docs) {
             if (doc.id !== myUid) {
-                results.push({ id: doc.id, ...doc.data() });
+                results.push(stripUserForPublic({ id: doc.id, ...doc.data() }));
             }
         }
     }
@@ -959,6 +967,8 @@ export const acceptFriendDuel = fitRpgOnCall(async (data, context) => {
             throw new functions.https.HttpsError("not-found", "Battle not found.");
         }
 
+        const battleData = battleDoc.data() || {};
+        const localTeam = battleData.localTeam || ticket.team || [];
         const acceptorPlayer = {
             id: acceptor.id,
             name: acceptor.name || "Player",
@@ -972,6 +982,7 @@ export const acceptFriendDuel = fitRpgOnCall(async (data, context) => {
         transaction.update(battleRef, {
             opponentTeam: [acceptorPlayer],
             status: "active",
+            participantUids: participantUidsFromTeams(localTeam, [acceptorPlayer]),
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
         transaction.update(ticketRef, {
@@ -1086,6 +1097,7 @@ export const joinTeam = fitRpgOnCall(async (data, context) => {
         try {
             await db.collection("battles").doc(battleId).update({
                 localTeam: admin.firestore.FieldValue.arrayUnion(joinedPlayer),
+                participantUids: admin.firestore.FieldValue.arrayUnion(uid),
             });
         } catch (e) {
             console.warn("joinTeam battle sync failed:", e);
@@ -1367,9 +1379,7 @@ export const resolvePvPBattle = fitRpgOnCall(async (data, context) => {
         const battle = battleDoc.data()!;
         const userData = userDoc.data()!;
 
-        const localIds = (battle.localTeam || []).map((p: any) => p.id);
-        const oppIds = (battle.opponentTeam || []).map((p: any) => p.id);
-        if (!localIds.includes(uid) && !oppIds.includes(uid)) {
+        if (!isBattleParticipant(battle, uid)) {
             throw new functions.https.HttpsError("permission-denied", "Not a battle participant.");
         }
 
@@ -1378,14 +1388,22 @@ export const resolvePvPBattle = fitRpgOnCall(async (data, context) => {
             return { alreadySettled: true, outcome: settled[uid] };
         }
 
-        if (battle.status !== "Finished" && battle.status !== "completed" && battle.status !== "Completed") {
-            // Allow settlement when winnerId already present (host wrote completion)
-            if (!battle.winnerId) {
+        const statusDone = battle.status === "Finished"
+            || battle.status === "completed"
+            || battle.status === "Completed";
+        const hasSurrender = typeof battle.surrenderedBy === "string" && battle.surrenderedBy.length > 0;
+        if (!statusDone && !hasSurrender) {
+            // Allow early settle only when a side is already wiped (HP-derived)
+            const localAlive = (battle.localTeam || []).some((p: any) => (p.health || 0) > 0);
+            const oppAlive = (battle.opponentTeam || []).some((p: any) => (p.health || 0) > 0);
+            if (localAlive && oppAlive) {
                 throw new functions.https.HttpsError("failed-precondition", "Battle not completed yet.");
             }
         }
 
-        const outcome = pvpOutcomeForPlayer(battle.winnerId, uid);
+        // Ignore client winnerId — derive from HP/reps/surrender
+        const winnerId = derivePvpWinnerId(battle);
+        const outcome = pvpOutcomeForPlayer(winnerId, uid);
         const rewards = rewardsForPvpOutcome(outcome);
         const selectedClass = userData.selectedClass || "Archer";
         const { updates: progUpdates } = applyXpToProgression(
@@ -1411,11 +1429,73 @@ export const resolvePvPBattle = fitRpgOnCall(async (data, context) => {
         settled[uid] = outcome;
         transaction.update(battleRef, {
             status: "Finished",
+            winnerId,
             rewardsSettled: settled,
+            participantUids: battle.participantUids
+                || participantUidsFromTeams(battle.localTeam, battle.opponentTeam),
         });
         transaction.update(userRef, userUpdates);
 
-        return { alreadySettled: false, outcome, rewards };
+        return { alreadySettled: false, outcome, rewards, winnerId };
+    });
+
+    return { success: true, ...result };
+});
+
+// -------------------------------------------------------------------
+// 10b2. HTTP Callable: Adjust energy (spend / refund / regen) — CF-only increases
+// -------------------------------------------------------------------
+const ENERGY_REGEN_INTERVAL_SEC = 5 * 60; // match client: 1 energy / 5 min
+
+export const adjustEnergy = fitRpgOnCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+    const uid = context.auth.uid;
+    const op = String(data.op || "");
+    if (!["spend", "refund", "regen"].includes(op)) {
+        throw new functions.https.HttpsError("invalid-argument", "op must be spend|refund|regen.");
+    }
+    const amount = Math.floor(Number(data.amount) || 0);
+    if ((op === "spend" || op === "refund") && amount <= 0) {
+        throw new functions.https.HttpsError("invalid-argument", "amount required.");
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const result = await db.runTransaction(async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists) throw new functions.https.HttpsError("not-found", "User not found.");
+        const userData = userDoc.data()!;
+        const maxEnergy = Number(userData.maxEnergy) || 100;
+        let energy = Number(userData.energy);
+        if (!Number.isFinite(energy)) energy = maxEnergy;
+
+        const now = admin.firestore.Timestamp.now();
+        const lastMs = userData.lastEnergyRegenAt?.toMillis
+            ? userData.lastEnergyRegenAt.toMillis()
+            : Number(userData.lastEnergyRegenAt || 0);
+
+        // Always apply pending regen first
+        if (energy < maxEnergy && lastMs > 0) {
+            const points = Math.floor((now.toMillis() - lastMs) / (ENERGY_REGEN_INTERVAL_SEC * 1000));
+            if (points > 0) {
+                energy = Math.min(maxEnergy, energy + points);
+            }
+        }
+
+        if (op === "spend") {
+            if (energy < amount) {
+                throw new functions.https.HttpsError("failed-precondition", "Not enough energy.");
+            }
+            energy -= amount;
+        } else if (op === "refund") {
+            energy = Math.min(maxEnergy, energy + amount);
+        }
+        // regen: energy already topped up above
+
+        transaction.update(userRef, {
+            energy,
+            lastEnergyRegenAt: now,
+        });
+        return { energy, maxEnergy };
     });
 
     return { success: true, ...result };
@@ -1428,7 +1508,14 @@ export const awardActivityRewards = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
 
     const uid = context.auth.uid;
-    const reason = String(data.reason || "activity").slice(0, 40);
+    const reason = String(data.reason || "activity").slice(0, 40).toLowerCase();
+    if (!isAllowedActivityReason(reason)) {
+        throw new functions.https.HttpsError("invalid-argument", "Activity reason not allowed.");
+    }
+    // Offline/local PvP must not mint via activity path
+    if (reason.includes("pvp") || reason.includes("duel") || reason.includes("arena")) {
+        throw new functions.https.HttpsError("invalid-argument", "Use resolvePvPBattle for PvP rewards.");
+    }
     const { xp, gold } = clampActivityRewards(data.xp, data.gold);
     if (xp <= 0 && gold <= 0) {
         return { success: true, xp: 0, gold: 0 };
@@ -1448,7 +1535,7 @@ export const awardActivityRewards = fitRpgOnCall(async (data, context) => {
         if (!windowStart || nowMs - windowStart > 60 * 60 * 1000) {
             count = 0;
         }
-        if (count >= 120) {
+        if (count >= ACTIVITY_REWARDS_PER_HOUR) {
             throw new functions.https.HttpsError("resource-exhausted", "Activity reward rate limit reached.");
         }
 
@@ -1717,6 +1804,7 @@ export const triggerOpponentBotFallback = fitRpgOnCall(async (data, context) => 
             status: "active",
             localTeam: ticket.team || [],
             opponentTeam: opponentTeam,
+            participantUids: participantUidsFromTeams(ticket.team || [], opponentTeam),
             secondsRemaining: 60,
             combatLog: []
         };
@@ -1729,6 +1817,7 @@ export const triggerOpponentBotFallback = fitRpgOnCall(async (data, context) => 
                 status: newBattle.status,
                 localTeam: newBattle.localTeam,
                 opponentTeam: newBattle.opponentTeam,
+                participantUids: newBattle.participantUids,
                 secondsRemaining: newBattle.secondsRemaining,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
@@ -1772,20 +1861,37 @@ export const getLeaderboards = fitRpgOnCall(async (data, context) => {
                     .orderBy("pvpTrophies", "desc")
                     .limit(50)
                     .get();
-                result[type] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                result[type] = snap.docs.map(d => stripUserForPublic({ id: d.id, ...d.data() }));
             } else if (type === "global") {
                 // Global leaderboard: sort by currentLevel (stored field, synced every login)
                 const snap = await db.collection("users")
                     .orderBy("currentLevel", "desc")
                     .limit(50)
                     .get();
-                result[type] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                result[type] = snap.docs.map(d => stripUserForPublic({ id: d.id, ...d.data() }));
             } else if (type === "clans") {
                 const snap = await db.collection("clans")
                     .orderBy("trophies", "desc")
                     .limit(30)
                     .get();
-                result[type] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                result[type] = snap.docs.map(d => {
+                    const raw = d.data() || {};
+                    return {
+                        id: d.id,
+                        name: raw.name,
+                        emblem: raw.emblem,
+                        trophies: raw.trophies,
+                        totalReps: raw.totalReps,
+                        leaderId: raw.leaderId,
+                        members: (raw.members || []).map((m: any) => ({
+                            id: m.id,
+                            username: m.username,
+                            level: m.level,
+                            characterClass: m.characterClass,
+                            role: m.role,
+                        })),
+                    };
+                });
             } else if (allowedClasses.includes(type)) {
                 // Per-class leaderboard: rank by classTrophies[type].
                 // We fetch top 200 by currentLevel then sort in memory by the class-specific trophies.
@@ -1813,7 +1919,7 @@ export const getLeaderboards = fitRpgOnCall(async (data, context) => {
                     return classLevel > 1 || trophies > 0 || p.selectedClass === type;
                 });
 
-                result[type] = filtered.slice(0, 30);
+                result[type] = filtered.slice(0, 30).map((p: any) => stripUserForPublic(p));
             }
         } catch (err) {
             console.error(`Failed to fetch leaderboard type=${type}:`, err);
@@ -2109,6 +2215,8 @@ export const deleteAccount = onCallV2(
     timeoutSeconds: 300,
   },
   async (request) => {
+    // DANGER: recursiveDelete(users/{uid}) wipes sibling apps (Food/Workout/Yoga).
+    // FitRPG MUST NEVER call this — use cleanupFitRPGAccount only.
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsErrorV2("unauthenticated", "You must be signed in to delete your account.");

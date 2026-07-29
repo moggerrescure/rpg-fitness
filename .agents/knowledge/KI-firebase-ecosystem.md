@@ -5,9 +5,8 @@ Firebase backend FitRPG в **shared** project `serzhanovich-ecosystem-ce700` (~5
 
 **Deploy FitRPG:** always `scripts/deploy-fitrpg-safe.sh`. Never wipe sibling CF (`tryonWorker`, `tagGarment`, Food/Workout proxies).
 
-**Backend audit (concise):** [KI-audit-backend-REAUDIT-2026-07-29](./KI-audit-backend-REAUDIT-2026-07-29.md)  
-**Prior audit:** [KI-audit-backend-2026-07-29](./KI-audit-backend-2026-07-29.md)  
-**Полный отчёт (может быть stale):** [docs/audit/2026-07-29-firebase-ecosystem.md](../../docs/audit/2026-07-29-firebase-ecosystem.md)
+**Backend audit (concise):** [KI-audit-backend-SHIP-2026-07-29](./KI-audit-backend-SHIP-2026-07-29.md)  
+**Prior:** [KI-audit-backend-REAUDIT2-2026-07-29](./KI-audit-backend-REAUDIT2-2026-07-29.md)
 
 ---
 

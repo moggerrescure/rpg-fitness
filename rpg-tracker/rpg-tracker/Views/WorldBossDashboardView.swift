@@ -186,7 +186,11 @@ struct WorldBossDashboardView: View {
             .padding(.horizontal, 24)
             
             Button(action: {
-                // Energy is charged server-side on attackWorldBoss when damage is submitted.
+                let energy = firebaseService.currentCharacter?.energy ?? 0
+                if energy < 15 {
+                    energyHint = "Need 15 energy to attack (you have \(energy))."
+                    return
+                }
                 energyHint = nil
                 showingBattleArena = true
             }) {
@@ -197,12 +201,22 @@ struct WorldBossDashboardView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(LinearGradient(gradient: Gradient(colors: [Theme.danger, Theme.danger.opacity(0.8)]), startPoint: .leading, endPoint: .trailing))
+                .background(
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            (firebaseService.currentCharacter?.energy ?? 0) >= 15 ? Theme.danger : Theme.textMuted,
+                            Theme.danger.opacity(0.8)
+                        ]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
                 .foregroundColor(.white)
                 .cornerRadius(16)
                 .shadow(color: Theme.danger.opacity(0.5), radius: 8)
             }
             .buttonStyle(TactileButtonStyle())
+            .disabled((firebaseService.currentCharacter?.energy ?? 0) < 15)
             .padding(.horizontal, 24)
             .padding(.top, 8)
             

@@ -154,6 +154,8 @@ class MultiplayerService: ObservableObject {
             id: battleId, type: .team3v3, status: .searching,
             localTeam: [myPlayer], opponentTeam: [], secondsRemaining: 60
         )
+        var lobbyBattle = placeholder
+        lobbyBattle.ensureParticipantUids()
         
         let ticket = MatchmakingTicket(
             uid: char.id, playerClass: char.selectedClass, playerLevel: char.level,
@@ -163,7 +165,7 @@ class MultiplayerService: ObservableObject {
         )
         
         do {
-            try db.collection("battles").document(battleId).setData(from: placeholder)
+            try db.collection("battles").document(battleId).setData(from: lobbyBattle)
             
             var ticketData = (try? Firestore.Encoder().encode(ticket) as? [String: Any]) ?? [:]
             ticketData["battleId"] = battleId
@@ -398,6 +400,8 @@ class MultiplayerService: ObservableObject {
             id: battleId, type: .duel1v1, status: .searching,
             localTeam: [myPlayer], opponentTeam: [], secondsRemaining: 60
         )
+        var duelPlaceholder = placeholder
+        duelPlaceholder.ensureParticipantUids()
         
         let ticket = MatchmakingTicket(
             uid: char.id, playerClass: char.selectedClass, playerLevel: char.level,
@@ -407,7 +411,7 @@ class MultiplayerService: ObservableObject {
         
         do {
             // Write battle placeholder
-            try db.collection("battles").document(battleId).setData(from: placeholder)
+            try db.collection("battles").document(battleId).setData(from: duelPlaceholder)
             
             // Write matchmaking ticket so acceptor can find it
             var ticketData = (try? Firestore.Encoder().encode(ticket) as? [String: Any]) ?? [:]
@@ -569,6 +573,14 @@ class MultiplayerService: ObservableObject {
     
     func startMatchmaking(for characterClass: CharacterClass, type: BattleType = .duel1v1, invitedFriends: [String] = []) {
         guard let char = FirebaseService.shared.currentCharacter else { return }
+
+        // World Boss / raid MM is not a PvP queue — send players to Raid tab (avoids energy leak).
+        if type == .worldBoss || type == .bossRaid {
+            matchmakingError = type == .worldBoss
+                ? "Open the Raids tab to attack the World Boss."
+                : "Boss raids require an active World Boss in the Raids tab."
+            return
+        }
         
         // PVP costs 10 energy — block matchmaking when insufficient
         guard FirebaseService.shared.consumeEnergy(amount: 10) else {
@@ -595,57 +607,6 @@ class MultiplayerService: ObservableObject {
         let initialStatus: MatchmakingStatus = (type == .team3v3 && localTeam.count < 3) ? .searchingTeammates : .searchingOpponent
         
         Task {
-            if type == .worldBoss {
-                await MainActor.run {
-                    self.isSearching = false
-                    self.matchmakingError = "No active World Boss. Check the Raid tab."
-                }
-                return
-            }
-
-            if type == .bossRaid {
-                // If world boss not loaded yet, create a local one immediately
-                let boss: WorldBoss
-                if let activeBoss = FirebaseService.shared.activeWorldBoss {
-                    boss = activeBoss
-                } else {
-                    let template = Boss.templates.last!
-                    boss = WorldBoss(
-                        id: "wb_local", bossTemplateId: template.id,
-                        maxHealth: template.maxHealth, currentHealth: template.maxHealth,
-                        isActive: true, startedAt: Date(), topAttackers: [:]
-                    )
-                    await MainActor.run { FirebaseService.shared.activeWorldBoss = boss }
-                }
-                
-                let template = Boss.templates.first { $0.id == boss.bossTemplateId } ?? Boss.templates.last!
-                let bossPlayer = BattlePlayer(
-                    id: boss.id,
-                    name: template.name,
-                    characterClass: .swordsman, // default logic for boss avatar is handled in View
-                    health: boss.currentHealth,
-                    maxHealth: boss.maxHealth,
-                    avatarName: template.avatarName
-                )
-                
-                let battle = Battle(
-                    id: "raid_\(UUID().uuidString)",
-                    type: .bossRaid,
-                    status: .active,
-                    localTeam: localTeam,
-                    opponentTeam: [bossPlayer],
-                    secondsRemaining: 60 // 60 seconds to deal as much damage as possible
-                )
-                
-                await MainActor.run {
-                    self.activeBattle = battle
-                    self.isSearching = false
-                }
-                return
-            }
-            
-
-            
             if initialStatus == .searchingTeammates {
                 let snapshot = try? await db.collection("matchmaking")
                     .whereField("status", isEqualTo: MatchmakingStatus.searchingTeammates.rawValue)
@@ -1040,7 +1001,7 @@ class MultiplayerService: ObservableObject {
                 ))
             }
             
-            let battle = Battle(
+            var battle = Battle(
                 id: battleId,
                 type: type,
                 status: .active,
@@ -1048,6 +1009,7 @@ class MultiplayerService: ObservableObject {
                 opponentTeam: [botPlayer],
                 secondsRemaining: 60
             )
+            battle.ensureParticipantUids()
             
             do {
                 try db.collection("battles").document(battleId).setData(from: battle)
@@ -1086,6 +1048,7 @@ class MultiplayerService: ObservableObject {
             opponentTeam: opponentTeam,
             secondsRemaining: 60
         )
+        newBattle.ensureParticipantUids()
         
         do {
             let battleRef = db.collection("battles").document(battleId)
@@ -1095,6 +1058,7 @@ class MultiplayerService: ObservableObject {
                 if !lobbyBattle.localTeam.isEmpty {
                     newBattle.localTeam = lobbyBattle.localTeam
                 }
+                newBattle.ensureParticipantUids()
                 try battleRef.setData(from: newBattle, merge: false)
             } else {
                 try battleRef.setData(from: newBattle)
@@ -1190,9 +1154,9 @@ class MultiplayerService: ObservableObject {
                 clientBattle.winnerId = winner
                 
                 if isHost {
+                    // Do not write winnerId (rules + CF derive). Mark completed for peers.
                     Task { try? await self.db.collection("battles").document(battleId).updateData([
-                        "status": BattleStatus.completed.rawValue,
-                        "winnerId": winner
+                        "status": BattleStatus.completed.rawValue
                     ])}
                 }
                 
@@ -1250,8 +1214,7 @@ class MultiplayerService: ObservableObject {
         
         if isHost {
             Task { try? await self.db.collection("battles").document(clientBattle.id).updateData([
-                "status": BattleStatus.completed.rawValue,
-                "winnerId": winner
+                "status": BattleStatus.completed.rawValue
             ])}
         }
         
@@ -1372,10 +1335,15 @@ class MultiplayerService: ObservableObject {
     
     func surrenderMatch() {
         guard let battle = activeBattle, battle.status == .active else { return }
-        let oppUid = battle.opponentTeam.first?.id ?? "opp"
+        let myUid = FirebaseService.shared.currentCharacter?.id ?? ""
+        guard !myUid.isEmpty else { return }
         Task { try? await db.collection("battles").document(battle.id).updateData([
             "status": BattleStatus.completed.rawValue,
-            "winnerId": oppUid
+            "surrenderedBy": myUid
         ])}
+        if !rewardsAwardedBattleIds.contains(battle.id) {
+            rewardsAwardedBattleIds.insert(battle.id)
+            FirebaseService.shared.resolvePvPBattle(battleId: battle.id)
+        }
     }
 }

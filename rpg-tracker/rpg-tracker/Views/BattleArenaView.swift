@@ -90,25 +90,13 @@ struct BattleArenaView: View {
                             showMatchmakingClassPicker = true
                         })
                     } else if storySetupStep == .modePrompt {
-                        ZStack {
-                            AnimatedBackgroundView(backgroundType: .arena)
-                            Color.black.opacity(0.55).ignoresSafeArea()
-                            StoryModePromptInlineView(
-                                selectSolo: {
-                                    isStoryCoop = false
-                                    storyCoopFriend = nil
-                                    withAnimation(.easeInOut(duration: 0.5)) {
-                                        storySetupStep = .warpAnimation
-                                    }
-                                },
-                                selectCoop: {
-                                    // Co-op story path is not wired end-to-end — gate with honest UX.
-                                    showStoryCoopUnavailable = true
-                                },
-                                onCancel: {
-                                    withAnimation { storySetupStep = nil }
-                                }
-                            )
+                        // Solo-only story (co-op removed from ship UI — no misleading Coming soon)
+                        Color.clear.onAppear {
+                            isStoryCoop = false
+                            storyCoopFriend = nil
+                            withAnimation(.easeInOut(duration: 0.5)) {
+                                storySetupStep = .warpAnimation
+                            }
                         }
                     } else if storySetupStep == .warpAnimation {
                         WarpTransitionView {
@@ -293,27 +281,22 @@ struct BattleArenaView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 if viewModel.activeBattle != nil {
-                    // Surrender the match if app goes to background
-                    MultiplayerService.shared.surrenderMatch()
+                    // Surrender only after 30s in background (brief lock/switch is OK)
+                    let battleId = viewModel.activeBattle?.id
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 30_000_000_000)
+                        guard MultiplayerService.shared.activeBattle?.id == battleId,
+                              MultiplayerService.shared.activeBattle?.status == .active else { return }
+                        if scenePhase == .background {
+                            MultiplayerService.shared.surrenderMatch()
+                        }
+                    }
                 } else if viewModel.isSearching {
-                    // Just cancel queue if we are searching
                     viewModel.cancelQueue()
                 }
             }
         }
-        .alert("Story Co-op Unavailable", isPresented: $showStoryCoopUnavailable) {
-            Button("OK", role: .cancel) {}
-            Button("Play Solo") {
-                isStoryCoop = false
-                storyCoopFriend = nil
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    storySetupStep = .warpAnimation
-                }
-            }
-        } message: {
-            Text("Co-op story campaigns aren't available yet. Play solo to conquer the islands.")
-        }
-        .navigationTitle("ARENA & ARENAS")
+        .navigationTitle("ARENA")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if initialPvPType != nil {
@@ -2255,7 +2238,6 @@ struct PvPLeaderboardView: View {
                                 Button(action: {
                                     isLoading = true
                                     FirebaseService.shared.fetchLeaderboards(for: ["pvp_1v1"])
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { isLoading = false }
                                 }) {
                                     Label("Refresh", systemImage: "arrow.clockwise")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -2327,7 +2309,14 @@ struct PvPLeaderboardView: View {
         .onAppear {
             isLoading = true
             FirebaseService.shared.fetchLeaderboards(for: ["pvp_1v1"])
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { isLoading = false }
+        }
+        .onChange(of: firebaseService.leaderboards["pvp_1v1"]?.count) { _ in
+            isLoading = false
+        }
+        .onReceive(firebaseService.$leaderboards) { boards in
+            if boards["pvp_1v1"] != nil {
+                isLoading = false
+            }
         }
     }
 }

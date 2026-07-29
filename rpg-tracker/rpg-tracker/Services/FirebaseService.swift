@@ -233,12 +233,11 @@ class FirebaseService: ObservableObject {
     }
     
     // MARK: - Character & Clan Sync
-    /// Client-safe profile sync. Economy fields (gold/XP/gear/trophies/friends) are CF-only.
+    /// Client-safe profile sync. Economy / energy / stats / equip / clanId are CF-only.
     private static let clientWritableUserKeys: Set<String> = [
-        "id", "username", "usernameLower", "selectedClass", "energy", "gold",
-        "avatarName", "baseStrength", "baseDexterity", "baseIntelligence", "baseVitality",
-        "stats", "equippedWeaponId", "equippedArmorId", "equippedRingId", "equippedAmuletId",
-        "clanId", "currentLevel", "lastActive", "lastHealthSyncDate", "fcmToken"
+        "id", "username", "usernameLower", "selectedClass",
+        "avatarName", "currentLevel", "lastActive", "lastHealthSyncDate", "fcmToken",
+        "gold", "clanId", "stats" // gold decrease-only; clanId for join/leave; stats = rep counters
     ]
 
     func syncCharacter(_ character: Character) {
@@ -268,51 +267,60 @@ class FirebaseService: ObservableObject {
     
     func syncClan(_ clan: Clan) {
         do {
-            // Create/update without touching activeWar (rules + CF own war state).
-            var data = (try Firestore.Encoder().encode(clan)) as? [String: Any] ?? [:]
-            data.removeValue(forKey: "activeWar")
-            Firestore.firestore().collection("clans").document(clan.id).setData(data, merge: true)
+            var clanCopy = clan
+            clanCopy.syncMemberIds()
+            let ref = Firestore.firestore().collection("clans").document(clanCopy.id)
+            ref.getDocument { snap, _ in
+                do {
+                    var data = (try Firestore.Encoder().encode(clanCopy)) as? [String: Any] ?? [:]
+                    data.removeValue(forKey: "activeWar")
+                    if snap?.exists == true {
+                        // Existing clan: never overwrite trophies (CF-owned)
+                        data.removeValue(forKey: "trophies")
+                        ref.setData(data, merge: true)
+                    } else {
+                        // Create: starter trophies required by rules
+                        data["trophies"] = 1000
+                        ref.setData(data, merge: false)
+                    }
+                } catch {
+                    DispatchQueue.main.async { self.lastActionError = "Failed to sync clan." }
+                    print("Failed to sync clan: \(error)")
+                }
+            }
         } catch {
+            DispatchQueue.main.async { self.lastActionError = "Failed to sync clan." }
             print("Failed to sync clan: \(error)")
         }
     }
     
-    /// Optimistic local update + server award. PvP must use `resolvePvPBattle(battleId:)`.
-    func awardBattleRewards(xp: Int, gold: Int, isPvP: Bool = false, isPvPWinner: Bool? = nil) {
+    /// Optimistic local update + server award. Online PvP must use `resolvePvPBattle(battleId:)`.
+    func awardBattleRewards(xp: Int, gold: Int, isPvP: Bool = false, isPvPWinner: Bool? = nil, reason: String = "activity") {
+        // Offline/local PvP must not mint economy or trophies (use online resolvePvPBattle).
+        if isPvP {
+            print("Skipping server mint for local/offline PvP — use resolvePvPBattle for ranked rewards.")
+            return
+        }
         guard var char = currentCharacter else { return }
         _ = char.addXP(xp)
         char.gold += gold
-        if isPvP, let isWinner = isPvPWinner {
-            let cls = char.selectedClass.rawValue
-            var dict = char.classTrophies ?? Dictionary(
-                uniqueKeysWithValues: CharacterClass.allCases.map { ($0.rawValue, 0) }
-            )
-            let current = dict[cls] ?? 0
-            if isWinner {
-                char.pvpWins = char.unwrappedPvPWins + 1
-                DailyQuestProgressStore.record(.pvpMatch)
-                dict[cls] = current + 50
-            } else {
-                dict[cls] = max(0, current - 50)
-            }
-            char.classTrophies = dict
-            char.pvpTrophies = dict[cls]
-        }
         self.currentCharacter = char
         writeWidgetSnapshot(from: char)
 
-        // Persist via CF (rules block client gold/XP). Online PvP uses resolvePvPBattle instead.
         Task {
             do {
                 _ = try await Functions.functions().httpsCallable("awardActivityRewards").call([
                     "xp": xp,
                     "gold": gold,
-                    "reason": isPvP ? "pvp_local" : "activity"
+                    "reason": reason
                 ])
                 if gold > 0 {
                     DailyQuestProgressStore.record(.goldEarned, amount: gold)
                 }
             } catch {
+                await MainActor.run {
+                    self.lastActionError = "Couldn't save rewards. Check your connection."
+                }
                 print("awardActivityRewards failed: \(error)")
             }
         }
@@ -343,6 +351,9 @@ class FirebaseService: ObservableObject {
                     DailyQuestProgressStore.record(.pvpMatch)
                 }
             } catch {
+                await MainActor.run {
+                    self.lastActionError = "Couldn't settle PvP rewards."
+                }
                 print("resolvePvPBattle failed: \(error)")
             }
         }
@@ -350,8 +361,14 @@ class FirebaseService: ObservableObject {
     
     func awardWorkoutRewards(reps: Int) -> (xp: Int, gold: Int) {
         guard var char = currentCharacter else { return (0, 0) }
-        
-        let cappedReps = min(reps, 50)
+
+        let used = CameraTrackingVM.freeTrainingRepsUsedToday()
+        let remaining = max(0, CameraTrackingVM.freeTrainingDailyCapPublic - used)
+        let cappedReps = min(reps, remaining, 50)
+        if cappedReps <= 0 {
+            lastActionError = "Daily practice limit reached (50 reps)."
+            return (0, 0)
+        }
         let baseXP = cappedReps > 0 ? 10 : 0
         let baseGold = cappedReps > 0 ? 3 : 0
         let xpReward = baseXP + (cappedReps * 6)
@@ -380,6 +397,9 @@ class FirebaseService: ObservableObject {
                         "reason": "workout"
                     ])
                 } catch {
+                    await MainActor.run {
+                        self.lastActionError = "Couldn't save workout rewards."
+                    }
                     print("awardWorkoutRewards CF failed: \(error)")
                 }
             }
@@ -441,6 +461,9 @@ class FirebaseService: ObservableObject {
             do {
                 _ = try await functions.httpsCallable("attackWorldBoss").call(["damage": min(damage, 50000)])
             } catch {
+                await MainActor.run {
+                    self.lastActionError = "World Boss attack failed. Energy may not have been charged."
+                }
                 print("Error attacking world boss: \(error)")
             }
         }
@@ -463,6 +486,7 @@ class FirebaseService: ObservableObject {
             emblem: emblem,
             leaderId: char.id,
             members: [member],
+            memberIds: [char.id],
             trophies: 1000
         )
         
@@ -627,8 +651,29 @@ class FirebaseService: ObservableObject {
         guard char.energy >= amount else { return false }
         
         char.energy -= amount
-        syncCharacter(char)
+        self.currentCharacter = char
         scheduleEnergyRestoredNotification(for: char.energy, maxEnergy: char.maxEnergy)
+        Task {
+            do {
+                let result = try await Functions.functions().httpsCallable("adjustEnergy").call([
+                    "op": "spend", "amount": amount
+                ])
+                if let data = result.data as? [String: Any], let energy = data["energy"] as? Int {
+                    await MainActor.run {
+                        self.currentCharacter?.energy = energy
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    // Roll back optimistic spend
+                    if var c = self.currentCharacter {
+                        c.energy = min(c.maxEnergy, c.energy + amount)
+                        self.currentCharacter = c
+                    }
+                    self.lastActionError = "Not enough energy (server)."
+                }
+            }
+        }
         return true
     }
 
@@ -636,7 +681,21 @@ class FirebaseService: ObservableObject {
         guard amount > 0 else { return }
         guard var char = currentCharacter else { return }
         char.energy = min(char.maxEnergy, char.energy + amount)
-        syncCharacter(char)
+        self.currentCharacter = char
+        Task {
+            do {
+                let result = try await Functions.functions().httpsCallable("adjustEnergy").call([
+                    "op": "refund", "amount": amount
+                ])
+                if let data = result.data as? [String: Any], let energy = data["energy"] as? Int {
+                    await MainActor.run { self.currentCharacter?.energy = energy }
+                }
+            } catch {
+                await MainActor.run {
+                    self.lastActionError = "Couldn't refund energy."
+                }
+            }
+        }
     }
     
     // MARK: - Energy Regeneration
@@ -660,10 +719,22 @@ class FirebaseService: ObservableObject {
         let pointsToAdd = Int(elapsed / Self.energyRegenInterval)
         guard pointsToAdd > 0 else { return }
         
+        // Local preview only — persist via adjustEnergy regen
         char.energy = min(char.maxEnergy, char.energy + pointsToAdd)
         let advancedLastTick = lastTick.addingTimeInterval(Double(pointsToAdd) * Self.energyRegenInterval)
         UserDefaults.standard.set(advancedLastTick, forKey: key)
-        syncCharacter(char)
+        self.currentCharacter = char
+        
+        Task {
+            do {
+                let result = try await Functions.functions().httpsCallable("adjustEnergy").call(["op": "regen"])
+                if let data = result.data as? [String: Any], let energy = data["energy"] as? Int {
+                    await MainActor.run { self.currentCharacter?.energy = energy }
+                }
+            } catch {
+                print("adjustEnergy regen failed: \(error)")
+            }
+        }
         
         if char.energy < char.maxEnergy {
             let secondsUntilNext = Self.energyRegenInterval - now.timeIntervalSince(advancedLastTick)
@@ -723,7 +794,9 @@ class FirebaseService: ObservableObject {
         }
         
         if result.damageDealt > 0 {
-            attackWorldBoss(damage: result.damageDealt)
+            // Opt-in: Health sync no longer auto-attacks World Boss without confirmation.
+            // Damage is stored on the result UI; user attacks from Raids tab.
+            print("Health sync dealt \(result.damageDealt) potential WB damage — attack from Raids tab.")
         }
     }
     
@@ -769,6 +842,7 @@ class FirebaseService: ObservableObject {
         )
         
         updatedClan.members.append(member)
+        updatedClan.syncMemberIds()
         self.userClan = updatedClan
         self.syncClan(updatedClan)
         

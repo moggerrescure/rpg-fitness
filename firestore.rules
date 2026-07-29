@@ -129,11 +129,16 @@ service cloud.firestore {
 
     // FitRPG economy + social graph fields — never client-authoritative on update.
     // Gold may only decrease client-side (deposits); increases are CF-only.
+    // Energy may only decrease client-side; increases via adjustEnergy CF.
+    // Base stats / equipped slots / clanId are CF-only (equipItem + clan flows).
     function fitrpgProtectedKeys() {
       return [
         'progressions', 'ownedEquipmentIds', 'classTrophies',
         'pvpWins', 'pvpTrophies', 'statPoints', 'basePower', 'maxEnergy',
-        'friends', 'friendRequests'
+        'friends', 'friendRequests',
+        'baseStrength', 'baseDexterity', 'baseIntelligence', 'baseVitality',
+        'equippedWeaponId', 'equippedArmorId', 'equippedRingId', 'equippedAmuletId',
+        'lastEnergyRegenAt'
       ].toSet();
     }
 
@@ -143,7 +148,7 @@ service cloud.firestore {
         .hasAny(fitrpgProtectedKeys()) == false
         && request.resource.data.energy is int
         && request.resource.data.energy >= 0
-        && request.resource.data.energy <= resource.data.maxEnergy
+        && request.resource.data.energy <= resource.data.energy
         && request.resource.data.gold is int
         && request.resource.data.gold >= 0
         && request.resource.data.gold <= resource.data.gold;
@@ -205,21 +210,46 @@ service cloud.firestore {
       }
     }
 
-    // Clans — create own clan; limited member updates; war scores CF-only
+    // Clans — create own clan; trophies/activeWar CF-only; members only by leader or self-join via memberIds
     match /clans/{clanId} {
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
                     && request.resource.data.leaderId == request.auth.uid
-                    && !('activeWar' in request.resource.data);
+                    && !('activeWar' in request.resource.data)
+                    && request.resource.data.trophies is int
+                    && request.resource.data.trophies == 1000
+                    && request.resource.data.memberIds is list
+                    && request.auth.uid in request.resource.data.memberIds;
 
       allow update: if isSignedIn()
-                    && request.resource.data.diff(resource.data)
-                         .affectedKeys()
-                         .hasOnly(['totalReps', 'members', 'description', 'emblem', 'name', 'trophies'])
                     && (
                       !('activeWar' in resource.data)
                       || request.resource.data.activeWar == resource.data.activeWar
+                    )
+                    && request.resource.data.trophies == resource.data.trophies
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly(['totalReps', 'members', 'description', 'emblem', 'name', 'memberIds', 'treasuryGold'])
+                    && (
+                      resource.data.leaderId == request.auth.uid
+                      || (
+                        resource.data.memberIds is list
+                        && request.auth.uid in resource.data.memberIds
+                      )
+                      || (
+                        // Self-join: add own uid to memberIds exactly once
+                        request.resource.data.memberIds is list
+                        && request.auth.uid in request.resource.data.memberIds
+                        && (
+                          !(resource.data.memberIds is list)
+                          || !(request.auth.uid in resource.data.memberIds)
+                        )
+                        && (
+                          !(resource.data.memberIds is list)
+                          || request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1
+                        )
+                      )
                     );
 
       allow delete: if isSignedIn()
@@ -232,14 +262,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Battles — participants may sync combat state; rewardsSettled is CF-only
+    // Battles — only participants; combat HP/reps OK; winnerId/rewardsSettled/participantUids CF-or-immutable
     match /battles/{battleId} {
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
-                    && !('rewardsSettled' in request.resource.data);
+                    && request.resource.data.participantUids is list
+                    && request.auth.uid in request.resource.data.participantUids
+                    && !('rewardsSettled' in request.resource.data)
+                    && !('winnerId' in request.resource.data);
 
       allow update: if isSignedIn()
+                    && resource.data.participantUids is list
+                    && request.auth.uid in resource.data.participantUids
+                    && request.resource.data.participantUids == resource.data.participantUids
                     && (
                       !('rewardsSettled' in resource.data)
                       || request.resource.data.rewardsSettled == resource.data.rewardsSettled
@@ -250,6 +286,21 @@ service cloud.firestore {
                         'rewardsSettled' in resource.data
                         && request.resource.data.rewardsSettled == resource.data.rewardsSettled
                       )
+                    )
+                    // Client cannot forge winnerId (CF derives on settle)
+                    && (
+                      !('winnerId' in resource.data)
+                      || request.resource.data.winnerId == resource.data.winnerId
+                    )
+                    && (
+                      !('winnerId' in request.resource.data)
+                      || ('winnerId' in resource.data
+                          && request.resource.data.winnerId == resource.data.winnerId)
+                    )
+                    // Surrender: only set surrenderedBy to self
+                    && (
+                      !('surrenderedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                      || request.resource.data.surrenderedBy == request.auth.uid
                     );
 
       allow delete: if false;

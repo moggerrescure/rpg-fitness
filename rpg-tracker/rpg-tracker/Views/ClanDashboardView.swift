@@ -49,6 +49,9 @@ struct ClanDashboardView: View {
             }
         }
         .hideNavigationBar()
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("FitRPGOpenFriendsSegment"))) { _ in
+            selectedTab = 2
+        }
     }
 }
 
@@ -1095,7 +1098,9 @@ struct LeaderboardListView: View {
         .onAppear {
             isLoading = true
             FirebaseService.shared.fetchLeaderboards()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { isLoading = false }
+        }
+        .onReceive(FirebaseService.shared.$leaderboards) { _ in
+            isLoading = false
         }
     }
 }

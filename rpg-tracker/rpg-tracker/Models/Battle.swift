@@ -55,11 +55,20 @@ struct Battle: Codable, Identifiable, Equatable {
     var localTeam: [BattlePlayer]
     var opponentTeam: [BattlePlayer]
     var winnerId: String? = nil
+    var surrenderedBy: String? = nil
+    /// Uids allowed to write combat state (rules). Set on create; immutable for clients.
+    var participantUids: [String] = []
     var createdAt: Date = Date()
     var secondsRemaining: Int = 60
     var combatLog: [CombatEvent] = []
     
     static func == (lhs: Battle, rhs: Battle) -> Bool {
         lhs.id == rhs.id && lhs.status == rhs.status && lhs.winnerId == rhs.winnerId
+    }
+
+    mutating func ensureParticipantUids() {
+        if participantUids.isEmpty {
+            participantUids = Array(Set(localTeam.map(\.id) + opponentTeam.map(\.id)))
+        }
     }
 }

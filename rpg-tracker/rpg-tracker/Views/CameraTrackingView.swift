@@ -114,9 +114,11 @@ struct CameraTrackingView: View {
                                 .padding(.top, 4)
                             } else {
                                 let remaining = max(0, CameraTrackingVM.freeTrainingDailyCapPublic - CameraTrackingVM.freeTrainingRepsUsedToday())
-                                Text("PRACTICE MODE • \(remaining) REPS LEFT TODAY")
+                                Text(remaining > 0
+                                     ? "PRACTICE MODE • \(remaining) REPS LEFT TODAY"
+                                     : "DAILY PRACTICE LIMIT REACHED")
                                     .font(.system(size: 9, design: .monospaced))
-                                    .foregroundColor(Theme.textMuted)
+                                    .foregroundColor(remaining > 0 ? Theme.textMuted : Theme.warning)
                             }
                             
                             Text(viewModel.selectedClass.description)
@@ -1089,7 +1091,9 @@ struct CameraTrackingView: View {
     private var finishWorkoutCTA: some View {
         if viewModel.bossMaxHP == 0 && FirebaseService.shared.activeBattle == nil {
             Button(action: {
-                let earned = FirebaseService.shared.awardWorkoutRewards(reps: viewModel.repCount)
+                let remaining = max(0, CameraTrackingVM.freeTrainingDailyCapPublic - CameraTrackingVM.freeTrainingRepsUsedToday())
+                let awardable = min(viewModel.repCount, remaining)
+                let earned = FirebaseService.shared.awardWorkoutRewards(reps: awardable)
                 withAnimation {
                     workoutCompletionRewards = earned
                 }

@@ -14,8 +14,10 @@ export const WORLD_BOSS_ATTACKS_PER_HOUR = 20;
 
 export const PVE_XP_CAP = 500;
 export const PVE_GOLD_CAP = 250;
-export const ACTIVITY_XP_CAP = 400;
-export const ACTIVITY_GOLD_CAP = 200;
+/** Tighter caps to limit App-Check farm (was 400/200 × 120/h). */
+export const ACTIVITY_XP_CAP = 200;
+export const ACTIVITY_GOLD_CAP = 80;
+export const ACTIVITY_REWARDS_PER_HOUR = 40;
 
 export type PvpOutcome = "win" | "loss" | "draw";
 

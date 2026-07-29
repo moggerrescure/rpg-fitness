@@ -10,13 +10,14 @@ echo "Building functions..." >&2
 npm --prefix functions run build
 
 ONLY=$(python3 - <<'PY'
+# FitRPG never calls deleteAccount (recursive wipe). Kept only for Food/Workout.
 exports = [
 "matchmakeClanWar","cancelClanWarSearch","processClanWarPhases","recordClanWarAttack",
 "attackWorldBoss","processWorldBossCycle",
 "sendFriendRequest","searchPlayers","inviteToTeam3v3",
 "acceptFriendRequest","declineFriendRequest","acceptFriendDuel","declineFriendDuel",
 "joinTeam","matchWithOpponent",
-"equipItem","purchaseItem","resolvePvEBattle","resolvePvPBattle","awardActivityRewards",
+"equipItem","purchaseItem","resolvePvEBattle","resolvePvPBattle","awardActivityRewards","adjustEnergy",
 "cleanupFitRPGAccount","onMatchmakingTicketCreated",
 "fillTeammatesWithBots","triggerOpponentBotFallback","getLeaderboards",
 "vertexProxy","imageProxy","deleteAccount","moderateSharedWorkout","onReportCreated"

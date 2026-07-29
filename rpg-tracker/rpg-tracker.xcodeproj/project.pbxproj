@@ -450,7 +450,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
-				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
+				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        rpgfitness,\n      );\n    },\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitRPG reads your steps, active energy, and workouts (with your permission) to award XP, gold, and in-game power. We do not write data to Apple Health.";
@@ -502,7 +502,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
-				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
+				INFOPLIST_KEY_CFBundleURLTypes = "(\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        rpgfitness,\n      );\n    },\n    {\n      CFBundleTypeRole = Editor;\n      CFBundleURLSchemes = (\n        \"com.googleusercontent.apps.667537183554-7qepnov5fh8erlq0kl97tb951i5pkpie\",\n      );\n    }\n  )";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitRPG reads your steps, active energy, and workouts (with your permission) to award XP, gold, and in-game power. We do not write data to Apple Health.";

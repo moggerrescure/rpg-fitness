@@ -128,7 +128,7 @@ struct DailyQuestEngine {
     static func claim(_ quest: DailyQuest) {
         guard let character = FirebaseService.shared.currentCharacter else { return }
         guard canClaim(quest, character: character) else { return }
-        FirebaseService.shared.awardBattleRewards(xp: quest.xpReward, gold: quest.goldReward)
+        FirebaseService.shared.awardBattleRewards(xp: quest.xpReward, gold: quest.goldReward, reason: "quest")
         DailyQuestProgressStore.markClaimed(questId: quest.id)
     }
 }

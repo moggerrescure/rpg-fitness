@@ -118,8 +118,6 @@ class CameraTrackingVM: ObservableObject {
     }
     
     private func onRepetitionPerformed() {
-        DailyQuestProgressStore.recordExercise(for: selectedClass)
-
         // Compute speed cadence for combo multipliers
         let now = Date()
         if let last = lastRepTimestamp {
