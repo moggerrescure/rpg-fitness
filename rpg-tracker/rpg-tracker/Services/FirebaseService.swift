@@ -1020,7 +1020,7 @@ class FirebaseService: ObservableObject {
             } catch {
                 await MainActor.run {
                     if previewAmount > 0, var c = self.currentCharacter {
-                        c.energy = max(energyBefore, c.energy - previewAmount)
+                        c.energy = max(0, c.energy - previewAmount)
                         self.currentCharacter = c
                     }
                     if let storedLast {
