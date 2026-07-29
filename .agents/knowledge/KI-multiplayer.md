@@ -1,23 +1,21 @@
 # Multiplayer (FitRPG)
 
-Updated: 2026-07-29 (friend duel CF + energy hold)
+Updated: 2026-07-29 (shop CF)
 
 ## Server callables (live)
 
-`matchmakeClanWar`, `cancelClanWarSearch`, `processClanWarPhases`, `recordClanWarAttack`, `joinTeam`, `matchWithOpponent` (`myTicketId`), `fillTeammatesWithBots`, `triggerOpponentBotFallback`, `acceptFriendDuel`, `declineFriendDuel`, `attackWorldBoss`, `resolvePvEBattle` (XP/gold capped).
+`matchmakeClanWar`, `cancelClanWarSearch`, `processClanWarPhases`, `recordClanWarAttack`, `joinTeam`, `matchWithOpponent`, `fillTeammatesWithBots`, `triggerOpponentBotFallback`, `acceptFriendDuel`, `declineFriendDuel`, `attackWorldBoss`, `resolvePvEBattle`, `equipItem`, `purchaseItem` (catalog in `shopCatalog.ts`).
 
-Deploy: `scripts/deploy-fitrpg-safe.sh` (never wipe Food/Workout orphans).
+Deploy: `scripts/deploy-fitrpg-safe.sh`.
 
-## Energy
+## Client economy notes
 
-Queue / friend duel / 3v3 lobby charge 10 energy up front; refund via `refundEnergy` if `leaveMatch` before battle becomes active.
-
-## Clan war results UI
-
-`ClanVM` snapshots last `active` war; when cron clears `activeWar`, shows `WarResultOverlay` + small XP/gold.
+- Energy hold/refund for PvP queue/friend/3v3
+- Shop buy → `purchaseItem`; equip → `equipItem`
+- Clan war results overlay when cron clears active war
 
 ## Still open
 
-- Shop purchase still client gold write (equip is CF)
-- Full server-authoritative PvP rewards
-- XCTest / TestFlight smoke
+- Full server-authoritative PvP battle rewards (still mostly client `awardBattleRewards`)
+- XCTest suite / TestFlight smoke checklist
+- ASC Privacy URL paste (pages live at borisserz.github.io/fitrpg-legal)
