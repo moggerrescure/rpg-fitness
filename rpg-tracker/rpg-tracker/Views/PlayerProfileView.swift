@@ -21,6 +21,8 @@ struct PlayerProfileView: View {
     @State private var authErrorMessage: String? = nil
     @State private var showAccountDeletedConfirmation = false
     @State private var presentedLegalDocument: LegalDocumentRef? = nil
+    @State private var isFillingScreenshotWallet = false
+    @ObservedObject private var remoteConfig = RemoteConfigManager.shared
     
     init(character: Character) {
         // Direct observation of FirebaseService handles reactivity; signature kept for compatibility.
@@ -756,6 +758,27 @@ struct PlayerProfileView: View {
             .padding(.horizontal, 4)
             .padding(.top, 4)
 
+            if showsScreenshotFillButton {
+                Button(action: { Task { await fillForScreenshots() } }) {
+                    HStack {
+                        Image(systemName: "camera.fill")
+                        Text("Fill for Screenshots")
+                        Spacer()
+                        if isFillingScreenshotWallet { ProgressView() }
+                    }
+                    .font(.system(.subheadline, design: .rounded))
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.accent)
+                    .padding()
+                    .background(Theme.accent.opacity(0.12))
+                    .cornerRadius(12)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.accent.opacity(0.35), lineWidth: 1))
+                }
+                .buttonStyle(TactileButtonStyle())
+                .disabled(isFillingScreenshotWallet || isProcessingAccountAction)
+                .accessibilityLabel("Fill gold and energy for screenshots")
+            }
+
             if authManager.isAnonymous {
                 VStack(spacing: 10) {
                     Button(action: { Task { await signInWithApple() } }) {
@@ -882,6 +905,25 @@ struct PlayerProfileView: View {
                     .foregroundColor(Theme.textMuted)
             }
             .padding()
+        }
+    }
+
+    private var showsScreenshotFillButton: Bool {
+        #if DEBUG
+        return true
+        #else
+        return remoteConfig.screenshotFillEnabled
+        #endif
+    }
+
+    private func fillForScreenshots() async {
+        isFillingScreenshotWallet = true
+        defer { isFillingScreenshotWallet = false }
+        let (ok, err) = await firebaseService.fillScreenshotWallet()
+        if ok {
+            profileToastMessage = "Wallet filled: 9999 gold, full energy"
+        } else {
+            profileToastMessage = err ?? "Screenshot fill failed"
         }
     }
 

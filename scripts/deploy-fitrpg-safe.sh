@@ -17,7 +17,7 @@ exports = [
 "sendFriendRequest","searchPlayers","inviteToTeam3v3",
 "acceptFriendRequest","declineFriendRequest","acceptFriendDuel","declineFriendDuel",
 "joinTeam","matchWithOpponent",
-"equipItem","purchaseItem","resolvePvEBattle","resolvePvPBattle","awardActivityRewards","adjustEnergy",
+"equipItem","purchaseItem","resolvePvEBattle","resolvePvPBattle","awardActivityRewards","adjustEnergy","fillScreenshotWallet",
 "cleanupFitRPGAccount","onMatchmakingTicketCreated",
 "fillTeammatesWithBots","triggerOpponentBotFallback","getLeaderboards",
 "vertexProxy","imageProxy","deleteAccount","moderateSharedWorkout","onReportCreated"

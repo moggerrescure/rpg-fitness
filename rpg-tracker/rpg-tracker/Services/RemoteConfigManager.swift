@@ -15,6 +15,8 @@ final class RemoteConfigManager: ObservableObject {
         static let updateMessage = "fitrpg_update_message"
         static let updateURL = "fitrpg_update_url"
         static let appStoreID = "fitrpg_ios_app_store_id"
+        /// When true, Profile shows "Fill for Screenshots" (Release/TestFlight). CF also gates on this.
+        static let screenshotFill = "fitrpg_screenshot_fill"
         // Legacy aliases (pre-fitrpg_ rename)
         static let legacyMin = "rpg_minimum_ios_version"
         static let legacyRec = "rpg_recommended_ios_version"
@@ -39,6 +41,7 @@ final class RemoteConfigManager: ObservableObject {
             Keys.updateMessage: NSString(string: "A new version of FitRPG is available with improvements and fixes."),
             Keys.updateURL: NSString(string: ""),
             Keys.appStoreID: NSString(string: AppStoreConfig.bundledAppStoreID ?? ""),
+            Keys.screenshotFill: NSNumber(value: false),
         ] as [String: NSObject])
     }
 
@@ -94,5 +97,10 @@ final class RemoteConfigManager: ObservableObject {
 
     var updateURLString: String {
         getString(forKey: Keys.updateURL).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Release/TestFlight gate for screenshot wallet fill UI (CF still enforces server-side).
+    var screenshotFillEnabled: Bool {
+        getBool(forKey: Keys.screenshotFill)
     }
 }
