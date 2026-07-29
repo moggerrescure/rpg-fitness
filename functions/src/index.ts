@@ -5,6 +5,7 @@ import { onDocumentCreated as onDocCreated } from "firebase-functions/v2/firesto
 import { defineSecret } from "firebase-functions/params";
 import { getAppCheck } from "firebase-admin/app-check";
 import { getAuth } from "firebase-admin/auth";
+import { SHOP_ITEM_COSTS, SHOP_ITEM_SLOTS } from "./shopCatalog";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1023,6 +1024,50 @@ export const matchWithOpponent = functions.https.onCall(async (data, context) =>
     });
     
     return { success: success, battleId: resolvedBattleId, opponentData: actualOpponentData };
+});
+
+// -------------------------------------------------------------------
+// 8b. HTTP Callable: Purchase Shop Item
+// -------------------------------------------------------------------
+export const purchaseItem = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+
+    const uid = context.auth.uid;
+    const itemId = data.itemId as string;
+    if (!itemId || !(itemId in SHOP_ITEM_COSTS)) {
+        throw new functions.https.HttpsError("invalid-argument", "Unknown shop item.");
+    }
+
+    const cost = SHOP_ITEM_COSTS[itemId];
+    const slot = (SHOP_ITEM_SLOTS[itemId] || "weapon").toLowerCase();
+    const userRef = db.collection("users").doc(uid);
+
+    const result = await db.runTransaction(async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists) throw new functions.https.HttpsError("not-found", "User not found.");
+        const userData = userDoc.data() || {};
+        const owned: string[] = userData.ownedEquipmentIds || [];
+        if (owned.includes(itemId)) {
+            return { success: true, alreadyOwned: true, gold: userData.gold || 0 };
+        }
+        const gold = userData.gold || 0;
+        if (gold < cost) {
+            throw new functions.https.HttpsError("failed-precondition", "Not enough gold.");
+        }
+        owned.push(itemId);
+        const updates: any = {
+            gold: gold - cost,
+            ownedEquipmentIds: owned
+        };
+        if (slot === "weapon" && !userData.equippedWeaponId) updates.equippedWeaponId = itemId;
+        if (slot === "armor" && !userData.equippedArmorId) updates.equippedArmorId = itemId;
+        if (slot === "ring" && !userData.equippedRingId) updates.equippedRingId = itemId;
+        if (slot === "amulet" && !userData.equippedAmuletId) updates.equippedAmuletId = itemId;
+        transaction.update(userRef, updates);
+        return { success: true, alreadyOwned: false, gold: gold - cost, cost };
+    });
+
+    return result;
 });
 
 // -------------------------------------------------------------------

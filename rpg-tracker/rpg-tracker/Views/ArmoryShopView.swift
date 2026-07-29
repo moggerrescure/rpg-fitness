@@ -88,34 +88,23 @@ struct ArmoryShopView: View {
 
         switch action {
         case .buy:
-            guard item.cost > 0, char.gold >= item.cost else {
-                showToast("Not enough gold!", success: false)
+            guard item.cost > 0 else {
+                showToast("Item is not for sale.", success: false)
                 return
             }
-            char.gold = max(0, char.gold - item.cost)
-            if !char.ownedEquipmentIds.contains(item.id) {
-                char.ownedEquipmentIds.append(item.id)
+            firebaseService.purchaseItem(itemId: item.id) { ok, message in
+                DispatchQueue.main.async {
+                    if ok {
+                        DailyQuestProgressStore.record(.visitShop)
+                        showToast(message ?? "Purchased \(item.name)!", success: true)
+                    } else {
+                        showToast(message ?? "Purchase failed", success: false)
+                    }
+                }
             }
-            // Auto-equip on purchase if nothing equipped yet
-            switch item.slot {
-            case .weapon where char.equippedWeaponId == nil: char.equippedWeaponId = item.id
-            case .armor  where char.equippedArmorId  == nil: char.equippedArmorId  = item.id
-            case .ring   where char.equippedRingId   == nil: char.equippedRingId   = item.id
-            case .amulet where char.equippedAmuletId == nil: char.equippedAmuletId = item.id
-            default: break
-            }
-            firebaseService.syncCharacter(char)
-            DailyQuestProgressStore.record(.visitShop)
-            showToast("Purchased \(item.name)!", success: true)
 
         case .equip:
-            switch item.slot {
-            case .weapon: char.equippedWeaponId = item.id
-            case .armor:  char.equippedArmorId  = item.id
-            case .ring:   char.equippedRingId   = item.id
-            case .amulet: char.equippedAmuletId = item.id
-            }
-            firebaseService.syncCharacter(char)
+            firebaseService.equipItem(itemId: item.id, slot: item.slot)
             DailyQuestProgressStore.record(.equipItem)
             showToast("Equipped \(item.name)!", success: true)
 

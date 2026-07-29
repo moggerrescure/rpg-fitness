@@ -926,6 +926,25 @@ class FirebaseService: ObservableObject {
         }
     }
 
+    func purchaseItem(itemId: String, completion: @escaping (Bool, String?) -> Void) {
+        Task {
+            do {
+                let functions = Functions.functions()
+                let result = try await functions.httpsCallable("purchaseItem").call(["itemId": itemId])
+                let data = result.data as? [String: Any]
+                let already = data?["alreadyOwned"] as? Bool ?? false
+                completion(true, already ? "Already owned" : "Purchase complete!")
+            } catch {
+                let message = (error as NSError).localizedDescription
+                if message.lowercased().contains("gold") {
+                    completion(false, "Not enough gold!")
+                } else {
+                    completion(false, "Purchase failed. Try again.")
+                }
+            }
+        }
+    }
+
     /// FitRPG UGC report — writes to shared `reports` collection (rules: app == fitrpg).
     func submitUserReport(targetUid: String, reason: String, completion: @escaping (Bool, String?) -> Void) {
         guard let reporterUid = Auth.auth().currentUser?.uid else {
