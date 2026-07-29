@@ -54,6 +54,37 @@ export function computeTrainEnergyGrant(opts: {
   };
 }
 
+/** Passive regen: +1 energy per `intervalMs` (default 5 min). Preserves remainder. */
+export const ENERGY_REGEN_INTERVAL_MS = 5 * 60 * 1000;
+
+export function computePassiveRegen(opts: {
+  energy: number;
+  maxEnergy: number;
+  lastRegenAtMs: number;
+  nowMs: number;
+  intervalMs?: number;
+}): { energy: number; points: number; nextRegenAtMs: number } {
+  const intervalMs = opts.intervalMs ?? ENERGY_REGEN_INTERVAL_MS;
+  const maxEnergy = Math.max(0, Math.floor(opts.maxEnergy));
+  let energy = Math.floor(opts.energy);
+  if (!Number.isFinite(energy)) energy = maxEnergy;
+  const lastMs = Number(opts.lastRegenAtMs) || 0;
+  const nowMs = Number(opts.nowMs) || Date.now();
+  if (!(energy < maxEnergy) || !(lastMs > 0) || !(intervalMs > 0)) {
+    return { energy, points: 0, nextRegenAtMs: lastMs > 0 ? lastMs : nowMs };
+  }
+  const points = Math.floor((nowMs - lastMs) / intervalMs);
+  if (points <= 0) {
+    return { energy, points: 0, nextRegenAtMs: lastMs };
+  }
+  const nextEnergy = Math.min(maxEnergy, energy + points);
+  return {
+    energy: nextEnergy,
+    points,
+    nextRegenAtMs: lastMs + points * intervalMs,
+  };
+}
+
 export type PvpOutcome = "win" | "loss" | "draw";
 
 /**

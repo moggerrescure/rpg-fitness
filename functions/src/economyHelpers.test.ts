@@ -1,6 +1,7 @@
 import {
   applyXpToProgression,
   clampPvERewards,
+  computePassiveRegen,
   computeTrainEnergyGrant,
   consumeEnergyChargeForRefund,
   pvpOutcomeForPlayer,
@@ -43,6 +44,7 @@ const { updates } = applyXpToProgression(
 );
 assert(updates.progressions.Archer.level === 2, "level up");
 assert(updates.statPoints === 3, "stat points");
+assert(updates.maxEnergy === 105 && updates.energy === 105, "level-up refills energy to new max");
 
 const t0 = 1_000_000;
 let charges = registerEnergySpend({}, "c1", 10, t0);
@@ -87,5 +89,39 @@ const trainRollover = computeTrainEnergyGrant({
   todayKey: "2026-07-29",
 });
 assert(trainRollover.awarded === 5 && trainRollover.dayRollover === true, "train day rollover");
+
+const trainOverRequest = computeTrainEnergyGrant({
+  requested: 99,
+  awardedToday: 0,
+  dayKey: "2026-07-29",
+  todayKey: "2026-07-29",
+});
+assert(trainOverRequest.awarded === 5, "train clamps requested to per-session");
+
+const regenT0 = 1_000_000;
+const regenNone = computePassiveRegen({
+  energy: 50,
+  maxEnergy: 100,
+  lastRegenAtMs: regenT0,
+  nowMs: regenT0 + 4 * 60 * 1000,
+});
+assert(regenNone.points === 0 && regenNone.energy === 50, "regen <5min grants 0");
+
+const regenOne = computePassiveRegen({
+  energy: 50,
+  maxEnergy: 100,
+  lastRegenAtMs: regenT0,
+  nowMs: regenT0 + 5 * 60 * 1000,
+});
+assert(regenOne.points === 1 && regenOne.energy === 51, "regen +1 / 5min");
+assert(regenOne.nextRegenAtMs === regenT0 + 5 * 60 * 1000, "regen remainder anchor");
+
+const regenCap = computePassiveRegen({
+  energy: 98,
+  maxEnergy: 100,
+  lastRegenAtMs: regenT0,
+  nowMs: regenT0 + 30 * 60 * 1000,
+});
+assert(regenCap.points === 6 && regenCap.energy === 100, "regen clamps to maxEnergy");
 
 console.log("economyHelpers.test.ts: OK");
