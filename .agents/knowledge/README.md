@@ -10,12 +10,14 @@
 | [KI-firebase-ecosystem.md](./KI-firebase-ecosystem.md) | Shared Firebase deploy safety; never wipe sibling CF |
 | [KI-app-store-compliance.md](./KI-app-store-compliance.md) | App Store Review, блокеры, privacy/deletion/UGC |
 | [KI-feature-reality.md](./KI-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN матрица, моки, CF bypass |
-| [KI-audit-backend-2026-07-29.md](./KI-audit-backend-2026-07-29.md) | Concise backend audit: P0 economy/PvP blockers |
+| [KI-audit-merged-2026-07-29.md](./KI-audit-merged-2026-07-29.md) | **App Store verdict (NOT ready)** + TOP 10 merged fix order |
+| [KI-audit-ios-2026-07-29.md](./KI-audit-ios-2026-07-29.md) | iOS P0×6 P1×22 P2×18, feature matrix, client fix order |
+| [KI-audit-backend-2026-07-29.md](./KI-audit-backend-2026-07-29.md) | Server P0: open rules, economy/PvP trust, deploy notes |
 
 ## Audits (2026-07-29)
 
-**Start here (backend KI):** [KI-audit-backend-2026-07-29](./KI-audit-backend-2026-07-29.md)  
-**Start here (full dump):** [MASTER — Full Audit](../../docs/audit/2026-07-29-MASTER.md) ⛔ no firebase deploy until Phase 2
+**Start here (KI):** [KI-audit-merged-2026-07-29](./KI-audit-merged-2026-07-29.md) — NOT App Store ready, TOP 10.  
+**Long-form dumps:** [MASTER — Full Audit](../../docs/audit/2026-07-29-MASTER.md) ⛔ no firebase deploy until Phase 2
 
 | Report | Focus |
 |--------|-------|
