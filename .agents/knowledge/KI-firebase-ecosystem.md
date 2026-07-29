@@ -3,7 +3,10 @@
 ## Scope
 Firebase backend FitRPG в **shared** project `serzhanovich-ecosystem-ce700` (~5 apps). Читать **до любого deploy** functions/rules.
 
-**Полный отчёт:** [docs/audit/2026-07-29-firebase-ecosystem.md](../../docs/audit/2026-07-29-firebase-ecosystem.md)
+**Deploy FitRPG:** always `scripts/deploy-fitrpg-safe.sh`. Never wipe sibling CF (`tryonWorker`, `tagGarment`, Food/Workout proxies).
+
+**Backend audit (concise):** [KI-audit-backend-2026-07-29](./KI-audit-backend-2026-07-29.md)  
+**Полный отчёт (может быть stale):** [docs/audit/2026-07-29-firebase-ecosystem.md](../../docs/audit/2026-07-29-firebase-ecosystem.md)
 
 ---
 
@@ -11,12 +14,12 @@ Firebase backend FitRPG в **shared** project `serzhanovich-ecosystem-ce700` (~5
 
 | Action | Risk |
 |--------|------|
-| `firebase deploy --only functions` из rpg-fitness (committed) | **Wipes** Food/Workout CF: `vertexProxy`, `imageProxy`, `deleteAccount`, `moderateSharedWorkout`, `onReportCreated` |
+| `firebase deploy --only functions` из rpg-fitness (committed) | **Wipes** Food/Workout CF: `vertexProxy`, `imageProxy`, `deleteAccount`, `moderateSharedWorkout`, `onReportCreated` (+ risk to `tryonWorker` / `tagGarment`) |
 | `firebase deploy --only firestore:rules` из rpg-fitness | **Breaks Yoga** — нет `yoga_*` block |
 | `firebase deploy --only firestore:rules` из FoodTracker | **Locks out FitRPG** — нет RPG block |
 | Full `remote_config.json` deploy | Overwrites food/workout keys |
 
-**Перед functions deploy:** merge `git stash@{0}` (+437 lines shared AI) в main.
+**Перед functions deploy:** merge `git stash@{0}` (+437 lines shared AI) в main. Use only `scripts/deploy-fitrpg-safe.sh`.
 
 ### Stash@{0} Contents
 
@@ -34,9 +37,11 @@ Firebase backend FitRPG в **shared** project `serzhanovich-ecosystem-ce700` (~5
 | F02/F03 | Rules deploy breaks Yoga / FitRPG |
 | F04 | Client writes gold/xp/stats (`syncCharacter`) |
 | F05 | Any auth writes any `clans/*` |
-| F06 | Client spawns `world_bosses/current` |
+| F06 | ~~Client spawns `world_bosses/current`~~ — **corrected:** `world_bosses` already `write: false` |
 | F07 | Any auth writes any `battles/*` |
 | F08 | `deleteAccount` → `recursiveDelete(users/{uid})` **cross-app wipe** (RPG + Stepper + Workout subcollections) |
+
+More P0s (PvP rewards client-side, resolvePvEBattle trust, force-friend, clan war `won`, world boss race): see [KI-audit-backend-2026-07-29](./KI-audit-backend-2026-07-29.md).
 
 ---
 
@@ -44,10 +49,10 @@ Firebase backend FitRPG в **shared** project `serzhanovich-ecosystem-ce700` (~5
 
 ```
 clans/*          → allow write: if request.auth != null   ❌
-world_bosses/*   → allow write: if request.auth != null   ❌
 battles/*        → allow write: if request.auth != null   ❌
 matchmaking/*    → allow write: if request.auth != null   ❌
 users/{uid}      → owner full write (gold, xp, trophies) ❌
+world_bosses/*   → write: false                          ✅
 ```
 
 ---
@@ -55,9 +60,9 @@ users/{uid}      → owner full write (gold, xp, trophies) ❌
 ## Other Critical Notes
 
 - **Secrets in git:** `remote_config.json` — `fatsecret_secret`, `pexels_api_key` (plaintext)
-- **Missing CF:** `declineFriendRequest` (client calls, no export)
-- **Dead CF vs client:** `equipItem`, `matchmakeClanWar`, `recordClanWarAttack`, `getLeaderboards`, `searchPlayers`, `inviteToTeam3v3` — exported but client bypasses
-- **Safe deploy:** indexes additive ✅; Yoga functions `--only functions:yoga` ✅
+- **Corrections (2026-07-29 audit):** `declineFriendRequest`, `cancelClanWarSearch`, `purchaseItem`, `acceptFriendDuel` exist & deployed; `shopCatalog.ts` committed @ `b73e79f`
+- **Dead CF vs client (may still apply):** some exported CF still bypassed client-side — verify before re-flagging
+- **Safe deploy:** indexes additive ✅; Yoga functions `--only functions:yoga` ✅; FitRPG → `scripts/deploy-fitrpg-safe.sh`
 
 ---
 
@@ -83,8 +88,6 @@ users/{uid}      → owner full write (gold, xp, trophies) ❌
 6. deleteAccount scope fix
 7. Rotate leaked secrets
 ```
-
-32 findings: F01–F32 в [полном аудите](../../docs/audit/2026-07-29-firebase-ecosystem.md).
 
 ---
 
