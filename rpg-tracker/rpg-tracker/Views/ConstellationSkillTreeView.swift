@@ -315,7 +315,7 @@ struct ConstellationSkillTreeView: View {
                             .lineSpacing(2)
                             .lineLimit(2)
                         
-                        if !isNodeUnlocked(node) {
+                        if canAllocate(to: node) {
                             Button(action: { allocatePoint(for: node) }) {
                                 HStack {
                                     Spacer()
@@ -331,12 +331,12 @@ struct ConstellationSkillTreeView: View {
                                 .font(.system(size: 12, weight: .black, design: .monospaced))
                                 .foregroundColor(.black)
                                 .padding(.vertical, 14)
-                                .background(character.statPoints > 0 ? Theme.warning : Color.gray)
+                                .background(Theme.warning)
                                 .cornerRadius(12)
-                                .shadow(color: character.statPoints > 0 ? Theme.warning.opacity(0.4) : Color.clear, radius: 8)
+                                .shadow(color: Theme.warning.opacity(0.4), radius: 8)
                             }
                             .buttonStyle(TactileButtonStyle())
-                            .disabled(character.statPoints == 0 || isUpgrading)
+                            .disabled(isUpgrading)
                         }
                     }
                     .padding(20)
@@ -403,22 +403,28 @@ struct ConstellationSkillTreeView: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(0.18), lineWidth: 1))
     }
     
+    private var totalStatPointsSpent: Int {
+        max(0, character.baseStrength - 10)
+            + max(0, character.baseDexterity - 10)
+            + max(0, character.baseIntelligence - 10)
+            + max(0, character.baseVitality - 10)
+    }
+    
     private func isNodeUnlocked(_ node: ConstellationNode) -> Bool {
-        // Base starting core node is always unlocked
+        // Root core is always active; node i activates after i stat points spent sequentially.
         if node.index == 0 { return true }
-        
-        // Node is unlocked if user base stat has been increased past default of 10
-        switch node.stat {
-        case "STR": return character.baseStrength > 10 + (node.index / 2)
-        case "DEX": return character.baseDexterity > 10 + (node.index / 2)
-        case "INT": return character.baseIntelligence > 10 + (node.index / 2)
-        case "VIT": return character.baseVitality > 10 + (node.index / 2)
-        default: return false
-        }
+        return totalStatPointsSpent >= node.index
+    }
+    
+    private func canAllocate(to node: ConstellationNode) -> Bool {
+        guard character.statPoints > 0, node.index > 0 else { return false }
+        guard !isNodeUnlocked(node) else { return false }
+        let nextIndex = totalStatPointsSpent + 1
+        return node.index == nextIndex || node.index < character.level / 2
     }
     
     private func allocatePoint(for node: ConstellationNode) {
-        guard character.statPoints > 0 else { return }
+        guard canAllocate(to: node) else { return }
         isUpgrading = true
         
         var updatedChar = character

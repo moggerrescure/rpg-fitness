@@ -88,11 +88,11 @@ struct ArmoryShopView: View {
 
         switch action {
         case .buy:
-            guard char.gold >= item.cost else {
+            guard item.cost > 0, char.gold >= item.cost else {
                 showToast("Not enough gold!", success: false)
                 return
             }
-            char.gold -= item.cost
+            char.gold = max(0, char.gold - item.cost)
             if !char.ownedEquipmentIds.contains(item.id) {
                 char.ownedEquipmentIds.append(item.id)
             }
@@ -105,6 +105,7 @@ struct ArmoryShopView: View {
             default: break
             }
             firebaseService.syncCharacter(char)
+            DailyQuestProgressStore.record(.visitShop)
             showToast("Purchased \(item.name)!", success: true)
 
         case .equip:

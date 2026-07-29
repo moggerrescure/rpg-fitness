@@ -495,8 +495,8 @@ class MultiplayerService: ObservableObject {
     func startMatchmaking(for characterClass: CharacterClass, type: BattleType = .duel1v1, invitedFriends: [String] = []) {
         guard let char = FirebaseService.shared.currentCharacter else { return }
         
-        // PVP costs 10 energy – try to consume, but don't block if low energy
-        _ = FirebaseService.shared.consumeEnergy(amount: min(10, FirebaseService.shared.currentCharacter?.energy ?? 0))
+        // PVP costs 10 energy — block matchmaking when insufficient
+        guard FirebaseService.shared.consumeEnergy(amount: 10) else { return }
         
         self.currentSearchType = type
         isSearching = true

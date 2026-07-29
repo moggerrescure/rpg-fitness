@@ -129,8 +129,7 @@ struct WorldBossDashboardView: View {
             .padding(.horizontal, 24)
             
             Button(action: {
-                // Consume as much energy as available (don't block if low)
-                _ = firebaseService.consumeEnergy(amount: min(15, firebaseService.currentCharacter?.energy ?? 0))
+                guard firebaseService.consumeEnergy(amount: 15) else { return }
                 showingBattleArena = true
             }) {
                 HStack {

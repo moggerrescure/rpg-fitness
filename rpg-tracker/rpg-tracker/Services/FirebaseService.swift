@@ -15,6 +15,10 @@ class FirebaseService: ObservableObject {
     
     private var cancellables = Set<AnyCancellable>()
     private var battleTimer: Timer?
+    private var energyRegenTimer: Timer?
+    
+    /// One energy point every 5 minutes, up to maxEnergy.
+    private static let energyRegenInterval: TimeInterval = 300
     
     static let shared = FirebaseService()
     
@@ -70,6 +74,8 @@ class FirebaseService: ObservableObject {
                         let char = try snapshot.data(as: Character.self)
                         DispatchQueue.main.async {
                             self.currentCharacter = char
+                            self.applyEnergyRegenIfNeeded()
+                            self.startEnergyRegenTimerIfNeeded()
                             
                             // Migration: ensure all required fields exist in Firestore
                             let rawData = snapshot.data() ?? [:]
@@ -541,14 +547,62 @@ class FirebaseService: ObservableObject {
     }
     
     func consumeEnergy(amount: Int) -> Bool {
-        guard let char = currentCharacter else { return false }
-        if char.energy >= amount {
-            var updated = char
-            updated.energy -= amount
-            syncCharacter(updated)
-            return true
+        guard amount > 0 else { return false }
+        applyEnergyRegenIfNeeded()
+        guard var char = currentCharacter else { return false }
+        guard char.energy >= amount else { return false }
+        
+        char.energy -= amount
+        syncCharacter(char)
+        scheduleEnergyRestoredNotification(for: char.energy, maxEnergy: char.maxEnergy)
+        return true
+    }
+    
+    // MARK: - Energy Regeneration
+    
+    private func energyRegenDefaultsKey(for uid: String) -> String {
+        "lastEnergyRegenAt_\(uid)"
+    }
+    
+    func applyEnergyRegenIfNeeded() {
+        guard var char = currentCharacter else { return }
+        let key = energyRegenDefaultsKey(for: char.id)
+        let now = Date()
+        
+        if char.energy >= char.maxEnergy {
+            UserDefaults.standard.set(now, forKey: key)
+            return
         }
-        return false
+        
+        let lastTick = UserDefaults.standard.object(forKey: key) as? Date ?? now
+        let elapsed = now.timeIntervalSince(lastTick)
+        let pointsToAdd = Int(elapsed / Self.energyRegenInterval)
+        guard pointsToAdd > 0 else { return }
+        
+        char.energy = min(char.maxEnergy, char.energy + pointsToAdd)
+        let advancedLastTick = lastTick.addingTimeInterval(Double(pointsToAdd) * Self.energyRegenInterval)
+        UserDefaults.standard.set(advancedLastTick, forKey: key)
+        syncCharacter(char)
+        
+        if char.energy < char.maxEnergy {
+            let secondsUntilNext = Self.energyRegenInterval - now.timeIntervalSince(advancedLastTick)
+            NotificationManager.shared.scheduleEnergyRestored(
+                inSeconds: max(1, secondsUntilNext + Double(char.maxEnergy - char.energy - 1) * Self.energyRegenInterval)
+            )
+        }
+    }
+    
+    private func startEnergyRegenTimerIfNeeded() {
+        guard energyRegenTimer == nil else { return }
+        energyRegenTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.applyEnergyRegenIfNeeded()
+        }
+    }
+    
+    private func scheduleEnergyRestoredNotification(for energy: Int, maxEnergy: Int) {
+        guard energy < maxEnergy else { return }
+        let remaining = maxEnergy - energy
+        NotificationManager.shared.scheduleEnergyRestored(inSeconds: TimeInterval(remaining) * Self.energyRegenInterval)
     }
     
     func handleHealthSync(result: HealthSyncResult) {

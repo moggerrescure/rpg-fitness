@@ -1018,10 +1018,13 @@ struct BossRaidCameraView: View {
         let xp = boss.xpReward
         let gold = boss.goldReward
 
-        if var char = FirebaseService.shared.currentCharacter {
-            _ = char.addXP(xp)
-            char.gold += gold
-            FirebaseService.shared.syncCharacter(char)
+        FirebaseService.shared.resolvePvEBattle(
+            won: true,
+            bossLootChance: 1.0,
+            xp: xp,
+            gold: gold
+        ) { _ in
+            // Character listener applies server-side XP/gold/loot
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
