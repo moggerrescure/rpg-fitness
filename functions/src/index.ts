@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { randomUUID } from "crypto";
 import { onRequest as onRequestV2, onCall as onCallV2, HttpsError as HttpsErrorV2 } from "firebase-functions/v2/https";
 import { onDocumentCreated as onDocCreated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
@@ -18,9 +19,17 @@ import {
     rewardsForPvpOutcome,
     rollClanWarWin,
 } from "./economyHelpers";
+import {
+    mergeTeamGuests,
+    requireMyTicketId,
+} from "./matchmakingHelpers";
 
 admin.initializeApp();
 const db = admin.firestore();
+
+/** FitRPG callables — App Check required. Shared Food/Workout endpoints stay separate (v2/onRequest). */
+const fitRpgOnCall = (handler: (data: any, context: functions.https.CallableContext) => any | Promise<any>) =>
+    functions.runWith({ enforceAppCheck: true }).https.onCall(handler);
 
 function resetMembersWarCounters(members: any[] = []) {
     return members.map((m: any) => ({
@@ -53,7 +62,7 @@ async function sendPushNotification(uid: string, title: string, body: string, da
 // -------------------------------------------------------------------
 // 1. HTTP Callable: Matchmake Clan War
 // -------------------------------------------------------------------
-export const matchmakeClanWar = functions.https.onCall(async (data, context) => {
+export const matchmakeClanWar = fitRpgOnCall(async (data, context) => {
     // Ensure user is authenticated
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
@@ -168,7 +177,7 @@ export const matchmakeClanWar = functions.https.onCall(async (data, context) => 
 // -------------------------------------------------------------------
 // 1b. HTTP Callable: Cancel Clan War Search
 // -------------------------------------------------------------------
-export const cancelClanWarSearch = functions.https.onCall(async (data, context) => {
+export const cancelClanWarSearch = fitRpgOnCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
     }
@@ -371,7 +380,7 @@ export const processClanWarPhases = functions.pubsub.schedule("*/5 * * * *").onR
 // -------------------------------------------------------------------
 // 3. HTTP Callable: Record Clan War Attack
 // -------------------------------------------------------------------
-export const recordClanWarAttack = functions.https.onCall(async (data, context) => {
+export const recordClanWarAttack = fitRpgOnCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
     }
@@ -480,7 +489,7 @@ export const recordClanWarAttack = functions.https.onCall(async (data, context) 
 // -------------------------------------------------------------------
 // 4. HTTP Callable: Attack World Boss
 // -------------------------------------------------------------------
-export const attackWorldBoss = functions.https.onCall(async (data, context) => {
+export const attackWorldBoss = fitRpgOnCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be authenticated.");
     }
@@ -672,7 +681,7 @@ export const processWorldBossCycle = functions.pubsub.schedule("0 * * * *").onRu
 // -------------------------------------------------------------------
 // 5. HTTP Callable: Send Friend Request
 // -------------------------------------------------------------------
-export const sendFriendRequest = functions.https.onCall(async (data, context) => {
+export const sendFriendRequest = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const myUid = context.auth.uid;
@@ -714,7 +723,7 @@ export const sendFriendRequest = functions.https.onCall(async (data, context) =>
 // -------------------------------------------------------------------
 // 5b. HTTP Callable: Search Players (by username prefix or UID)
 // -------------------------------------------------------------------
-export const searchPlayers = functions.https.onCall(async (data, context) => {
+export const searchPlayers = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const query: string = (data.query || "").trim();
@@ -767,7 +776,7 @@ export const searchPlayers = functions.https.onCall(async (data, context) => {
 // -------------------------------------------------------------------
 // 5c. HTTP Callable: Invite Friend to 3v3 Team
 // -------------------------------------------------------------------
-export const inviteToTeam3v3 = functions.https.onCall(async (data, context) => {
+export const inviteToTeam3v3 = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const myUid = context.auth.uid;
@@ -812,7 +821,7 @@ export const inviteToTeam3v3 = functions.https.onCall(async (data, context) => {
 // -------------------------------------------------------------------
 // 6. HTTP Callable: Accept Friend Request
 // -------------------------------------------------------------------
-export const acceptFriendRequest = functions.https.onCall(async (data, context) => {
+export const acceptFriendRequest = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const myUid = context.auth.uid;
@@ -880,7 +889,7 @@ export const acceptFriendRequest = functions.https.onCall(async (data, context) 
 // -------------------------------------------------------------------
 // 6b. HTTP Callable: Decline Friend Request
 // -------------------------------------------------------------------
-export const declineFriendRequest = functions.https.onCall(async (data, context) => {
+export const declineFriendRequest = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
 
     const myUid = context.auth.uid;
@@ -914,7 +923,7 @@ export const declineFriendRequest = functions.https.onCall(async (data, context)
 // -------------------------------------------------------------------
 // 6c. HTTP Callable: Accept Friend Duel
 // -------------------------------------------------------------------
-export const acceptFriendDuel = functions.https.onCall(async (data, context) => {
+export const acceptFriendDuel = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
 
     const uid = context.auth.uid;
@@ -988,7 +997,7 @@ export const acceptFriendDuel = functions.https.onCall(async (data, context) => 
 // -------------------------------------------------------------------
 // 6d. HTTP Callable: Decline Friend Duel
 // -------------------------------------------------------------------
-export const declineFriendDuel = functions.https.onCall(async (data, context) => {
+export const declineFriendDuel = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
 
     const uid = context.auth.uid;
@@ -1017,9 +1026,9 @@ export const declineFriendDuel = functions.https.onCall(async (data, context) =>
 });
 
 // -------------------------------------------------------------------
-// 7. HTTP Callable: Join Team
+// 7. HTTP Callable: Join Team (queue join + 3v3 lobby invite accept)
 // -------------------------------------------------------------------
-export const joinTeam = functions.https.onCall(async (data, context) => {
+export const joinTeam = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const uid = context.auth.uid;
@@ -1038,50 +1047,73 @@ export const joinTeam = functions.https.onCall(async (data, context) => {
     const ref = db.collection("matchmaking").doc(ticketId);
     
     let success = false;
+    let battleId: string | null = null;
+    let joinedPlayer: any = null;
     await db.runTransaction(async (transaction) => {
         const doc = await transaction.get(ref);
         if (!doc.exists) return;
         
         const ticket = doc.data();
         if (!ticket || ticket.status !== "searchingTeammates") return;
+
+        const pending: string[] = ticket.pendingInvites || [];
+        const isLobby = typeof ticket.battleId === "string" && ticket.battleId.length > 0;
+        // Private 3v3 lobby: only pending invitees may join via this CF.
+        if (isLobby && !pending.includes(uid)) {
+            return;
+        }
         
-        const currentTeam = ticket.team || [];
-        const existingIds = new Set(currentTeam.map((p: any) => p.id));
-        const newGuests = guests.filter((g: any) => g && g.id && !existingIds.has(g.id));
-        if (currentTeam.length + newGuests.length > 3) return;
+        const merged = mergeTeamGuests(ticket.team || [], guests, 3);
+        if (!merged.ok) return;
         
-        currentTeam.push(...newGuests);
-        
-        const updates: any = { team: currentTeam };
-        if (currentTeam.length === 3) {
+        const updates: any = { team: merged.team };
+        if (pending.includes(uid)) {
+            updates.pendingInvites = admin.firestore.FieldValue.arrayRemove(uid);
+        }
+        // Open queue promotes at 3; lobby stays searchingTeammates until host starts.
+        if (!isLobby && merged.team.length === 3) {
             updates.status = "searchingOpponent";
         }
         
         transaction.update(ref, updates);
+        battleId = isLobby ? ticket.battleId : null;
+        joinedPlayer = guests.find((g: any) => g && g.id === uid) || null;
         success = true;
     });
+
+    // Sync acceptor onto lobby battle doc outside ticket transaction
+    if (success && battleId && joinedPlayer) {
+        try {
+            await db.collection("battles").doc(battleId).update({
+                localTeam: admin.firestore.FieldValue.arrayUnion(joinedPlayer),
+            });
+        } catch (e) {
+            console.warn("joinTeam battle sync failed:", e);
+        }
+    }
     
-    return { success: success };
+    return { success: success, battleId };
 });
 
 // -------------------------------------------------------------------
 // 8. HTTP Callable: Match With Opponent
 // -------------------------------------------------------------------
-import { randomUUID } from "crypto";
 
-export const matchWithOpponent = functions.https.onCall(async (data, context) => {
+export const matchWithOpponent = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const uid = context.auth.uid;
-    const opponentTicketId = data.opponentTicketId;
-    const myTicketId = data.myTicketId;
-    
-    if (!opponentTicketId || !myTicketId) {
-        throw new functions.https.HttpsError("invalid-argument", "Invalid opponent.");
+    const ticketCheck = requireMyTicketId(data.myTicketId, data.opponentTicketId);
+    if (!ticketCheck.ok) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            ticketCheck.reason === "missing_my_ticket"
+                ? "myTicketId required — create your ticket before matching."
+                : "Invalid opponent."
+        );
     }
-    if (opponentTicketId === myTicketId) {
-        throw new functions.https.HttpsError("invalid-argument", "Cannot match with own ticket.");
-    }
+    const opponentTicketId = ticketCheck.opponentTicketId!;
+    const myTicketId = ticketCheck.myTicketId!;
 
     const opponentRef = db.collection("matchmaking").doc(opponentTicketId);
     const myRef = db.collection("matchmaking").doc(myTicketId);
@@ -1122,7 +1154,7 @@ export const matchWithOpponent = functions.https.onCall(async (data, context) =>
 // -------------------------------------------------------------------
 // 8b. HTTP Callable: Purchase Shop Item
 // -------------------------------------------------------------------
-export const purchaseItem = functions.https.onCall(async (data, context) => {
+export const purchaseItem = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
 
     const uid = context.auth.uid;
@@ -1166,7 +1198,7 @@ export const purchaseItem = functions.https.onCall(async (data, context) => {
 // -------------------------------------------------------------------
 // 9. HTTP Callable: Equip Item
 // -------------------------------------------------------------------
-export const equipItem = functions.https.onCall(async (data, context) => {
+export const equipItem = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const uid = context.auth.uid;
@@ -1224,7 +1256,7 @@ export const equipItem = functions.https.onCall(async (data, context) => {
 // -------------------------------------------------------------------
 // 10. HTTP Callable: Resolve PvE Battle
 // -------------------------------------------------------------------
-export const resolvePvEBattle = functions.https.onCall(async (data, context) => {
+export const resolvePvEBattle = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const uid = context.auth.uid;
@@ -1314,7 +1346,7 @@ export const resolvePvEBattle = functions.https.onCall(async (data, context) => 
 // -------------------------------------------------------------------
 // 10b. HTTP Callable: Resolve PvP Battle (server-authoritative rewards)
 // -------------------------------------------------------------------
-export const resolvePvPBattle = functions.https.onCall(async (data, context) => {
+export const resolvePvPBattle = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
 
     const uid = context.auth.uid;
@@ -1392,7 +1424,7 @@ export const resolvePvPBattle = functions.https.onCall(async (data, context) => 
 // -------------------------------------------------------------------
 // 10c. HTTP Callable: Award capped activity rewards (training / quests / health)
 // -------------------------------------------------------------------
-export const awardActivityRewards = functions.https.onCall(async (data, context) => {
+export const awardActivityRewards = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
 
     const uid = context.auth.uid;
@@ -1449,7 +1481,7 @@ export const awardActivityRewards = functions.https.onCall(async (data, context)
 // -------------------------------------------------------------------
 // 10d. HTTP Callable: FitRPG-scoped account cleanup (NO recursive users/{uid})
 // -------------------------------------------------------------------
-export const cleanupFitRPGAccount = functions.https.onCall(async (data, context) => {
+export const cleanupFitRPGAccount = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     const uid = context.auth.uid;
     const userRef = db.collection("users").doc(uid);
@@ -1561,7 +1593,7 @@ export const onMatchmakingTicketCreated = functions.firestore
 // -------------------------------------------------------------------
 // 13. HTTP Callable: Fill Teammates With Bots
 // -------------------------------------------------------------------
-export const fillTeammatesWithBots = functions.https.onCall(async (data, context) => {
+export const fillTeammatesWithBots = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const uid = context.auth.uid;
@@ -1627,7 +1659,7 @@ export const fillTeammatesWithBots = functions.https.onCall(async (data, context
 // 14. HTTP Callable: Trigger Opponent Bot Fallback
 // -------------------------------------------------------------------
 
-export const triggerOpponentBotFallback = functions.https.onCall(async (data, context) => {
+export const triggerOpponentBotFallback = fitRpgOnCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const uid = context.auth.uid;
@@ -1722,7 +1754,7 @@ export const triggerOpponentBotFallback = functions.https.onCall(async (data, co
 // -------------------------------------------------------------------
 // 15. HTTP Callable: Get Leaderboards
 // -------------------------------------------------------------------
-export const getLeaderboards = functions.https.onCall(async (data, context) => {
+export const getLeaderboards = fitRpgOnCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     }
