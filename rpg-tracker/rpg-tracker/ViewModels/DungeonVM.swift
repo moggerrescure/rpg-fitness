@@ -240,7 +240,6 @@ class DungeonVM: ObservableObject {
         guard case .combat(let w) = phase else { return }
 
         if w >= 3 {
-            phase = .victory
             grantVictoryRewards()
         } else {
             phase = .waveClear(wave: w)
@@ -248,15 +247,27 @@ class DungeonVM: ObservableObject {
     }
 
     private func grantVictoryRewards() {
-        xpEarned = 1000 + (boss?.maxHP ?? 0) / 10
-        goldEarned = 500 + repCount * 5
-        DailyQuestProgressStore.record(.dungeonRun)
-        FirebaseService.shared.resolvePvEBattle(won: true, bossLootChance: 1.0, xp: xpEarned, gold: goldEarned) { droppedId in
+        let rawXP = 1000 + (boss?.maxHP ?? 0) / 10
+        let rawGold = 500 + repCount * 5
+        let capped = FitRPGEconomyCaps.clampPvE(xp: rawXP, gold: rawGold)
+        FirebaseService.shared.resolvePvEBattle(won: true, bossLootChance: 1.0, xp: capped.xp, gold: capped.gold) { result in
             DispatchQueue.main.async {
-                if let id = droppedId,
+                guard result.success else {
+                    // No victory celebration when CF mint fails (lastActionError toast).
+                    self.xpEarned = 0
+                    self.goldEarned = 0
+                    self.droppedLoot = nil
+                    self.phase = .intro
+                    return
+                }
+                self.xpEarned = result.xp
+                self.goldEarned = result.gold
+                if let id = result.droppedItemId,
                    let item = EquipmentItem.findArmor(by: id) ?? EquipmentItem.findWeapon(by: id) {
                     self.droppedLoot = item
                 }
+                DailyQuestProgressStore.record(.dungeonRun)
+                self.phase = .victory
             }
         }
     }

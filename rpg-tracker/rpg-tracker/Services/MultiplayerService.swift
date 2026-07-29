@@ -376,6 +376,11 @@ class MultiplayerService: ObservableObject {
     /// Challenger creates the battle document immediately and waits for acceptor to fill in their player.
     func challengeFriend(friendUid: String) {
         guard let char = FirebaseService.shared.currentCharacter else { return }
+
+        if BlockedUsersStore.isBlocked(friendUid) {
+            matchmakingError = "You've blocked this player."
+            return
+        }
         
         guard FirebaseService.shared.consumeEnergy(amount: 10) else {
             matchmakingError = "Not enough energy for a duel (need 10)."

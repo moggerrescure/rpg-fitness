@@ -316,6 +316,16 @@ struct FriendsView: View {
                         Label("Add Friend", systemImage: "person.badge.plus")
                     }
                 }
+                Button(role: .destructive) {
+                    firebaseService.blockUser(uid: player.id)
+                    reportFeedback = "Player blocked."
+                    if let char = firebaseService.currentCharacter {
+                        vm.fetchData(for: char)
+                    }
+                    vm.searchResults.removeAll { $0.id == player.id }
+                } label: {
+                    Label("Block", systemImage: "hand.raised.fill")
+                }
                 Button(role: .destructive) { reportTarget = player } label: {
                     Label("Report", systemImage: "exclamationmark.bubble")
                 }
@@ -511,6 +521,15 @@ struct FriendsView: View {
                 .buttonStyle(TactileButtonStyle())
 
                 Menu {
+                    Button(role: .destructive) {
+                        firebaseService.blockUser(uid: char.id)
+                        reportFeedback = "Player blocked."
+                        if let me = firebaseService.currentCharacter {
+                            vm.fetchData(for: me)
+                        }
+                    } label: {
+                        Label("Block", systemImage: "hand.raised.fill")
+                    }
                     Button(role: .destructive) { reportTarget = char } label: {
                         Label("Report", systemImage: "exclamationmark.bubble")
                     }

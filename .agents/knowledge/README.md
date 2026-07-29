@@ -10,7 +10,9 @@
 | [KI-firebase-ecosystem.md](./KI-firebase-ecosystem.md) | Shared Firebase deploy safety; never wipe sibling CF |
 | [KI-app-store-compliance.md](./KI-app-store-compliance.md) | App Store Review, блокеры, privacy/deletion/UGC |
 | [KI-feature-reality.md](./KI-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN матрица, моки, CF bypass |
-| [KI-audit-merged-FINAL-2026-07-29.md](./KI-audit-merged-FINAL-2026-07-29.md) | **FINAL YES (honesty bar)** — P0/P1 closed; residuals listed |
+| [KI-audit-merged-REAUDIT3-FIX-2026-07-29.md](./KI-audit-merged-REAUDIT3-FIX-2026-07-29.md) | **REAUDIT3-FIX YES (code)** — ASC operator residual |
+| [KI-audit-merged-REAUDIT3-2026-07-29.md](./KI-audit-merged-REAUDIT3-2026-07-29.md) | Prior REAUDIT3 CONDITIONAL (superseded by FIX) |
+| [KI-audit-merged-FINAL-2026-07-29.md](./KI-audit-merged-FINAL-2026-07-29.md) | Prior FINAL YES (overstated vs REAUDIT3 UX) |
 | [KI-audit-merged-SHIP-2026-07-29.md](./KI-audit-merged-SHIP-2026-07-29.md) | Ship pass (superseded by FINAL) |
 | [KI-audit-merged-REAUDIT2-2026-07-29.md](./KI-audit-merged-REAUDIT2-2026-07-29.md) | Prior YES (overstated — superseded by SHIP) |
 | [KI-audit-merged-REAUDIT-2026-07-29.md](./KI-audit-merged-REAUDIT-2026-07-29.md) | Prior CONDITIONAL YES (P0 only) |
@@ -20,15 +22,17 @@
 
 ## Audits (2026-07-29)
 
-**Start here (KI):** [KI-audit-merged-FINAL-2026-07-29](./KI-audit-merged-FINAL-2026-07-29.md) — **YES (honesty bar)** after P0/P1 closure.  
+**Start here (KI):** [KI-audit-merged-REAUDIT3-FIX-2026-07-29](./KI-audit-merged-REAUDIT3-FIX-2026-07-29.md) — **YES (code honesty)** / CONDITIONAL ASC operator.  
 **Long-form dumps:** [MASTER — Full Audit](../../docs/audit/2026-07-29-MASTER.md)
 
 | Report | Focus |
 |--------|-------|
-| [FINAL merged](./KI-audit-merged-FINAL-2026-07-29.md) | YES — residuals: HP forge, users read, App Attest |
+| [REAUDIT3-FIX](./KI-audit-merged-REAUDIT3-FIX-2026-07-29.md) | Celebrations, energy omit, HK Update key, Block |
+| [REAUDIT3](./KI-audit-merged-REAUDIT3-2026-07-29.md) | Prior CONDITIONAL (holes) |
+| [FINAL merged](./KI-audit-merged-FINAL-2026-07-29.md) | Prior YES (UX overstated) |
 | [FINAL backend](./KI-audit-backend-FINAL-2026-07-29.md) | Energy rules + refund ledger + battle stamp |
 | [FINAL iOS](./KI-audit-ios-FINAL-2026-07-29.md) | Free-train, quests, Health, co-op copy |
-| [SHIP merged](./KI-audit-merged-SHIP-2026-07-29.md) | Prior YES (stale) |
+| [SHIP merged](./KI-audit-merged-SHIP-2026-07-29.md) | Prior ship pass |
 | [MASTER](../../docs/audit/2026-07-29-MASTER.md) | Сводный: scores, P0/P1, roadmap, deploy ban |
 | [Feature reality](../../docs/audit/2026-07-29-feature-reality.md) | REAL/PARTIAL/MOCK/BROKEN matrix, CF bypass |
 | [App Store readiness](../../docs/audit/2026-07-29-app-store-readiness.md) | Historical 4/10 NOT READY |

@@ -41,8 +41,9 @@ class FriendsVM: ObservableObject {
             let fetchedRequests = await FirebaseService.shared.fetchCharacters(byUids: char.unwrappedFriendRequests)
             
             await MainActor.run {
-                self.friends = fetchedFriends
-                self.friendRequests = fetchedRequests
+                let blocked = BlockedUsersStore.blockedUIDs
+                self.friends = fetchedFriends.filter { !blocked.contains($0.id) }
+                self.friendRequests = fetchedRequests.filter { !blocked.contains($0.id) }
                 self.isLoading = false
             }
         }
@@ -60,8 +61,9 @@ class FriendsVM: ObservableObject {
             let results = await FirebaseService.shared.searchPlayers(query: trimmed)
             guard !Task.isCancelled else { return }
             let myId = FirebaseService.shared.currentCharacter?.id ?? ""
+            let blocked = BlockedUsersStore.blockedUIDs
             await MainActor.run {
-                self.searchResults = results.filter { $0.id != myId }
+                self.searchResults = results.filter { $0.id != myId && !blocked.contains($0.id) }
                 self.searchIsLoading = false
             }
         }

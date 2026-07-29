@@ -96,6 +96,10 @@ struct RaidBoss: Identifiable {
     let goldReward: Int
     let description: String
 
+    /// Values shown in UI / result screens — match CF `clampPvERewards` caps.
+    var displayXP: Int { min(xpReward, FitRPGEconomyCaps.pveXP) }
+    var displayGold: Int { min(goldReward, FitRPGEconomyCaps.pveGold) }
+
     enum BossElement: String {
         case fire = "Fire"
         case ice = "Ice"
@@ -346,7 +350,7 @@ struct BossSelectionScreen: View {
                                 Image(systemName: "star.fill")
                                     .font(.system(size: 10))
                                     .foregroundColor(.yellow)
-                                Text("\(selectedBoss.xpReward)")
+                                Text("\(selectedBoss.displayXP)")
                                     .font(.system(size: 14, weight: .black, design: .monospaced))
                                     .foregroundColor(.white)
                             }
@@ -1015,27 +1019,36 @@ struct BossRaidCameraView: View {
 
     private func triggerVictory() {
         let damageDealt = boss.maxHP - max(0, vm.bossCurrentHP)
-        let xp = boss.xpReward
-        let gold = boss.goldReward
+        let capped = FitRPGEconomyCaps.clampPvE(xp: boss.xpReward, gold: boss.goldReward)
 
         FirebaseService.shared.resolvePvEBattle(
             won: true,
             bossLootChance: 1.0,
-            xp: xp,
-            gold: gold
-        ) { _ in
-            // Character listener applies server-side XP/gold/loot
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            onComplete(BossRaidResult(
-                victory: true,
-                repsCompleted: vm.repCount,
-                damageDealt: damageDealt,
-                bossMaxHP: boss.maxHP,
-                xpEarned: xp,
-                goldEarned: gold
-            ))
+            xp: capped.xp,
+            gold: capped.gold
+        ) { result in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                if result.success {
+                    self.onComplete(BossRaidResult(
+                        victory: true,
+                        repsCompleted: self.vm.repCount,
+                        damageDealt: damageDealt,
+                        bossMaxHP: self.boss.maxHP,
+                        xpEarned: result.xp,
+                        goldEarned: result.gold
+                    ))
+                } else {
+                    // CF failed — do not celebrate success (toast via lastActionError)
+                    self.onComplete(BossRaidResult(
+                        victory: false,
+                        repsCompleted: self.vm.repCount,
+                        damageDealt: damageDealt,
+                        bossMaxHP: self.boss.maxHP,
+                        xpEarned: 0,
+                        goldEarned: 0
+                    ))
+                }
+            }
         }
     }
 

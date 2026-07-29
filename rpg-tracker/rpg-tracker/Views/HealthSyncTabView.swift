@@ -77,7 +77,7 @@ struct HealthSyncTabView: View {
                             .fontWeight(.bold)
                             .foregroundColor(Theme.textPrimary)
 
-                        Text(healthService.isAuthorized ? "Last sync: \(lastSyncText)" : "Earn XP, gold & energy from real workouts")
+                        Text(healthService.isAuthorized ? "Last sync: \(lastSyncText)" : "Earn XP & gold from real workouts")
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundColor(Theme.textMuted)
                     }

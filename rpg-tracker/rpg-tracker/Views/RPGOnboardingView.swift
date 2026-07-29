@@ -54,7 +54,7 @@ struct RPGOnboardingView: View {
             choiceA: "🛡️ [Accept the challenge] \"I'll best the Arena's finest!\"",
             choiceB: "🤝 [Rally together] \"Guilds are my true family.\"",
             replyA: "\"The Arena welcomes bold gladiators! Duel victories raise your rank on the global leaderboard.\"",
-            replyB: "\"Wise choice. Clan raids drop legendary trophies you can't earn alone.\""
+            replyB: "\"Wise choice. Clans share goals and climb the war leaderboard together.\""
         ),
         NPCDialogue(
             name: "Grimli",

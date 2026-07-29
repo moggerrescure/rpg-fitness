@@ -454,6 +454,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitRPG reads your steps, active energy, and workouts (with your permission) to award XP, gold, and in-game power. We do not write data to Apple Health.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "FitRPG does not write workout data to Apple Health. This permission is required by HealthKit even for read-only access.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -506,6 +507,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera is required to track your exercises during workouts.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitRPG reads your steps, active energy, and workouts (with your permission) to award XP, gold, and in-game power. We do not write data to Apple Health.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "FitRPG does not write workout data to Apple Health. This permission is required by HealthKit even for read-only access.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;

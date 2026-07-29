@@ -54,6 +54,9 @@ struct BattleArenaView: View {
     @State private var selectedStoryDamagePerRep: Int = 0
     @State private var showStoryWinOverlay: Bool = false
     @State private var showStoryCoopUnavailable: Bool = false
+    @State private var storyWinXP: Int = 0
+    @State private var storyWinGold: Int = 0
+    @State private var storyRewardsPending: Bool = false
     
     var body: some View {
         ZStack {
@@ -146,7 +149,8 @@ struct BattleArenaView: View {
                                 },
                                 selectBossRaid: {
                                     showBossRaid = true
-                                }
+                                },
+                                energy: FirebaseService.shared.currentCharacter?.energy ?? 0
                             )
                         }
                     }
@@ -160,13 +164,28 @@ struct BattleArenaView: View {
                                     closeAction: viewModel.endMatch
                                 )
                             } else {
-                                DuelResultOverlay(winnerTitle: viewModel.winnerName, closeAction: viewModel.endMatch)
+                                DuelResultOverlay(
+                                    winnerTitle: viewModel.winnerName,
+                                    closeAction: {
+                                        FirebaseService.shared.lastPvPSettlement = nil
+                                        viewModel.endMatch()
+                                    }
+                                )
                             }
                         }
                         if showStoryWinOverlay {
-                            StoryWinOverlay(stage: selectedStoryStage ?? 1, closeAction: {
-                                showStoryWinOverlay = false
-                            })
+                            StoryWinOverlay(
+                                stage: selectedStoryStage ?? 1,
+                                xpAwarded: storyWinXP,
+                                goldAwarded: storyWinGold,
+                                rewardsPending: storyRewardsPending,
+                                closeAction: {
+                                    showStoryWinOverlay = false
+                                    storyWinXP = 0
+                                    storyWinGold = 0
+                                    storyRewardsPending = false
+                                }
+                            )
                         }
                     }
                 )
@@ -333,17 +352,26 @@ struct BattleArenaView: View {
     }
     
     private func handleStoryStageWin() {
-        guard let stage = selectedStoryStage, var char = FirebaseService.shared.currentCharacter else { return }
-        
-        char.advanceStoryStage(completedStage: stage)
-        
-        let xpReward = stage * 50
-        let goldReward = stage * 10
-        _ = char.addXP(xpReward)
-        char.gold += goldReward
-        
-        FirebaseService.shared.syncCharacter(char)
+        guard let stage = selectedStoryStage else { return }
+        let rawXP = stage * 50
+        let rawGold = stage * 10
+        let capped = FitRPGEconomyCaps.clampActivity(xp: rawXP, gold: rawGold)
+        storyWinXP = capped.xp
+        storyWinGold = capped.gold
+        storyRewardsPending = true
         showStoryWinOverlay = true
+        FirebaseService.shared.awardStoryStageRewards(stage: stage, xp: capped.xp, gold: capped.gold) { awarded in
+            DispatchQueue.main.async {
+                self.storyRewardsPending = false
+                if let awarded {
+                    self.storyWinXP = awarded.0
+                    self.storyWinGold = awarded.1
+                } else {
+                    self.storyWinXP = 0
+                    self.storyWinGold = 0
+                }
+            }
+        }
     }
 }
 
@@ -354,6 +382,7 @@ struct PvPModeSelectorView: View {
     let select3v3: () -> Void
     let selectStory: () -> Void
     let selectBossRaid: () -> Void
+    var energy: Int = 0
 
     @State private var appear = false
 
@@ -419,7 +448,7 @@ struct PvPModeSelectorView: View {
                     ArenaHeroCard(
                         title: "1V1\nSPEED DUEL",
                         subtitle: "60s Exercise Race",
-                        detail: "PVP · RANKED",
+                        detail: "10 ENERGY · RANKED",
                         icon: "figure.martial.arts",
                         gradient: [Color(hex: "7F1D1D"), Color(hex: "2D0A0A")],
                         accentColor: Color(hex: "F87171"),
@@ -427,12 +456,13 @@ struct PvPModeSelectorView: View {
                         badgeColor: Color(hex: "F87171"),
                         animDelay: 0.14,
                         appear: appear,
+                        disabled: energy < FitRPGEconomyCaps.arenaMatchEnergy,
                         action: select1v1
                     )
                     ArenaHeroCard(
                         title: "3V3\nCO-OP",
                         subtitle: "Team Attacks & Heals",
-                        detail: "INVITE FRIENDS",
+                        detail: "10 ENERGY · INVITE",
                         icon: "person.3.fill",
                         gradient: [Color(hex: "1E3A5F"), Color(hex: "071424")],
                         accentColor: Color(hex: "60A5FA"),
@@ -440,12 +470,13 @@ struct PvPModeSelectorView: View {
                         badgeColor: Color(hex: "60A5FA"),
                         animDelay: 0.20,
                         appear: appear,
+                        disabled: energy < FitRPGEconomyCaps.arenaMatchEnergy,
                         action: select3v3
                     )
                     ArenaHeroCard(
                         title: "BOSS\nRAID",
                         subtitle: "Reps = Direct Damage",
-                        detail: "WORLD BOSS",
+                        detail: "LOCAL RAID",
                         icon: "flame.fill",
                         gradient: [Color(hex: "7C2D12"), Color(hex: "2A0D04")],
                         accentColor: Color(hex: "FB923C"),
@@ -482,12 +513,13 @@ private struct ArenaHeroCard: View {
     let badgeColor: Color
     let animDelay: Double
     let appear: Bool
+    var disabled: Bool = false
     let action: () -> Void
 
     @State private var pressed = false
 
     var body: some View {
-        Button(action: action) {
+        Button(action: { if !disabled { action() } }) {
             ZStack(alignment: .bottomLeading) {
                 // Base gradient
                 LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -501,6 +533,10 @@ private struct ArenaHeroCard: View {
 
                 // Noise/texture overlay
                 Color.white.opacity(0.02)
+
+                if disabled {
+                    Color.black.opacity(0.45)
+                }
 
                 VStack(alignment: .leading, spacing: 0) {
                     // Top row: badge + arrow
@@ -516,7 +552,7 @@ private struct ArenaHeroCard: View {
 
                         Spacer()
 
-                        Image(systemName: "arrow.up.right")
+                        Image(systemName: disabled ? "bolt.slash.fill" : "arrow.up.right")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(accentColor.opacity(0.5))
                     }
@@ -549,7 +585,7 @@ private struct ArenaHeroCard: View {
                         Circle()
                             .fill(accentColor)
                             .frame(width: 5, height: 5)
-                        Text(detail)
+                        Text(disabled ? "NEED 10 ENERGY" : detail)
                             .font(.system(size: 8, weight: .bold, design: .monospaced))
                             .foregroundColor(accentColor.opacity(0.8))
                     }
@@ -572,9 +608,12 @@ private struct ArenaHeroCard: View {
             )
             .shadow(color: accentColor.opacity(pressed ? 0.35 : 0.18), radius: pressed ? 16 : 10, x: 0, y: pressed ? 4 : 6)
             .scaleEffect(pressed ? 0.96 : 1.0)
+            .opacity(disabled ? 0.7 : 1.0)
         }
         .buttonStyle(PlainButtonStyle())
+        .disabled(disabled)
         .onLongPressGesture(minimumDuration: 0, maximumDistance: 50, pressing: { isPressing in
+            guard !disabled else { return }
             withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
                 pressed = isPressing
             }
@@ -2026,33 +2065,48 @@ struct LogRowView: View {
 struct DuelResultOverlay: View {
     let winnerTitle: String
     let closeAction: () -> Void
-    
+    @ObservedObject private var firebase = FirebaseService.shared
+
+    private var isVictory: Bool { winnerTitle == "VICTORY!" }
+    private var settlement: PvPSettlementResult? { firebase.lastPvPSettlement }
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.8)
                 .ignoresSafeArea()
-            
+
             VStack(spacing: 24) {
                 Text(winnerTitle)
                     .font(.system(size: 36, weight: .black, design: .monospaced))
-                    .foregroundColor(winnerTitle == "VICTORY!" ? Theme.success : Theme.danger)
-                    .glow(color: winnerTitle == "VICTORY!" ? Theme.success.opacity(0.5) : Theme.danger.opacity(0.5), radius: 10)
-                
+                    .foregroundColor(isVictory ? Theme.success : Theme.danger)
+                    .glow(color: (isVictory ? Theme.success : Theme.danger).opacity(0.5), radius: 10)
+
                 VStack(spacing: 12) {
-                    Text("REWARDS GAINED")
+                    Text(rewardsHeader)
                         .font(.caption)
                         .foregroundColor(Theme.textMuted)
                         .fontWeight(.semibold)
-                    
-                    HStack(spacing: 24) {
-                        RewardBadge(icon: "star.fill", value: "+250 XP", color: Theme.success)
-                        RewardBadge(icon: "centsign.circle.fill", value: "+60 Gold", color: Theme.healerColor)
+
+                    if case .settling = settlement?.status {
+                        Text("Rewards settling…")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(Theme.textSecondary)
+                    } else if case .failed = settlement?.status {
+                        Text("Rewards unavailable — try again later")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(Theme.danger)
+                            .multilineTextAlignment(.center)
+                    } else {
+                        HStack(spacing: 24) {
+                            RewardBadge(icon: "star.fill", value: "+\(displayXP) XP", color: Theme.success)
+                            RewardBadge(icon: "centsign.circle.fill", value: "+\(displayGold) Gold", color: Theme.healerColor)
+                        }
                     }
                 }
                 .padding()
                 .background(Theme.secondaryCard)
                 .cornerRadius(12)
-                
+
                 Button(action: closeAction) {
                     Text("CONFIRM & CLOSE")
                         .font(.subheadline)
@@ -2075,6 +2129,21 @@ struct DuelResultOverlay: View {
             )
             .padding(.horizontal, 32)
         }
+    }
+
+    private var rewardsHeader: String {
+        if case .settled = settlement?.status { return "REWARDS GAINED" }
+        return "REWARDS"
+    }
+
+    private var displayXP: Int {
+        if case .settled(_, let xp, _) = settlement?.status { return xp }
+        return 0
+    }
+
+    private var displayGold: Int {
+        if case .settled(_, _, let gold) = settlement?.status { return gold }
+        return 0
     }
 }
 
@@ -2321,88 +2390,15 @@ struct PvPLeaderboardView: View {
     }
 }
 
+// Removed dead "Coming soon" co-op CTA (was ship-searchable as live). Solo story uses map flow.
 struct StoryModePromptInlineView: View {
     let selectSolo: () -> Void
     let selectCoop: () -> Void
     let onCancel: () -> Void
-    
+
     var body: some View {
-        VStack(spacing: 24) {
-            Text("STORY CAMPAIGN MODE")
-                .font(.system(.title3, design: .monospaced))
-                .fontWeight(.black)
-                .foregroundColor(Theme.textPrimary)
-                .tracking(2)
-                .glow(color: Theme.primary.opacity(0.4), radius: 8)
-            
-            Text("Choose how you want to conquer the 40 fitness islands")
-                .font(.caption)
-                .foregroundColor(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            VStack(spacing: 16) {
-                Button(action: selectSolo) {
-                    HStack {
-                        Image(systemName: "person.fill")
-                        Text("SOLO ADVENTURE")
-                            .fontWeight(.bold)
-                    }
-                    .font(.system(.subheadline, design: .monospaced))
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Theme.primary)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
-                    .shadow(color: Theme.primary.opacity(0.3), radius: 8, y: 4)
-                }
-                .buttonStyle(TactileButtonStyle())
-                
-                Button(action: selectCoop) {
-                    VStack(spacing: 6) {
-                        HStack {
-                            Image(systemName: "person.2.fill")
-                            Text("CO-OP WITH A FRIEND")
-                                .fontWeight(.bold)
-                        }
-                        Text("Coming soon — solo only for now")
-                            .font(.caption2)
-                            .opacity(0.85)
-                    }
-                    .font(.system(.subheadline, design: .monospaced))
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Theme.healerColor.opacity(0.55))
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Theme.border.opacity(0.5), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(TactileButtonStyle())
-            }
-            .padding(.horizontal)
-            
-            Button(action: {
-                onCancel()
-            }) {
-                Text("CANCEL")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(Theme.danger)
-                    .fontWeight(.bold)
-                    .padding(.top, 8)
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-        .padding(24)
-        .background(Theme.cardBackground.opacity(0.85))
-        .cornerRadius(20)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(Theme.border, lineWidth: 1)
-        )
-        .padding(.horizontal, 32)
+        EmptyView()
+            .onAppear { selectSolo() }
     }
 }
 
@@ -3193,6 +3189,9 @@ struct StoryStagePrepView: View {
 
 struct StoryWinOverlay: View {
     let stage: Int
+    var xpAwarded: Int = 0
+    var goldAwarded: Int = 0
+    var rewardsPending: Bool = false
     let closeAction: () -> Void
     
     var body: some View {
@@ -3213,14 +3212,20 @@ struct StoryWinOverlay: View {
                     .padding(.horizontal)
                 
                 VStack(spacing: 12) {
-                    Text("REWARDS EARNED")
+                    Text(rewardsPending ? "REWARDS SETTLING…" : "REWARDS EARNED")
                         .font(.system(size: 10, design: .monospaced))
                         .fontWeight(.bold)
                         .foregroundColor(Theme.textMuted)
                     
-                    HStack(spacing: 20) {
-                        RewardBadge(icon: "star.fill", value: "+\(stage * 50) XP", color: Theme.success)
-                        RewardBadge(icon: "centsign.circle.fill", value: "+\(stage * 10) Gold", color: Theme.healerColor)
+                    if rewardsPending {
+                        Text("Saving progress…")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(Theme.textSecondary)
+                    } else {
+                        HStack(spacing: 20) {
+                            RewardBadge(icon: "star.fill", value: "+\(xpAwarded) XP", color: Theme.success)
+                            RewardBadge(icon: "centsign.circle.fill", value: "+\(goldAwarded) Gold", color: Theme.healerColor)
+                        }
                     }
                 }
                 .padding()

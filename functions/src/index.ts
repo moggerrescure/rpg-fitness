@@ -1579,11 +1579,16 @@ export const awardActivityRewards = fitRpgOnCall(async (data, context) => {
         throw new functions.https.HttpsError("invalid-argument", "Use resolvePvPBattle for PvP rewards.");
     }
     const { xp, gold } = clampActivityRewards(data.xp, data.gold);
-    if (xp <= 0 && gold <= 0) {
+    const completedStoryStage = reason === "story"
+        ? Math.floor(Number(data.completedStoryStage) || 0)
+        : 0;
+    const shouldAdvanceStory = completedStoryStage >= 1 && completedStoryStage <= 40;
+    if (xp <= 0 && gold <= 0 && !shouldAdvanceStory) {
         return { success: true, xp: 0, gold: 0 };
     }
 
     const userRef = db.collection("users").doc(uid);
+    let storyStageOut: number | undefined;
     await db.runTransaction(async (transaction) => {
         const userDoc = await transaction.get(userRef);
         if (!userDoc.exists) throw new functions.https.HttpsError("not-found", "User not found.");
@@ -1612,19 +1617,30 @@ export const awardActivityRewards = fitRpgOnCall(async (data, context) => {
         if (gold > 0) {
             updates.gold = admin.firestore.FieldValue.increment(gold);
         }
+        let progressions = { ...(userData.progressions || {}) };
         if (xp > 0) {
             const { updates: progUpdates } = applyXpToProgression(
-                userData.progressions || {},
+                progressions,
                 selectedClass,
                 xp,
                 userData
             );
             Object.assign(updates, progUpdates);
+            progressions = progUpdates.progressions || progressions;
+        }
+        if (shouldAdvanceStory) {
+            const classProg = { ...(progressions[selectedClass] || { level: 1, xp: 0, totalReps: 0, storyStage: 1 }) };
+            if (completedStoryStage >= (classProg.storyStage || 1)) {
+                classProg.storyStage = completedStoryStage + 1;
+                progressions[selectedClass] = classProg;
+                updates.progressions = progressions;
+                storyStageOut = classProg.storyStage;
+            }
         }
         transaction.update(userRef, updates);
     });
 
-    return { success: true, xp, gold };
+    return { success: true, xp, gold, storyStage: storyStageOut };
 });
 
 // -------------------------------------------------------------------

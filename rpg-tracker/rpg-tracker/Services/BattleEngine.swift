@@ -163,12 +163,15 @@ class BattleEngine: ObservableObject {
                 battleTimer?.invalidate()
                 
                 // Server-Side Loot & Rewards resolution
-                FirebaseService.shared.resolvePvEBattle(won: true, bossLootChance: boss.lootDropChance, xp: boss.xpReward, gold: boss.goldReward) { droppedId in
+                let capped = FitRPGEconomyCaps.clampPvE(xp: boss.xpReward, gold: boss.goldReward)
+                FirebaseService.shared.resolvePvEBattle(won: true, bossLootChance: boss.lootDropChance, xp: capped.xp, gold: capped.gold) { result in
                     DispatchQueue.main.async {
-                        if let id = droppedId, let item = EquipmentItem.findArmor(by: id) ?? EquipmentItem.findWeapon(by: id) {
+                        if !result.success {
+                            // lastActionError already set — do not treat as loot win
+                            return
+                        }
+                        if let id = result.droppedItemId, let item = EquipmentItem.findArmor(by: id) ?? EquipmentItem.findWeapon(by: id) {
                             self.droppedLoot = item
-                            // The server already granted XP, Gold, and the Item.
-                            // The local Firestore snapshot listener will automatically update `currentCharacter`.
                         }
                     }
                 }

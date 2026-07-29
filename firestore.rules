@@ -144,13 +144,26 @@ service cloud.firestore {
     }
 
     // Energy never increases via client (path-1 sibling apps + FitRPG sync).
+    // If energy already exists on the doc, the update MUST include it and must not raise it
+    // (blocks delete-field-then-reintroduce-higher via omit on merge).
     function fitrpgEnergyNotIncreased() {
       return !('energy' in resource.data)
-        || !('energy' in request.resource.data)
         || (
-          request.resource.data.energy is int
+          'energy' in request.resource.data
+          && request.resource.data.energy is int
           && request.resource.data.energy >= 0
           && request.resource.data.energy <= resource.data.energy
+        );
+    }
+
+    // Gold path-1: same omit-then-set guard when gold already exists.
+    function fitrpgGoldNotIncreased() {
+      return !('gold' in resource.data)
+        || (
+          'gold' in request.resource.data
+          && request.resource.data.gold is int
+          && request.resource.data.gold >= 0
+          && request.resource.data.gold <= resource.data.gold
         );
     }
 
@@ -208,12 +221,8 @@ service cloud.firestore {
         (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(fitrpgProtectedKeys())
           && fitrpgEnergyNotIncreased()
+          && fitrpgGoldNotIncreased()
           && fitrpgClanIdOk()
-          && (
-            !('gold' in resource.data)
-            || !('gold' in request.resource.data)
-            || request.resource.data.gold <= resource.data.gold
-          )
         )
         // FitRPG character sync: energy bounded, gold not increased, protected keys unchanged
         || (

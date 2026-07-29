@@ -16,6 +16,10 @@ class FirebaseService: ObservableObject {
     @Published var worldBossStatus: WorldBossLoadStatus = .loading
     /// Surfaced to UI toasts for clan/war CF failures (no silent print-only fails).
     @Published var lastActionError: String? = nil
+    /// Last online PvP settle result for honest DuelResultOverlay (not hardcoded +250/+60).
+    @Published var lastPvPSettlement: PvPSettlementResult? = nil
+    /// Bumped when local block list changes so FriendsVM can refresh.
+    @Published var blockedUsersRevision: Int = 0
 
     enum WorldBossLoadStatus: Equatable {
         case loading
@@ -340,21 +344,79 @@ class FirebaseService: ObservableObject {
     }
 
     func resolvePvPBattle(battleId: String) {
+        DispatchQueue.main.async {
+            self.lastPvPSettlement = PvPSettlementResult(status: .settling)
+        }
         Task {
             do {
                 let result = try await Functions.functions().httpsCallable("resolvePvPBattle").call([
                     "battleId": battleId
                 ])
-                if let data = result.data as? [String: Any],
-                   let outcome = data["outcome"] as? String,
-                   outcome == "win" {
-                    DailyQuestProgressStore.record(.pvpMatch)
+                let data = result.data as? [String: Any]
+                let outcome = (data?["outcome"] as? String) ?? "draw"
+                var xp = 0
+                var gold = 0
+                if let rewards = data?["rewards"] as? [String: Any] {
+                    xp = rewards["xp"] as? Int ?? Int(rewards["xp"] as? Double ?? 0)
+                    gold = rewards["gold"] as? Int ?? Int(rewards["gold"] as? Double ?? 0)
+                } else {
+                    // alreadySettled path returns outcome only — use known server table
+                    let mapped = FitRPGEconomyCaps.pvpRewards(outcome: outcome)
+                    xp = mapped.xp
+                    gold = mapped.gold
+                }
+                await MainActor.run {
+                    self.lastPvPSettlement = PvPSettlementResult(
+                        status: .settled(outcome: outcome, xp: xp, gold: gold)
+                    )
+                    if outcome == "win" {
+                        DailyQuestProgressStore.record(.pvpMatch)
+                    }
                 }
             } catch {
                 await MainActor.run {
+                    self.lastPvPSettlement = PvPSettlementResult(status: .failed)
                     self.lastActionError = "Couldn't settle PvP rewards."
                 }
                 print("resolvePvPBattle failed: \(error)")
+            }
+        }
+    }
+
+    /// Story stage clear: CF mints capped XP/gold and advances storyStage server-side.
+    func awardStoryStageRewards(stage: Int, xp: Int, gold: Int, completion: ((Int, Int)?) -> Void = { _ in }) {
+        let capped = FitRPGEconomyCaps.clampActivity(xp: xp, gold: gold)
+        guard var char = currentCharacter else {
+            completion(nil)
+            return
+        }
+        char.advanceStoryStage(completedStage: stage)
+        if capped.xp > 0 { _ = char.addXP(capped.xp) }
+        if capped.gold > 0 { char.gold += capped.gold }
+        currentCharacter = char
+        writeWidgetSnapshot(from: char)
+
+        Task {
+            do {
+                let result = try await Functions.functions().httpsCallable("awardActivityRewards").call([
+                    "xp": capped.xp,
+                    "gold": capped.gold,
+                    "reason": "story",
+                    "completedStoryStage": stage
+                ])
+                let data = result.data as? [String: Any]
+                let awardedXP = data?["xp"] as? Int ?? capped.xp
+                let awardedGold = data?["gold"] as? Int ?? capped.gold
+                if awardedGold > 0 {
+                    DailyQuestProgressStore.record(.goldEarned, amount: awardedGold)
+                }
+                await MainActor.run { completion((awardedXP, awardedGold)) }
+            } catch {
+                await MainActor.run {
+                    self.lastActionError = "Couldn't save story rewards. Check your connection."
+                    completion(nil)
+                }
+                print("awardStoryStageRewards failed: \(error)")
             }
         }
     }
@@ -435,25 +497,53 @@ class FirebaseService: ObservableObject {
     
 
     // MARK: - Server Integrations
-    func resolvePvEBattle(won: Bool, bossLootChance: Double, xp: Int, gold: Int, completion: @escaping (String?) -> Void) {
+    /// Result of PvE settle: success with server-capped rewards, or failure (no celebration).
+    struct PvEResolveResult {
+        let success: Bool
+        let droppedItemId: String?
+        let xp: Int
+        let gold: Int
+    }
+
+    func resolvePvEBattle(won: Bool, bossLootChance: Double, xp: Int, gold: Int, completion: @escaping (PvEResolveResult) -> Void) {
+        let capped = FitRPGEconomyCaps.clampPvE(xp: xp, gold: gold)
         let functions = Functions.functions()
         functions.httpsCallable("resolvePvEBattle").call([
             "won": won,
             "bossLootChance": bossLootChance,
-            "xp": xp,
-            "gold": gold
+            "xp": capped.xp,
+            "gold": capped.gold
         ]) { result, error in
             if let error = error {
                 print("Error resolving PvE battle on server: \(error)")
-                completion(nil)
+                DispatchQueue.main.async {
+                    self.lastActionError = "Couldn't save raid rewards. Check your connection."
+                    completion(PvEResolveResult(success: false, droppedItemId: nil, xp: 0, gold: 0))
+                }
                 return
             }
-            if let data = result?.data as? [String: Any],
-               let droppedItemId = data["droppedItemId"] as? String {
-                completion(droppedItemId)
-            } else {
-                completion(nil)
+            let data = result?.data as? [String: Any]
+            let droppedItemId = data?["droppedItemId"] as? String
+            let serverXP = data?["xp"] as? Int ?? (won ? capped.xp : 0)
+            let serverGold = data?["gold"] as? Int ?? (won ? capped.gold : 0)
+            DispatchQueue.main.async {
+                completion(PvEResolveResult(
+                    success: true,
+                    droppedItemId: droppedItemId,
+                    xp: serverXP,
+                    gold: serverGold
+                ))
             }
+        }
+    }
+
+    func blockUser(uid: String) {
+        BlockedUsersStore.block(uid)
+        blockedUsersRevision += 1
+        // Drop local friendship so they disappear from friends list immediately.
+        if var char = currentCharacter {
+            char.friends = char.unwrappedFriends.filter { $0 != uid }
+            syncCharacter(char)
         }
     }
     
@@ -503,6 +593,12 @@ class FirebaseService: ObservableObject {
     
     func sendFriendRequest(to targetUid: String) async {
         guard let char = currentCharacter else { return }
+        if BlockedUsersStore.isBlocked(targetUid) {
+            await MainActor.run {
+                self.lastActionError = "You've blocked this player."
+            }
+            return
+        }
         let functions = Functions.functions()
         do {
             _ = try await functions.httpsCallable("sendFriendRequest").call(["targetUid": targetUid])
@@ -515,6 +611,9 @@ class FirebaseService: ObservableObject {
                 actionData: ["type": "friendRequest", "senderUid": char.id]
             )
         } catch {
+            await MainActor.run {
+                self.lastActionError = "Couldn't send friend request. Try again."
+            }
             print("Failed to send friend request: \(error)")
         }
     }
@@ -554,7 +653,8 @@ class FirebaseService: ObservableObject {
                 }
             }
             
-            return results.filter { $0.id != self.currentCharacter?.id }
+            let blocked = BlockedUsersStore.blockedUIDs
+            return results.filter { $0.id != self.currentCharacter?.id && !blocked.contains($0.id) }
         } catch {
             print("searchPlayers failed: \(error)")
             return []
