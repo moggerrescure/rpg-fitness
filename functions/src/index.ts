@@ -6,6 +6,18 @@ import { defineSecret } from "firebase-functions/params";
 import { getAppCheck } from "firebase-admin/app-check";
 import { getAuth } from "firebase-admin/auth";
 import { SHOP_ITEM_COSTS, SHOP_ITEM_SLOTS } from "./shopCatalog";
+import {
+    WORLD_BOSS_ATTACK_ENERGY,
+    WORLD_BOSS_MAX_DAMAGE_PER_CALL,
+    WORLD_BOSS_ATTACKS_PER_HOUR,
+    applyXpToProgression,
+    clampActivityRewards,
+    clampPvERewards,
+    FITRPG_USER_FIELD_KEYS,
+    pvpOutcomeForPlayer,
+    rewardsForPvpOutcome,
+    rollClanWarWin,
+} from "./economyHelpers";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -365,8 +377,7 @@ export const recordClanWarAttack = functions.https.onCall(async (data, context) 
     }
 
     const uid = context.auth.uid;
-    const won = data.won as boolean;
-    const scoreToAdd = won ? 100 : 0;
+    // Ignore client `won` — server rolls outcome from power.
 
     const userDoc = await db.collection("users").doc(uid).get();
     const userData = userDoc.data();
@@ -374,10 +385,12 @@ export const recordClanWarAttack = functions.https.onCall(async (data, context) 
         throw new functions.https.HttpsError("failed-precondition", "User is not in a clan.");
     }
 
+    const won = rollClanWarWin(userData.basePower || 100);
+    const scoreToAdd = won ? 100 : 0;
+
     const clanId = userData.clanId;
     const clanRef = db.collection("clans").doc(clanId);
 
-    // Use a transaction to safely update member score and total clan score
     const result = await db.runTransaction(async (transaction) => {
         const clanDoc = await transaction.get(clanRef);
         if (!clanDoc.exists) {
@@ -422,10 +435,32 @@ export const recordClanWarAttack = functions.https.onCall(async (data, context) 
             });
         }
 
-        return { success: true, scoreAdded: scoreToAdd, opponentClanId, myName: userData.name || "A rival" };
+        // Single reward path: grant war attack rewards server-side (client must not award).
+        const userRef = db.collection("users").doc(uid);
+        const xpGain = won ? 80 : 25;
+        const goldGain = won ? 40 : 10;
+        const selectedClass = userData.selectedClass || "Archer";
+        const { updates: progUpdates } = applyXpToProgression(
+            userData.progressions || {},
+            selectedClass,
+            xpGain,
+            userData
+        );
+        const cls = selectedClass;
+        const trophies = { ...(userData.classTrophies || {}) };
+        const deltaT = won ? 20 : -10;
+        trophies[cls] = Math.max(0, (trophies[cls] || 0) + deltaT);
+        transaction.update(userRef, {
+            ...progUpdates,
+            gold: admin.firestore.FieldValue.increment(goldGain),
+            classTrophies: trophies,
+            pvpTrophies: trophies[cls] || 0,
+        });
+
+        return { success: true, scoreAdded: scoreToAdd, won, opponentClanId, myName: userData.name || userData.username || "A rival" };
     });
 
-    if (result.success && result.opponentClanId && !result.opponentClanId.startsWith("bot_")) {
+    if (result.success && result.won && result.opponentClanId && !result.opponentClanId.startsWith("bot_")) {
         const oppClanDoc = await db.collection("clans").doc(result.opponentClanId).get();
         if (oppClanDoc.exists) {
             const oppClan = oppClanDoc.data() || {};
@@ -439,7 +474,7 @@ export const recordClanWarAttack = functions.https.onCall(async (data, context) 
         }
     }
 
-    return { success: result.success, scoreAdded: result.scoreAdded };
+    return { success: result.success, scoreAdded: result.scoreAdded, won: result.won };
 });
 
 // -------------------------------------------------------------------
@@ -449,46 +484,75 @@ export const attackWorldBoss = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be authenticated.");
     }
-    
+
     const uid = context.auth.uid;
     const damage = data.damage;
-    
-    // Anti-cheat limit: Max 5000 damage per call (covers a full 60s raid session)
-    if (typeof damage !== "number" || damage <= 0 || damage > 5000) {
+
+    if (typeof damage !== "number" || damage <= 0 || damage > WORLD_BOSS_MAX_DAMAGE_PER_CALL) {
         throw new functions.https.HttpsError("invalid-argument", "Invalid or excessive damage amount.");
     }
 
     const bossRef = db.collection("world_bosses").doc("current");
-    
+    const userRef = db.collection("users").doc(uid);
+
     await db.runTransaction(async (transaction) => {
         const bossDoc = await transaction.get(bossRef);
+        const userDoc = await transaction.get(userRef);
         if (!bossDoc.exists) {
             throw new functions.https.HttpsError("not-found", "World boss not found.");
         }
-        
-        const bossData = bossDoc.data();
-        if (!bossData || !bossData.isActive || bossData.currentHealth <= 0) {
+        if (!userDoc.exists) {
+            throw new functions.https.HttpsError("not-found", "User not found.");
+        }
+
+        const bossData = bossDoc.data()!;
+        const userData = userDoc.data()!;
+        if (!bossData.isActive || bossData.currentHealth <= 0) {
             throw new functions.https.HttpsError("failed-precondition", "World boss is dead or inactive.");
         }
-        
-        const currentHealth = Math.max(0, bossData.currentHealth - damage);
-        const topAttackers = bossData.topAttackers || {};
-        const currentDmg = topAttackers[uid] || 0;
-        topAttackers[uid] = currentDmg + damage;
-        
-        const updates: any = {
-            currentHealth: currentHealth,
-            topAttackers: topAttackers
-        };
 
-        if (currentHealth <= 0) {
-            updates.isActive = false;
+        const nowMs = Date.now();
+        const windowStart = userData.worldBossAttackWindowStart
+            ? (userData.worldBossAttackWindowStart.toMillis
+                ? userData.worldBossAttackWindowStart.toMillis()
+                : Number(userData.worldBossAttackWindowStart))
+            : 0;
+        let attackCount = userData.worldBossAttackCount || 0;
+        if (!windowStart || nowMs - windowStart > 60 * 60 * 1000) {
+            attackCount = 0;
+        }
+        if (attackCount >= WORLD_BOSS_ATTACKS_PER_HOUR) {
+            throw new functions.https.HttpsError("resource-exhausted", "World boss attack rate limit reached.");
         }
 
-        transaction.update(bossRef, updates);
+        const energy = userData.energy || 0;
+        if (energy < WORLD_BOSS_ATTACK_ENERGY) {
+            throw new functions.https.HttpsError("failed-precondition", "Not enough energy.");
+        }
+
+        const currentHealth = Math.max(0, bossData.currentHealth - damage);
+        const topAttackers = { ...(bossData.topAttackers || {}) };
+        topAttackers[uid] = (topAttackers[uid] || 0) + damage;
+
+        const bossUpdates: any = {
+            currentHealth,
+            topAttackers,
+        };
+        if (currentHealth <= 0) {
+            bossUpdates.isActive = false;
+        }
+        transaction.update(bossRef, bossUpdates);
+
+        transaction.update(userRef, {
+            energy: energy - WORLD_BOSS_ATTACK_ENERGY,
+            worldBossAttackCount: attackCount + 1,
+            worldBossAttackWindowStart: attackCount === 0
+                ? admin.firestore.Timestamp.now()
+                : (userData.worldBossAttackWindowStart || admin.firestore.Timestamp.now()),
+        });
     });
-    
-    return { success: true };
+
+    return { success: true, energySpent: WORLD_BOSS_ATTACK_ENERGY };
 });
 
 // -------------------------------------------------------------------
@@ -496,82 +560,110 @@ export const attackWorldBoss = functions.https.onCall(async (data, context) => {
 // -------------------------------------------------------------------
 export const processWorldBossCycle = functions.pubsub.schedule("0 * * * *").onRun(async (context) => {
     const bossRef = db.collection("world_bosses").doc("current");
-    const bossDoc = await bossRef.get();
-    
-    if (!bossDoc.exists) {
-        // Create initial boss if none exists
-        const defaultBoss = {
-            id: "current",
-            bossTemplateId: "boss_dragon",
-            maxHealth: 10000000,
-            currentHealth: 10000000,
-            isActive: true,
-            startedAt: admin.firestore.Timestamp.now(),
-            topAttackers: {}
-        };
-        await bossRef.set(defaultBoss);
-        console.log("Initialized first world boss.");
-        return null;
-    }
 
-    const bossData = bossDoc.data()!;
-    const now = admin.firestore.Timestamp.now().toMillis();
-    const startedAt = bossData.startedAt ? bossData.startedAt.toMillis() : now;
-    const isOld = (now - startedAt) > 7 * 24 * 60 * 60 * 1000; // 7 days
-
-    if (!bossData.isActive || bossData.currentHealth <= 0 || isOld) {
-        if (bossData.currentHealth <= 0) {
-            // Distribute rewards to top attackers
-            const topAttackers = bossData.topAttackers || {};
-            const batch = db.batch();
-            
-            // Limit to top 100 to avoid batch size limits
-            const sortedAttackers = Object.entries(topAttackers)
-                .sort((a: any, b: any) => b[1] - a[1])
-                .slice(0, 100);
-
-            sortedAttackers.forEach(([uid, damage], index) => {
-                const userRef = db.collection("users").doc(uid);
-                let rewardGold = 0;
-                let rewardXP = 0;
-                
-                if (index === 0) { rewardGold = 5000; rewardXP = 10000; }
-                else if (index < 10) { rewardGold = 2000; rewardXP = 5000; }
-                else if (index < 50) { rewardGold = 500; rewardXP = 1500; }
-                else { rewardGold = 100; rewardXP = 500; }
-
-                batch.update(userRef, {
-                    gold: admin.firestore.FieldValue.increment(rewardGold),
-                    xp: admin.firestore.FieldValue.increment(rewardXP)
-                });
-            });
-
-            if (sortedAttackers.length > 0) {
-                await batch.commit();
-                console.log(`Distributed rewards to ${sortedAttackers.length} players for defeating world boss.`);
-            }
+    // Settlement lock via transaction to prevent double rewards from overlapping cron runs.
+    const settlement = await db.runTransaction(async (transaction) => {
+        const bossDoc = await transaction.get(bossRef);
+        if (!bossDoc.exists) {
+            const defaultBoss = {
+                id: "current",
+                bossTemplateId: "boss_dragon",
+                maxHealth: 10000000,
+                currentHealth: 10000000,
+                isActive: true,
+                startedAt: admin.firestore.Timestamp.now(),
+                topAttackers: {},
+                rewardsSettled: false,
+            };
+            transaction.set(bossRef, defaultBoss);
+            return { action: "initialized" as const };
         }
 
-        // Spawn new boss
+        const bossData = bossDoc.data()!;
+        const now = admin.firestore.Timestamp.now().toMillis();
+        const startedAt = bossData.startedAt ? bossData.startedAt.toMillis() : now;
+        const isOld = (now - startedAt) > 7 * 24 * 60 * 60 * 1000;
+
+        if (bossData.isActive && bossData.currentHealth > 0 && !isOld) {
+            return { action: "noop" as const };
+        }
+
+        if (bossData.currentHealth <= 0 && !bossData.rewardsSettled) {
+            transaction.update(bossRef, { rewardsSettled: true, isActive: false });
+            return {
+                action: "reward" as const,
+                topAttackers: bossData.topAttackers || {},
+            };
+        }
+
+        // Spawn replacement (defeated+settled, expired, or inactive)
         const templates = [
             { id: "boss_goblin", health: 5000000 },
             { id: "boss_orc", health: 15000000 },
-            { id: "boss_dragon", health: 30000000 }
+            { id: "boss_dragon", health: 30000000 },
         ];
         const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
-        
-        const newBoss = {
+        transaction.set(bossRef, {
             id: "current",
             bossTemplateId: randomTemplate.id,
             maxHealth: randomTemplate.health,
             currentHealth: randomTemplate.health,
             isActive: true,
             startedAt: admin.firestore.Timestamp.now(),
-            topAttackers: {}
-        };
-        
-        await bossRef.set(newBoss);
+            topAttackers: {},
+            rewardsSettled: false,
+        });
+        return { action: "spawned" as const, templateId: randomTemplate.id };
+    });
+
+    if (settlement.action === "reward") {
+        const topAttackers = settlement.topAttackers || {};
+        const sortedAttackers = Object.entries(topAttackers)
+            .sort((a: any, b: any) => b[1] - a[1])
+            .slice(0, 100);
+
+        const batch = db.batch();
+        sortedAttackers.forEach(([uid], index) => {
+            const userRef = db.collection("users").doc(uid);
+            let rewardGold = 100;
+            let rewardXP = 500;
+            if (index === 0) { rewardGold = 5000; rewardXP = 10000; }
+            else if (index < 10) { rewardGold = 2000; rewardXP = 5000; }
+            else if (index < 50) { rewardGold = 500; rewardXP = 1500; }
+
+            batch.set(userRef, {
+                gold: admin.firestore.FieldValue.increment(rewardGold),
+                pendingWorldBossXp: admin.firestore.FieldValue.increment(rewardXP),
+            }, { merge: true });
+        });
+
+        if (sortedAttackers.length > 0) {
+            await batch.commit();
+            console.log(`Distributed rewards to ${sortedAttackers.length} players for defeating world boss.`);
+        }
+
+        // Spawn next boss after settlement
+        const templates = [
+            { id: "boss_goblin", health: 5000000 },
+            { id: "boss_orc", health: 15000000 },
+            { id: "boss_dragon", health: 30000000 },
+        ];
+        const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
+        await bossRef.set({
+            id: "current",
+            bossTemplateId: randomTemplate.id,
+            maxHealth: randomTemplate.health,
+            currentHealth: randomTemplate.health,
+            isActive: true,
+            startedAt: admin.firestore.Timestamp.now(),
+            topAttackers: {},
+            rewardsSettled: false,
+        });
         console.log(`Spawned new world boss: ${randomTemplate.id}`);
+    } else if (settlement.action === "spawned") {
+        console.log(`Spawned new world boss: ${settlement.templateId}`);
+    } else if (settlement.action === "initialized") {
+        console.log("Initialized first world boss.");
     }
 
     return null;
@@ -738,28 +830,29 @@ export const acceptFriendRequest = functions.https.onCall(async (data, context) 
         const myDoc = await transaction.get(myRef);
         const senderDoc = await transaction.get(senderRef);
         
-        if (!myDoc.exists || !senderDoc.exists) return;
+        if (!myDoc.exists || !senderDoc.exists) {
+            throw new functions.https.HttpsError("not-found", "User not found.");
+        }
         
         const myData = myDoc.data() || {};
         const senderData = senderDoc.data() || {};
         
-        const myRequests = myData.friendRequests || [];
-        const myFriends = myData.friends || [];
+        const myRequests = [...(myData.friendRequests || [])];
+        const myFriends = [...(myData.friends || [])];
+        const senderFriends = [...(senderData.friends || [])];
         
-        const senderFriends = senderData.friends || [];
-        
-        // Remove from my requests
         const requestIndex = myRequests.indexOf(senderUid);
-        if (requestIndex > -1) {
-            myRequests.splice(requestIndex, 1);
+        if (requestIndex === -1) {
+            throw new functions.https.HttpsError(
+                "failed-precondition",
+                "No pending friend request from this user."
+            );
         }
+        myRequests.splice(requestIndex, 1);
         
-        // Add to my friends
         if (!myFriends.includes(senderUid)) {
             myFriends.push(senderUid);
         }
-        
-        // Add to sender's friends
         if (!senderFriends.includes(myUid)) {
             senderFriends.push(myUid);
         }
@@ -777,7 +870,7 @@ export const acceptFriendRequest = functions.https.onCall(async (data, context) 
 
     if (accepted) {
         const myDoc = await db.collection("users").doc(myUid).get();
-        const myName = myDoc.data()?.name || "Someone";
+        const myName = myDoc.data()?.name || myDoc.data()?.username || "Someone";
         await sendPushNotification(senderUid, "Friend Request Accepted", `${myName} accepted your request!`);
     }
     
@@ -1135,11 +1228,9 @@ export const resolvePvEBattle = functions.https.onCall(async (data, context) => 
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
     
     const uid = context.auth.uid;
-    const won = data.won;
-    const bossLootChance = Math.min(Math.max(Number(data.bossLootChance) || 0.2, 0), 1);
-    // Cap client-reported rewards until battles are fully server-simulated
-    const bossXp = Math.min(Math.max(Number(data.xp) || 0, 0), 500);
-    const bossGold = Math.min(Math.max(Number(data.gold) || 0, 0), 250);
+    const won = data.won === true;
+    const bossLootChance = Math.min(Math.max(Number(data.bossLootChance) || 0.2, 0), 0.35);
+    const { xp: bossXp, gold: bossGold } = clampPvERewards(data.xp, data.gold);
     
     const userRef = db.collection("users").doc(uid);
     let droppedItemId: string | null = null;
@@ -1150,56 +1241,50 @@ export const resolvePvEBattle = functions.https.onCall(async (data, context) => 
         
         const userData = userDoc.data();
         if (!userData) return;
+
+        // Rate limit: max 30 PvE resolves / hour
+        const nowMs = Date.now();
+        const windowStart = userData.pveResolveWindowStart?.toMillis
+            ? userData.pveResolveWindowStart.toMillis()
+            : Number(userData.pveResolveWindowStart || 0);
+        let resolveCount = userData.pveResolveCount || 0;
+        if (!windowStart || nowMs - windowStart > 60 * 60 * 1000) {
+            resolveCount = 0;
+        }
+        if (resolveCount >= 30) {
+            throw new functions.https.HttpsError("resource-exhausted", "PvE resolve rate limit reached.");
+        }
+
+        const updates: any = {
+            pveResolveCount: resolveCount + 1,
+            pveResolveWindowStart: resolveCount === 0
+                ? admin.firestore.Timestamp.now()
+                : (userData.pveResolveWindowStart || admin.firestore.Timestamp.now()),
+        };
         
-        const updates: any = {};
-        
-        // Grant Rewards
         if (won) {
-            updates.gold = (userData.gold || 0) + bossGold;
+            updates.gold = admin.firestore.FieldValue.increment(bossGold);
             
-            // Level up logic per class
             const selectedClass = userData.selectedClass || "Archer";
-            const progressions = userData.progressions || {};
-            let classProg = progressions[selectedClass] || { level: 1, xp: 0, totalReps: 0, storyStage: 1 };
+            const { updates: progUpdates } = applyXpToProgression(
+                userData.progressions || {},
+                selectedClass,
+                bossXp,
+                userData
+            );
+            Object.assign(updates, progUpdates);
             
-            classProg.xp += bossXp;
-            
-            let leveledUp = false;
-            let earnedStatPoints = 0;
-            
-            while (classProg.xp >= classProg.level * 150) {
-                classProg.xp -= classProg.level * 150;
-                classProg.level += 1;
-                earnedStatPoints += 3;
-                leveledUp = true;
-            }
-            
-            progressions[selectedClass] = classProg;
-            updates.progressions = progressions;
-            
-            if (leveledUp) {
-                updates.statPoints = (userData.statPoints || 0) + earnedStatPoints;
-                updates.maxEnergy = (userData.maxEnergy || 100) + (earnedStatPoints / 3) * 5;
-                updates.energy = updates.maxEnergy; // Restore energy on level up
-                updates.basePower = (userData.basePower || 100) + (earnedStatPoints / 3) * 15;
-            }
-            
-            // Loot Drop
             if (Math.random() <= bossLootChance) {
-                // Simplified loot table based on available shop IDs
                 const possibleLoot = [
                     "arm_com_1", "arm_com_2", "arm_com_3", "arm_com_4", "arm_com_5", "arm_com_6", "arm_com_7", "arm_com_8",
                     "arm_rar_1", "arm_rar_2", "arm_rar_3", "arm_rar_4", "arm_rar_5", "arm_rar_6", "arm_rar_7", "arm_rar_8",
                     "arm_epi_1", "arm_epi_2", "arm_epi_3", "arm_epi_4", "arm_epi_5", "arm_epi_6", "arm_epi_7", "arm_epi_8",
                     "arm_leg_1", "arm_leg_2", "arm_leg_3", "arm_leg_4", "arm_leg_5", "arm_leg_6",
                     "arm_myt_1", "arm_myt_2", "arm_myt_3", "arm_myt_4", "arm_myt_5",
-                    // Rings
                     "rng_com_1", "rng_rar_1", "rng_epi_1", "rng_leg_1", "rng_myt_1",
-                    // Amulets
                     "amu_com_1", "amu_rar_1", "amu_epi_1", "amu_leg_1", "amu_myt_1"
                 ];
                 
-                // Roll rarity: 60% Common, 25% Rare, 10% Epic, 4% Legendary, 1% Mythical
                 const roll = Math.random();
                 let rarityFilter = "com";
                 if (roll > 0.6 && roll <= 0.85) rarityFilter = "rar";
@@ -1211,8 +1296,8 @@ export const resolvePvEBattle = functions.https.onCall(async (data, context) => 
                 if (filteredLoot.length > 0) {
                     droppedItemId = filteredLoot[Math.floor(Math.random() * filteredLoot.length)];
                     
-                    const ownedIds = userData.ownedEquipmentIds || [];
-                    if (!ownedIds.includes(droppedItemId)) {
+                    const ownedIds = [...(userData.ownedEquipmentIds || [])];
+                    if (droppedItemId && !ownedIds.includes(droppedItemId)) {
                         ownedIds.push(droppedItemId);
                         updates.ownedEquipmentIds = ownedIds;
                     }
@@ -1223,7 +1308,216 @@ export const resolvePvEBattle = functions.https.onCall(async (data, context) => 
         transaction.update(userRef, updates);
     });
     
-    return { success: true, droppedItemId: droppedItemId };
+    return { success: true, droppedItemId: droppedItemId, won, xp: won ? bossXp : 0, gold: won ? bossGold : 0 };
+});
+
+// -------------------------------------------------------------------
+// 10b. HTTP Callable: Resolve PvP Battle (server-authoritative rewards)
+// -------------------------------------------------------------------
+export const resolvePvPBattle = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+
+    const uid = context.auth.uid;
+    const battleId = data.battleId;
+    if (!battleId || typeof battleId !== "string") {
+        throw new functions.https.HttpsError("invalid-argument", "battleId required.");
+    }
+
+    const battleRef = db.collection("battles").doc(battleId);
+    const userRef = db.collection("users").doc(uid);
+
+    const result = await db.runTransaction(async (transaction) => {
+        const battleDoc = await transaction.get(battleRef);
+        const userDoc = await transaction.get(userRef);
+        if (!battleDoc.exists) throw new functions.https.HttpsError("not-found", "Battle not found.");
+        if (!userDoc.exists) throw new functions.https.HttpsError("not-found", "User not found.");
+
+        const battle = battleDoc.data()!;
+        const userData = userDoc.data()!;
+
+        const localIds = (battle.localTeam || []).map((p: any) => p.id);
+        const oppIds = (battle.opponentTeam || []).map((p: any) => p.id);
+        if (!localIds.includes(uid) && !oppIds.includes(uid)) {
+            throw new functions.https.HttpsError("permission-denied", "Not a battle participant.");
+        }
+
+        const settled = battle.rewardsSettled || {};
+        if (settled[uid]) {
+            return { alreadySettled: true, outcome: settled[uid] };
+        }
+
+        if (battle.status !== "Finished" && battle.status !== "completed" && battle.status !== "Completed") {
+            // Allow settlement when winnerId already present (host wrote completion)
+            if (!battle.winnerId) {
+                throw new functions.https.HttpsError("failed-precondition", "Battle not completed yet.");
+            }
+        }
+
+        const outcome = pvpOutcomeForPlayer(battle.winnerId, uid);
+        const rewards = rewardsForPvpOutcome(outcome);
+        const selectedClass = userData.selectedClass || "Archer";
+        const { updates: progUpdates } = applyXpToProgression(
+            userData.progressions || {},
+            selectedClass,
+            rewards.xp,
+            userData
+        );
+
+        const trophies = { ...(userData.classTrophies || {}) };
+        trophies[selectedClass] = Math.max(0, (trophies[selectedClass] || 0) + rewards.trophies);
+
+        const userUpdates: any = {
+            ...progUpdates,
+            gold: admin.firestore.FieldValue.increment(rewards.gold),
+            classTrophies: trophies,
+            pvpTrophies: trophies[selectedClass] || 0,
+        };
+        if (outcome === "win") {
+            userUpdates.pvpWins = admin.firestore.FieldValue.increment(1);
+        }
+
+        settled[uid] = outcome;
+        transaction.update(battleRef, {
+            status: "Finished",
+            rewardsSettled: settled,
+        });
+        transaction.update(userRef, userUpdates);
+
+        return { alreadySettled: false, outcome, rewards };
+    });
+
+    return { success: true, ...result };
+});
+
+// -------------------------------------------------------------------
+// 10c. HTTP Callable: Award capped activity rewards (training / quests / health)
+// -------------------------------------------------------------------
+export const awardActivityRewards = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+
+    const uid = context.auth.uid;
+    const reason = String(data.reason || "activity").slice(0, 40);
+    const { xp, gold } = clampActivityRewards(data.xp, data.gold);
+    if (xp <= 0 && gold <= 0) {
+        return { success: true, xp: 0, gold: 0 };
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    await db.runTransaction(async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists) throw new functions.https.HttpsError("not-found", "User not found.");
+        const userData = userDoc.data()!;
+
+        const nowMs = Date.now();
+        const windowStart = userData.activityRewardWindowStart?.toMillis
+            ? userData.activityRewardWindowStart.toMillis()
+            : Number(userData.activityRewardWindowStart || 0);
+        let count = userData.activityRewardCount || 0;
+        if (!windowStart || nowMs - windowStart > 60 * 60 * 1000) {
+            count = 0;
+        }
+        if (count >= 120) {
+            throw new functions.https.HttpsError("resource-exhausted", "Activity reward rate limit reached.");
+        }
+
+        const selectedClass = userData.selectedClass || "Archer";
+        const updates: any = {
+            activityRewardCount: count + 1,
+            activityRewardWindowStart: count === 0
+                ? admin.firestore.Timestamp.now()
+                : (userData.activityRewardWindowStart || admin.firestore.Timestamp.now()),
+            lastActivityRewardReason: reason,
+        };
+        if (gold > 0) {
+            updates.gold = admin.firestore.FieldValue.increment(gold);
+        }
+        if (xp > 0) {
+            const { updates: progUpdates } = applyXpToProgression(
+                userData.progressions || {},
+                selectedClass,
+                xp,
+                userData
+            );
+            Object.assign(updates, progUpdates);
+        }
+        transaction.update(userRef, updates);
+    });
+
+    return { success: true, xp, gold };
+});
+
+// -------------------------------------------------------------------
+// 10d. HTTP Callable: FitRPG-scoped account cleanup (NO recursive users/{uid})
+// -------------------------------------------------------------------
+export const cleanupFitRPGAccount = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+    const uid = context.auth.uid;
+    const userRef = db.collection("users").doc(uid);
+    const userDoc = await userRef.get();
+    const userData = userDoc.data() || {};
+
+    // Leave clan membership if present
+    const clanId = userData.clanId;
+    if (clanId) {
+        const clanRef = db.collection("clans").doc(clanId);
+        await db.runTransaction(async (transaction) => {
+            const clanDoc = await transaction.get(clanRef);
+            if (!clanDoc.exists) return;
+            const clan = clanDoc.data()!;
+            const members = (clan.members || []).filter((m: any) => m.id !== uid);
+            if (clan.leaderId === uid) {
+                if (members.length === 0) {
+                    transaction.delete(clanRef);
+                } else {
+                    transaction.update(clanRef, {
+                        leaderId: members[0].id,
+                        members: members.map((m: any, i: number) =>
+                            i === 0 ? { ...m, role: "leader" } : m
+                        ),
+                    });
+                }
+            } else {
+                transaction.update(clanRef, { members });
+            }
+        });
+    }
+
+    // Strip FitRPG fields only — preserve sibling-app data on the same doc
+    const deletions: Record<string, admin.firestore.FieldValue> = {};
+    for (const key of FITRPG_USER_FIELD_KEYS) {
+        deletions[key] = admin.firestore.FieldValue.delete();
+    }
+    deletions["pendingWorldBossXp"] = admin.firestore.FieldValue.delete();
+    deletions["worldBossAttackCount"] = admin.firestore.FieldValue.delete();
+    deletions["worldBossAttackWindowStart"] = admin.firestore.FieldValue.delete();
+    deletions["pveResolveCount"] = admin.firestore.FieldValue.delete();
+    deletions["pveResolveWindowStart"] = admin.firestore.FieldValue.delete();
+    deletions["activityRewardCount"] = admin.firestore.FieldValue.delete();
+    deletions["activityRewardWindowStart"] = admin.firestore.FieldValue.delete();
+    deletions["lastActivityRewardReason"] = admin.firestore.FieldValue.delete();
+    deletions["fitrpgDeletedAt"] = admin.firestore.FieldValue.serverTimestamp();
+
+    if (userDoc.exists) {
+        await userRef.update(deletions);
+    }
+
+    // Delete FitRPG notifications subcollection only
+    const notifs = await userRef.collection("notifications").listDocuments();
+    for (let i = 0; i < notifs.length; i += 400) {
+        const batch = db.batch();
+        notifs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
+        await batch.commit();
+    }
+
+    // Cancel open matchmaking tickets owned by user
+    const tickets = await db.collection("matchmaking").where("uid", "==", uid).limit(50).get();
+    if (!tickets.empty) {
+        const batch = db.batch();
+        tickets.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+    }
+
+    return { success: true, scoped: true };
 });
 
 // -------------------------------------------------------------------
@@ -1771,7 +2065,9 @@ export const imageProxy = onRequestV2(
   }
 );
 
-// ── 3. deleteAccount ────────────────────────────────────────────────────────
+// ── 3. deleteAccount (Food/Workout shared) ───────────────────────────────────
+// WARNING: recursiveDelete(users/{uid}) wipes sibling apps. FitRPG MUST use
+// cleanupFitRPGAccount + client Auth.user.delete() instead of this callable.
 export const deleteAccount = onCallV2(
   {
     region: "us-central1",

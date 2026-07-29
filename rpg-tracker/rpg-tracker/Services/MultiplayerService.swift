@@ -1173,13 +1173,7 @@ class MultiplayerService: ObservableObject {
                 
                 if !self.rewardsAwardedBattleIds.contains(battleId) {
                     self.rewardsAwardedBattleIds.insert(battleId)
-                    if winner == myUid {
-                        FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true, isPvPWinner: true)
-                    } else if winner != "draw" {
-                        FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true, isPvPWinner: false)
-                    } else {
-                        FirebaseService.shared.awardBattleRewards(xp: 100, gold: 30, isPvP: true, isPvPWinner: nil)
-                    }
+                    FirebaseService.shared.resolvePvPBattle(battleId: battleId)
                 }
 
                 // Battle is fully resolved — clear the starting guard
@@ -1238,13 +1232,7 @@ class MultiplayerService: ObservableObject {
         
         if !rewardsAwardedBattleIds.contains(clientBattle.id) {
             rewardsAwardedBattleIds.insert(clientBattle.id)
-            if winner == myUid {
-                FirebaseService.shared.awardBattleRewards(xp: 250, gold: 60, isPvP: true, isPvPWinner: true)
-            } else if winner != "draw" {
-                FirebaseService.shared.awardBattleRewards(xp: 50, gold: 15, isPvP: true, isPvPWinner: false)
-            } else {
-                FirebaseService.shared.awardBattleRewards(xp: 100, gold: 30, isPvP: true, isPvPWinner: nil)
-            }
+            FirebaseService.shared.resolvePvPBattle(battleId: clientBattle.id)
         }
         
         self.isBattleStarting = false

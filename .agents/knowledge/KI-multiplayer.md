@@ -1,33 +1,35 @@
 # Multiplayer (FitRPG)
 
-Updated: 2026-07-29 (post backend audit)
+Updated: 2026-07-29 (post TOP-10 fix + re-audit)
 
 ## Verdict
 
-Economy/PvP **not App Store ready** — open rules + client-authoritative gold/XP/energy. Details: [KI-audit-backend-2026-07-29](./KI-audit-backend-2026-07-29.md).
+**Core economy/PvP server path ready for App Store P0.** Residual P1 UX/matchmaking edges remain. Details: [KI-audit-backend-REAUDIT-2026-07-29](./KI-audit-backend-REAUDIT-2026-07-29.md).
 
 ## Server callables (live)
 
-`matchmakeClanWar`, `cancelClanWarSearch`, `processClanWarPhases`, `recordClanWarAttack`, `joinTeam`, `matchWithOpponent`, `fillTeammatesWithBots`, `triggerOpponentBotFallback`, `acceptFriendDuel`, `declineFriendDuel`, `attackWorldBoss`, `resolvePvEBattle`, `equipItem`, `purchaseItem` (+ `shopCatalog.ts` @ `b73e79f`), `declineFriendRequest`.
+Prior set plus: `resolvePvPBattle`, `awardActivityRewards`, `cleanupFitRPGAccount`.
+
+Also: `matchmakeClanWar`, `cancelClanWarSearch`, `processClanWarPhases`, `recordClanWarAttack`, `joinTeam`, `matchWithOpponent`, `fillTeammatesWithBots`, `triggerOpponentBotFallback`, `acceptFriendDuel`, `declineFriendDuel`, `attackWorldBoss`, `resolvePvEBattle`, `equipItem`, `purchaseItem`, `declineFriendRequest`, `acceptFriendRequest`, …
 
 Deploy: `scripts/deploy-fitrpg-safe.sh` only.
 
-## What works (partial)
+## What works
 
-- Energy hold/refund: PvP queue / friend duel / 3v3
-- Shop buy → `purchaseItem` (server catalog); equip → `equipItem`
-- Clan war results overlay when cron clears active war
-- `world_bosses` rules: `write: false`
+- Rules: economy fields / friends / progressions CF-only; gold client decrease only
+- Shop buy → `purchaseItem`; equip → `equipItem`
+- Online PvP settle → `resolvePvPBattle`
+- World boss: energy charge + rate limit; cycle settlement lock
+- Clan war: server rolls win; rewards in `recordClanWarAttack`
+- FitRPG delete → `cleanupFitRPGAccount` (never recursive `users/{uid}`)
 
-## Still open (P0)
+## Still open (P1)
 
-- Broad client writes: `users` / `clans` / `battles` / `matchmaking`
-- `syncCharacter` economy overwrite (+ sibling fields risk)
-- PvP rewards client-side
-- `attackWorldBoss` no energy; `resolvePvEBattle` / `recordClanWarAttack` trust client
-- `acceptFriendRequest` force-friend; `processWorldBossCycle` double-reward race
-- `deleteAccount` recursiveDelete cross-app
+- Combat state still client-written (rewards locked)
+- Friend duel / clan CF error surfacing
+- Ticket races / 3v3 invite edges
+- App Check on 1st-gen callables
 
 ## Do not re-flag as missing
 
-`declineFriendRequest`, `cancelClanWarSearch`, `purchaseItem`, `acceptFriendDuel`, `shopCatalog.ts`, `world_bosses` write:false — already shipped.
+`declineFriendRequest`, `cancelClanWarSearch`, `purchaseItem`, `acceptFriendDuel`, `shopCatalog.ts`, `world_bosses` write:false, `resolvePvPBattle`, `awardActivityRewards`, `cleanupFitRPGAccount`.

@@ -42,6 +42,17 @@ class CameraTrackingVM: ObservableObject {
     private static let freeTrainingRepsKey = "freeTrainingRepsCount"
     private static let freeTrainingDateKey = "freeTrainingDate"
     private static let freeTrainingDailyCap = 50
+    static let freeTrainingDailyCapPublic = 50
+
+    static func freeTrainingRepsUsedToday() -> Int {
+        let defaults = UserDefaults.standard
+        let today = Calendar.current.startOfDay(for: Date())
+        let storedDay = defaults.object(forKey: freeTrainingDateKey) as? Date ?? .distantPast
+        if !Calendar.current.isDate(storedDay, inSameDayAs: today) {
+            return 0
+        }
+        return defaults.integer(forKey: freeTrainingRepsKey)
+    }
     
     init(selectedClass: CharacterClass, targetReps: Int? = nil, bossMaxHP: Int? = nil, damagePerRep: Int? = nil, bossName: String? = nil, bossImage: String? = nil, isDungeonMode: Bool = false, onComplete: ((Int) -> Void)? = nil) {
         self.selectedClass = selectedClass
@@ -173,7 +184,8 @@ class CameraTrackingVM: ObservableObject {
                 BattleEngine.shared.registerPlayerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
                 MultiplayerService.shared.registerRepetition(isCorrectForm: self.isCorrectForm, isCritical: isCritical)
             } else if canAwardFreeTrainingReward() {
-                firebaseService.awardBattleRewards(xp: 15, gold: 5)
+                // Rewards granted once on FINISH via awardWorkoutRewards — avoid per-rep double pay.
+                DailyQuestProgressStore.recordExercise(for: selectedClass, amount: 1)
                 recordFreeTrainingRep()
             }
         }

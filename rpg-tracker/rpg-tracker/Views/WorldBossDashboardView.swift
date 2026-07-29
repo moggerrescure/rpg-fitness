@@ -186,12 +186,7 @@ struct WorldBossDashboardView: View {
             .padding(.horizontal, 24)
             
             Button(action: {
-                guard firebaseService.consumeEnergy(amount: 15) else {
-                    withAnimation {
-                        energyHint = "Not enough energy. Wait for regen (~1 every 5 min)."
-                    }
-                    return
-                }
+                // Energy is charged server-side on attackWorldBoss when damage is submitted.
                 energyHint = nil
                 showingBattleArena = true
             }) {

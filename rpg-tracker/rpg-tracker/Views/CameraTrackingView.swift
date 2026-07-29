@@ -113,7 +113,8 @@ struct CameraTrackingView: View {
                                 .cornerRadius(12)
                                 .padding(.top, 4)
                             } else {
-                                Text("PRACTICE MODE • UNLIMITED")
+                                let remaining = max(0, CameraTrackingVM.freeTrainingDailyCapPublic - CameraTrackingVM.freeTrainingRepsUsedToday())
+                                Text("PRACTICE MODE • \(remaining) REPS LEFT TODAY")
                                     .font(.system(size: 9, design: .monospaced))
                                     .foregroundColor(Theme.textMuted)
                             }
@@ -380,6 +381,35 @@ struct CameraTrackingView: View {
                     } else {
                         // Normal Training Layout
                         ZStack {
+                            if viewModel.cameraManager.authorizationStatus == .denied
+                                || viewModel.cameraManager.authorizationStatus == .restricted {
+                                VStack(spacing: 16) {
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(Theme.textSecondary)
+                                    Text("Camera Access Required")
+                                        .font(.system(.headline, design: .monospaced))
+                                        .foregroundColor(.white)
+                                    Text("Enable camera in Settings to track your workout form.")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(Theme.textSecondary)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal, 32)
+                                    Button("Open Settings") {
+                                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                                            UIApplication.shared.open(url)
+                                        }
+                                    }
+                                    .font(.system(.subheadline, design: .monospaced).weight(.bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 12)
+                                    .background(viewModel.selectedClass.themeColor)
+                                    .cornerRadius(12)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(Color.black)
+                            } else {
                             CameraPreview(session: viewModel.cameraManager.session)
                                 .ignoresSafeArea()
                                 
@@ -489,6 +519,7 @@ struct CameraTrackingView: View {
                                     .ignoresSafeArea(edges: .bottom)
                                 )
                             }
+                            } // camera authorized
                         }
                     }
                 }

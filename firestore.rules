@@ -115,54 +115,164 @@ service cloud.firestore {
 
     // =====================================================
     // RPG FITNESS RULES
+    // Economy / rewards / trophies / owned gear: Cloud Functions only.
+    // Sibling apps may still merge non-FitRPG fields on users/{uid}.
     // =====================================================
-    
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // FitRPG economy + social graph fields — never client-authoritative on update.
+    // Gold may only decrease client-side (deposits); increases are CF-only.
+    function fitrpgProtectedKeys() {
+      return [
+        'progressions', 'ownedEquipmentIds', 'classTrophies',
+        'pvpWins', 'pvpTrophies', 'statPoints', 'basePower', 'maxEnergy',
+        'friends', 'friendRequests'
+      ].toSet();
+    }
+
+    function fitrpgEconomyUnchanged() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny(fitrpgProtectedKeys()) == false
+        && request.resource.data.energy is int
+        && request.resource.data.energy >= 0
+        && request.resource.data.energy <= resource.data.maxEnergy
+        && request.resource.data.gold is int
+        && request.resource.data.gold >= 0
+        && request.resource.data.gold <= resource.data.gold;
+    }
+
+    function fitrpgCreateEconomyOk() {
+      return request.resource.data.gold is int
+        && request.resource.data.gold >= 0
+        && request.resource.data.gold <= 100
+        && request.resource.data.energy is int
+        && request.resource.data.energy >= 0
+        && request.resource.data.energy <= 100
+        && request.resource.data.maxEnergy is int
+        && request.resource.data.maxEnergy == 100;
+    }
+
     // Users Collection (and all its subcollections like notifications)
     match /users/{userId} {
-      // Anyone logged in can read user profiles
-      allow read: if request.auth != null;
-      // Users can only write to their own document
-      allow write: if request.auth != null && request.auth.uid == userId;
-      
+      allow read: if isSignedIn();
+
+      // Create character (or sibling-app first write). FitRPG starter caps apply when gold present.
+      allow create: if isUser(userId)
+                    && (
+                      !('gold' in request.resource.data)
+                      || fitrpgCreateEconomyOk()
+                    );
+
+      // Owner may update profile / energy / equipment slots / stats — not economy.
+      allow update: if isUser(userId) && (
+        // Non-FitRPG / partial merges (FoodTracker etc.): no protected keys touched
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(fitrpgProtectedKeys())
+          && (
+            !('gold' in resource.data)
+            || !('gold' in request.resource.data)
+            || request.resource.data.gold <= resource.data.gold
+          )
+        )
+        // FitRPG character sync: energy bounded, gold not increased, protected keys unchanged
+        || (
+          ('energy' in resource.data)
+          && fitrpgEconomyUnchanged()
+        )
+      );
+
+      // Account wipe of shared user doc is CF-only (cross-app safety).
+      allow delete: if false;
+
       // Notifications subcollection: any authenticated user can CREATE a notification
       // for any other user (needed for friend requests, duel invites, team invites)
       match /notifications/{notifId} {
-        allow read, delete: if request.auth != null && request.auth.uid == userId;
-        allow create, update: if request.auth != null;
+        allow read, delete: if isUser(userId);
+        allow create, update: if isSignedIn();
       }
-      
-      // All other subcollections: owner only
+
+      // All other subcollections: owner only (Stepper workouts, blocked, etc.)
       match /{subcollection}/{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isUser(userId);
       }
     }
-    
-    // Clans Collection
+
+    // Clans — create own clan; limited member updates; war scores CF-only
     match /clans/{clanId} {
-      // Anyone can read clans
-      allow read: if request.auth != null;
-      // Allow writes so users can increment clan totalReps
-      allow write: if request.auth != null;
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.leaderId == request.auth.uid
+                    && !('activeWar' in request.resource.data);
+
+      allow update: if isSignedIn()
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly(['totalReps', 'members', 'description', 'emblem', 'name', 'trophies'])
+                    && (
+                      !('activeWar' in resource.data)
+                      || request.resource.data.activeWar == resource.data.activeWar
+                    );
+
+      allow delete: if isSignedIn()
+                    && resource.data.leaderId == request.auth.uid;
     }
-    
+
     // World Bosses — client read-only; Cloud Functions (Admin SDK) write
     match /world_bosses/{bossId} {
-      allow read: if request.auth != null;
+      allow read: if isSignedIn();
       allow write: if false;
     }
-    
-    // Battles Collection
+
+    // Battles — participants may sync combat state; rewardsSettled is CF-only
     match /battles/{battleId} {
-      // Allow players to read and write battles they are part of
-      // (For simplicity, allowing authenticated users for now)
-      allow read, write: if request.auth != null;
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && !('rewardsSettled' in request.resource.data);
+
+      allow update: if isSignedIn()
+                    && (
+                      !('rewardsSettled' in resource.data)
+                      || request.resource.data.rewardsSettled == resource.data.rewardsSettled
+                    )
+                    && (
+                      !('rewardsSettled' in request.resource.data)
+                      || (
+                        'rewardsSettled' in resource.data
+                        && request.resource.data.rewardsSettled == resource.data.rewardsSettled
+                      )
+                    );
+
+      allow delete: if false;
     }
-    
-    // Matchmaking Collection
+
+    // Matchmaking — own ticket create/update/delete; others read for invites
     match /matchmaking/{ticketId} {
-      // Anyone can read tickets
-      allow read: if request.auth != null;
-      allow create, update, delete: if request.auth != null;
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid;
+
+      allow update: if isSignedIn()
+                    && (
+                      resource.data.uid == request.auth.uid
+                      || resource.data.targetUid == request.auth.uid
+                      || (resource.data.pendingInvites is list
+                          && request.auth.uid in resource.data.pendingInvites)
+                    );
+
+      allow delete: if isSignedIn()
+                    && (resource.data.uid == request.auth.uid
+                        || resource.data.targetUid == request.auth.uid);
     }
 
     // FitRPG UGC reports are merged into the shared /reports rule above (Workout + FitRPG).

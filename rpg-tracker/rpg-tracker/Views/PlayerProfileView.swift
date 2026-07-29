@@ -801,13 +801,8 @@ struct PlayerProfileView: View {
         do {
             try await SocialAuthService.shared.reauthenticateForDeletion()
             try await firebaseService.deleteFitRPGAccountData(uid: uid)
-
-            if authManager.isAnonymous {
-                try await authManager.deleteCurrentUser()
-            } else {
-                try await SocialAuthService.shared.signOut()
-            }
-
+            // Guideline 5.1.1(v): always delete the Auth user (anonymous and linked).
+            try await authManager.deleteCurrentUser()
             showAccountDeletedConfirmation = true
         } catch {
             deleteAccountError = error.localizedDescription

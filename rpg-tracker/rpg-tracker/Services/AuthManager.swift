@@ -7,6 +7,8 @@ final class AuthManager: ObservableObject {
     @Published var isAnonymous: Bool = true
     @Published var isAuthenticated: Bool = false
     @Published var currentUser: FirebaseAuth.User?
+    @Published var authError: String? = nil
+    @Published var isConnecting: Bool = true
     
     static let shared = AuthManager()
 
@@ -17,20 +19,34 @@ final class AuthManager: ObservableObject {
             self.isAnonymous = user?.isAnonymous ?? true
             self.isAuthenticated = user != nil && !(user?.isAnonymous ?? true)
             
-            if user == nil {
+            if user != nil {
+                self.isConnecting = false
+                self.authError = nil
+            } else {
                 self.signInAnonymously()
             }
         }
     }
     
     private func signInAnonymously() {
-        Auth.auth().signInAnonymously { authResult, error in
+        isConnecting = true
+        Auth.auth().signInAnonymously { [weak self] authResult, error in
+            guard let self = self else { return }
             if let error = error {
                 print("Error signing in anonymously: \(error.localizedDescription)")
+                self.isConnecting = false
+                self.authError = error.localizedDescription
             } else {
                 print("Signed in anonymously with uid: \(authResult?.user.uid ?? "")")
+                self.isConnecting = false
+                self.authError = nil
             }
         }
+    }
+
+    func retryAnonymousSignIn() {
+        authError = nil
+        signInAnonymously()
     }
 
     var currentUserEmail: String? {

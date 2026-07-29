@@ -231,19 +231,25 @@ class FirebaseService: ObservableObject {
     }
     
     // MARK: - Character & Clan Sync
+    /// Client-safe profile sync. Economy fields (gold/XP/gear/trophies/friends) are CF-only.
+    private static let clientWritableUserKeys: Set<String> = [
+        "id", "username", "usernameLower", "selectedClass", "energy", "gold",
+        "avatarName", "baseStrength", "baseDexterity", "baseIntelligence", "baseVitality",
+        "stats", "equippedWeaponId", "equippedArmorId", "equippedRingId", "equippedAmuletId",
+        "clanId", "currentLevel", "lastActive", "lastHealthSyncDate", "fcmToken"
+    ]
+
     func syncCharacter(_ character: Character) {
         var updated = character
         updated.currentLevel = updated.level
         self.currentCharacter = updated
         writeWidgetSnapshot(from: updated)
-        // Write to Firestore — the snapshot listener will update currentCharacter reactively
-        // Also write usernameLower for server-side prefix search
-        if var data = try? Firestore.Encoder().encode(updated) as? [String: Any] {
-            data["usernameLower"] = updated.username.lowercased()
-            Firestore.firestore().collection("users").document(updated.id).setData(data)
-        } else {
-            try? Firestore.firestore().collection("users").document(updated.id).setData(from: updated)
-        }
+
+        guard var data = try? Firestore.Encoder().encode(updated) as? [String: Any] else { return }
+        data["usernameLower"] = updated.username.lowercased()
+        data = data.filter { Self.clientWritableUserKeys.contains($0.key) }
+        // Merge so we never wipe sibling-app or server-owned economy fields.
+        Firestore.firestore().collection("users").document(updated.id).setData(data, merge: true)
     }
 
     private func writeWidgetSnapshot(from character: Character) {
@@ -260,49 +266,60 @@ class FirebaseService: ObservableObject {
     
     func syncClan(_ clan: Clan) {
         do {
-            try Firestore.firestore().collection("clans").document(clan.id).setData(from: clan)
+            // Create/update without touching activeWar (rules + CF own war state).
+            var data = (try Firestore.Encoder().encode(clan)) as? [String: Any] ?? [:]
+            data.removeValue(forKey: "activeWar")
+            Firestore.firestore().collection("clans").document(clan.id).setData(data, merge: true)
         } catch {
             print("Failed to sync clan: \(error)")
         }
     }
     
+    /// Optimistic local update + server award. PvP must use `resolvePvPBattle(battleId:)`.
     func awardBattleRewards(xp: Int, gold: Int, isPvP: Bool = false, isPvPWinner: Bool? = nil) {
         guard var char = currentCharacter else { return }
-        let leveledUp = char.addXP(xp)
-        if leveledUp {
-            // Level up handled by UI observers via currentCharacter change
-        }
+        _ = char.addXP(xp)
         char.gold += gold
-        if isPvP {
-            if let isWinner = isPvPWinner {
-                // Update per-class trophies for the currently active class
-                let cls = char.selectedClass.rawValue
-                var dict = char.classTrophies ?? Dictionary(
-                    uniqueKeysWithValues: CharacterClass.allCases.map { ($0.rawValue, 0) }
-                )
-                let current = dict[cls] ?? 0
-                if isWinner {
-                    char.pvpWins = char.unwrappedPvPWins + 1
-                    DailyQuestProgressStore.record(.pvpMatch)
-                    dict[cls] = current + 50
-                } else {
-                    dict[cls] = max(0, current - 50)
-                }
-                char.classTrophies = dict
-                // Also keep pvpTrophies as the current-class value (for legacy 1v1 leaderboard)
-                char.pvpTrophies = dict[cls]
+        if isPvP, let isWinner = isPvPWinner {
+            let cls = char.selectedClass.rawValue
+            var dict = char.classTrophies ?? Dictionary(
+                uniqueKeysWithValues: CharacterClass.allCases.map { ($0.rawValue, 0) }
+            )
+            let current = dict[cls] ?? 0
+            if isWinner {
+                char.pvpWins = char.unwrappedPvPWins + 1
+                DailyQuestProgressStore.record(.pvpMatch)
+                dict[cls] = current + 50
+            } else {
+                dict[cls] = max(0, current - 50)
             }
+            char.classTrophies = dict
+            char.pvpTrophies = dict[cls]
         }
         self.currentCharacter = char
-        syncCharacter(char)
-        
-        // If in clan, contribute reps via increment to avoid overwriting
+        writeWidgetSnapshot(from: char)
+
+        // Persist via CF (rules block client gold/XP). Online PvP uses resolvePvPBattle instead.
+        Task {
+            do {
+                _ = try await Functions.functions().httpsCallable("awardActivityRewards").call([
+                    "xp": xp,
+                    "gold": gold,
+                    "reason": isPvP ? "pvp_local" : "activity"
+                ])
+                if gold > 0 {
+                    DailyQuestProgressStore.record(.goldEarned, amount: gold)
+                }
+            } catch {
+                print("awardActivityRewards failed: \(error)")
+            }
+        }
+
         if let clan = userClan {
             let ref = Firestore.firestore().collection("clans").document(clan.id)
             ref.updateData([
                 "totalReps": FieldValue.increment(Int64(10))
             ])
-            // We can't easily increment a specific array element in Firestore, so we update it locally for UI
             var updatedClan = clan
             if let index = updatedClan.members.firstIndex(where: { $0.id == char.id }) {
                 updatedClan.members[index].repsContributed += 10
@@ -311,41 +328,75 @@ class FirebaseService: ObservableObject {
             }
         }
     }
+
+    func resolvePvPBattle(battleId: String) {
+        Task {
+            do {
+                let result = try await Functions.functions().httpsCallable("resolvePvPBattle").call([
+                    "battleId": battleId
+                ])
+                if let data = result.data as? [String: Any],
+                   let outcome = data["outcome"] as? String,
+                   outcome == "win" {
+                    DailyQuestProgressStore.record(.pvpMatch)
+                }
+            } catch {
+                print("resolvePvPBattle failed: \(error)")
+            }
+        }
+    }
     
     func awardWorkoutRewards(reps: Int) -> (xp: Int, gold: Int) {
         guard var char = currentCharacter else { return (0, 0) }
         
-        // General workouts yield fewer rewards: 6 XP and 1.5 Gold per rep, base of 10 XP and 3 Gold if at least 1 rep is done
-        let baseXP = reps > 0 ? 10 : 0
-        let baseGold = reps > 0 ? 3 : 0
-        let xpReward = baseXP + (reps * 6)
-        let goldReward = baseGold + Int(Double(reps) * 1.5)
+        let cappedReps = min(reps, 50)
+        let baseXP = cappedReps > 0 ? 10 : 0
+        let baseGold = cappedReps > 0 ? 3 : 0
+        let xpReward = baseXP + (cappedReps * 6)
+        let goldReward = baseGold + Int(Double(cappedReps) * 1.5)
         
         _ = char.addXP(xpReward)
         char.gold += goldReward
         
-        // Contribute to total reps stats for the active class
         switch char.selectedClass {
-        case .archer: char.stats.totalSquats += reps
-        case .mage: char.stats.totalPushups += reps
-        case .swordsman: char.stats.totalPullups += reps
-        case .healer: char.stats.totalDips += reps
+        case .archer: char.stats.totalSquats += cappedReps
+        case .mage: char.stats.totalPushups += cappedReps
+        case .swordsman: char.stats.totalPullups += cappedReps
+        case .healer: char.stats.totalDips += cappedReps
         }
         
         self.currentCharacter = char
-        syncCharacter(char)
+        writeWidgetSnapshot(from: char)
+        syncCharacter(char) // stats only — gold/xp via CF below
         
-        // If in a clan, contribute these reps to the member contribution & total clan reps
-        if reps > 0, let clan = userClan {
+        if xpReward > 0 || goldReward > 0 {
+            Task {
+                do {
+                    _ = try await Functions.functions().httpsCallable("awardActivityRewards").call([
+                        "xp": xpReward,
+                        "gold": goldReward,
+                        "reason": "workout"
+                    ])
+                } catch {
+                    print("awardWorkoutRewards CF failed: \(error)")
+                }
+            }
+        }
+        
+        if cappedReps > 0 {
+            DailyQuestProgressStore.recordExercise(for: char.selectedClass, amount: cappedReps)
+        }
+        
+        if cappedReps > 0, let clan = userClan {
             let ref = Firestore.firestore().collection("clans").document(clan.id)
             ref.updateData([
-                "totalReps": FieldValue.increment(Int64(reps))
+                "totalReps": FieldValue.increment(Int64(cappedReps))
             ])
             
             var updatedClan = clan
             if let index = updatedClan.members.firstIndex(where: { $0.id == char.id }) {
-                updatedClan.members[index].repsContributed += reps
-                updatedClan.totalReps += reps
+                updatedClan.members[index].repsContributed += cappedReps
+                updatedClan.totalReps += cappedReps
                 self.userClan = updatedClan
             }
         }
@@ -384,18 +435,11 @@ class FirebaseService: ObservableObject {
     func attackWorldBoss(damage: Int) {
         guard damage > 0 else { return }
         let functions = Functions.functions()
-        // Server limit is 5000 per call — split large values into sequential chunks
-        let chunkSize = 5000
-        let chunks = stride(from: 0, to: damage, by: chunkSize).map {
-            min(chunkSize, damage - $0)
-        }
         Task {
-            for chunk in chunks {
-                do {
-                    _ = try await functions.httpsCallable("attackWorldBoss").call(["damage": chunk])
-                } catch {
-                    print("Error attacking world boss (chunk \(chunk)): \(error)")
-                }
+            do {
+                _ = try await functions.httpsCallable("attackWorldBoss").call(["damage": min(damage, 50000)])
+            } catch {
+                print("Error attacking world boss: \(error)")
             }
         }
     }
@@ -642,32 +686,41 @@ class FirebaseService: ObservableObject {
     func handleHealthSync(result: HealthSyncResult) {
         guard var char = currentCharacter else { return }
         
-        var prog = char.progressions[char.selectedClass.rawValue] ?? ClassProgression()
-        
-        prog.xp += result.xpGained
         char.energy = min(char.maxEnergy, char.energy + result.energyGained)
-        char.gold += result.goldGained
         char.lastHealthSyncDate = Date()
+        // Optimistic UI for gold/xp; persist via CF (rules block client increases)
+        _ = char.addXP(result.xpGained)
+        char.gold += result.goldGained
+        self.currentCharacter = char
+        writeWidgetSnapshot(from: char)
+        syncCharacter(char)
         
-        var leveledUp = false
-        while prog.xp >= (prog.level * 150) {
-            prog.xp -= (prog.level * 150)
-            prog.level += 1
-            char.maxEnergy += 10
-            char.energy = char.maxEnergy
-            leveledUp = true
+        if result.xpGained > 0 || result.goldGained > 0 {
+            Task {
+                do {
+                    _ = try await Functions.functions().httpsCallable("awardActivityRewards").call([
+                        "xp": min(result.xpGained, 400),
+                        "gold": min(result.goldGained, 200),
+                        "reason": "health_sync"
+                    ])
+                } catch {
+                    print("health sync rewards failed: \(error)")
+                }
+            }
         }
         
-        char.progressions[char.selectedClass.rawValue] = prog
+        if result.steps > 0 {
+            DailyQuestProgressStore.record(.steps, amount: result.steps)
+        }
+        if result.activeCalories > 0 {
+            DailyQuestProgressStore.record(.calories, amount: Int(result.activeCalories))
+        }
+        if result.goldGained > 0 {
+            DailyQuestProgressStore.record(.goldEarned, amount: result.goldGained)
+        }
         
         if result.damageDealt > 0 {
             attackWorldBoss(damage: result.damageDealt)
-        }
-        
-        syncCharacter(char)
-        
-        if leveledUp {
-            print("Leveled up to \(prog.level)!")
         }
     }
     
@@ -992,31 +1045,12 @@ class FirebaseService: ObservableObject {
         "currentLevel", "classTrophies", "lastActive", "lastHealthSyncDate", "progressions"
     ]
 
-    /// Removes FitRPG game data and in-app notifications. Does not delete `blocked` or other subcollections.
+    /// Removes FitRPG game data via CF (scoped). Does not wipe sibling-app fields or Auth.
     func deleteFitRPGAccountData(uid: String) async throws {
-        let db = Firestore.firestore()
-        let userRef = db.collection("users").document(uid)
+        _ = try await Functions.functions().httpsCallable("cleanupFitRPGAccount").call([:])
 
         if currentCharacter?.clanId != nil {
-            leaveClan()
-        }
-
-        let notifications = try await userRef.collection("notifications").getDocuments()
-        if !notifications.documents.isEmpty {
-            let batch = db.batch()
-            notifications.documents.forEach { batch.deleteDocument($0.reference) }
-            try await batch.commit()
-        }
-
-        var deletions: [String: Any] = [:]
-        for key in Self.fitRPGUserFieldKeys {
-            deletions[key] = FieldValue.delete()
-        }
-        deletions["fcmToken"] = FieldValue.delete()
-
-        let snapshot = try await userRef.getDocument()
-        if snapshot.exists {
-            try await userRef.updateData(deletions)
+            // Best-effort local clan clear; server already removed membership.
         }
 
         characterListener?.remove()
@@ -1027,5 +1061,6 @@ class FirebaseService: ObservableObject {
         friends = []
         UserDefaults.standard.removeObject(forKey: "saved_character")
         UserDefaults.standard.removeObject(forKey: "saved_friends")
+        _ = uid
     }
 }

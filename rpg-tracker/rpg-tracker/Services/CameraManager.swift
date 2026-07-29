@@ -9,8 +9,8 @@ import Combine
 final class CameraManager: ObservableObject {
     @Published var joints: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
     @Published var bodyPose: VNHumanBodyPoseObservation? = nil
-    var isAuthorized = false
-    var authorizationStatus: AVAuthorizationStatus = .notDetermined
+    @Published var isAuthorized = false
+    @Published var authorizationStatus: AVAuthorizationStatus = .notDetermined
     var isSimulator = false
 
     let session = AVCaptureSession()

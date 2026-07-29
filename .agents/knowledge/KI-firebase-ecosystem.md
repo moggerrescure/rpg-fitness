@@ -5,7 +5,8 @@ Firebase backend FitRPG в **shared** project `serzhanovich-ecosystem-ce700` (~5
 
 **Deploy FitRPG:** always `scripts/deploy-fitrpg-safe.sh`. Never wipe sibling CF (`tryonWorker`, `tagGarment`, Food/Workout proxies).
 
-**Backend audit (concise):** [KI-audit-backend-2026-07-29](./KI-audit-backend-2026-07-29.md)  
+**Backend audit (concise):** [KI-audit-backend-REAUDIT-2026-07-29](./KI-audit-backend-REAUDIT-2026-07-29.md)  
+**Prior audit:** [KI-audit-backend-2026-07-29](./KI-audit-backend-2026-07-29.md)  
 **Полный отчёт (может быть stale):** [docs/audit/2026-07-29-firebase-ecosystem.md](../../docs/audit/2026-07-29-firebase-ecosystem.md)
 
 ---
@@ -45,15 +46,17 @@ More P0s (PvP rewards client-side, resolvePvEBattle trust, force-friend, clan wa
 
 ---
 
-## Open Writes (rules summary)
+## Open Writes (rules summary — post 2026-07-29 harden)
 
 ```
-clans/*          → allow write: if request.auth != null   ❌
-battles/*        → allow write: if request.auth != null   ❌
-matchmaking/*    → allow write: if request.auth != null   ❌
-users/{uid}      → owner full write (gold, xp, trophies) ❌
-world_bosses/*   → write: false                          ✅
+clans/*          → create leader; update limited fields; activeWar CF-only ✅
+battles/*        → create/update combat OK; rewardsSettled CF-only ✅
+matchmaking/*    → own ticket (+ invite target) ✅
+users/{uid}      → economy/friends/progressions CF-only; gold decrease OK ✅
+world_bosses/*   → write: false ✅
 ```
+
+FitRPG account delete: **`cleanupFitRPGAccount`** (scoped). Do **not** call shared `deleteAccount` recursive wipe from FitRPG.
 
 ---
 

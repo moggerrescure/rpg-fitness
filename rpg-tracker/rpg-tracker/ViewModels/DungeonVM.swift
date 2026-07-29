@@ -250,6 +250,7 @@ class DungeonVM: ObservableObject {
     private func grantVictoryRewards() {
         xpEarned = 1000 + (boss?.maxHP ?? 0) / 10
         goldEarned = 500 + repCount * 5
+        DailyQuestProgressStore.record(.dungeonRun)
         FirebaseService.shared.resolvePvEBattle(won: true, bossLootChance: 1.0, xp: xpEarned, gold: goldEarned) { droppedId in
             DispatchQueue.main.async {
                 if let id = droppedId,

@@ -19,6 +19,7 @@ struct DailyQuest: Identifiable {
         case pvpMatch, dungeonRun
         case steps, calories
         case equipItem, visitShop
+        case goldEarned
         case generic
     }
 }
@@ -101,10 +102,15 @@ struct DailyQuestEngine {
         case .pullups:    return DailyQuestProgressStore.count(for: .pullups)
         case .dips:       return DailyQuestProgressStore.count(for: .dips)
         case .pvpMatch:   return DailyQuestProgressStore.count(for: .pvpMatch)
+        case .dungeonRun: return DailyQuestProgressStore.count(for: .dungeonRun)
+        case .steps:      return DailyQuestProgressStore.count(for: .steps)
+        case .calories:   return DailyQuestProgressStore.count(for: .calories)
         case .visitShop:  return DailyQuestProgressStore.count(for: .visitShop)
         case .equipItem:  return DailyQuestProgressStore.count(for: .equipItem)
         case .generic where quest.id == "q_mix_20":
             return DailyQuestProgressStore.count(for: .pushups) + DailyQuestProgressStore.count(for: .squats)
+        case .generic where quest.id == "q_earn_100g":
+            return DailyQuestProgressStore.count(for: .goldEarned)
         default:
             return 0
         }

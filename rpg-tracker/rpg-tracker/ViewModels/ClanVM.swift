@@ -161,7 +161,7 @@ class ClanVM: ObservableObject {
             lootRewarded: nil
         )
         if xp > 0 {
-            FirebaseService.shared.awardBattleRewards(xp: xp, gold: won ? 40 : 10, isPvP: true, isPvPWinner: tied ? nil : won)
+            // War attack rewards are granted by recordClanWarAttack CF — UI totals only.
         }
     }
 }

@@ -75,7 +75,7 @@ struct FitRPGApp: App {
                         .transition(.opacity)
                         .zIndex(1000)
                 } else if authManager.currentUser == nil {
-                    // Waiting for Firebase anonymous auth
+                    // Waiting for Firebase anonymous auth — or show hard error
                     ZStack {
                         Color(red: 0.04, green: 0.04, blue: 0.10).ignoresSafeArea()
                         VStack(spacing: 20) {
@@ -86,12 +86,33 @@ struct FitRPGApp: App {
                                                    startPoint: .top, endPoint: .bottom)
                                 )
                                 .shadow(color: .blue.opacity(0.5), radius: 20)
-                            ProgressView()
-                                .tint(.white.opacity(0.6))
-                            Text("Connecting to servers...")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(Color(white: 0.45))
-                                .tracking(1)
+
+                            if let err = authManager.authError {
+                                Text("Connection failed")
+                                    .font(.system(.headline, design: .monospaced))
+                                    .foregroundColor(.white)
+                                Text(err)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(Color(white: 0.55))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 32)
+                                Button("Retry") {
+                                    authManager.retryAnonymousSignIn()
+                                }
+                                .font(.system(.subheadline, design: .monospaced).weight(.bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                                .background(Color(red: 0.3, green: 0.5, blue: 0.9))
+                                .cornerRadius(12)
+                            } else {
+                                ProgressView()
+                                    .tint(.white.opacity(0.6))
+                                Text("Connecting to servers...")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(Color(white: 0.45))
+                                    .tracking(1)
+                            }
                         }
                     }
                     .transition(.opacity)
