@@ -668,35 +668,52 @@ struct ActiveClanView: View {
                             HStack(spacing: 12) {
                                 ProgressView()
                                     .tint(Theme.accent)
-                                Text("SEARCHING FOR OPPONENT...")
-                                    .font(.system(.subheadline, design: .monospaced))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Theme.textPrimary)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("SEARCHING FOR OPPONENT")
+                                        .font(.system(.subheadline, design: .monospaced))
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Theme.textPrimary)
+                                    Text("Matching another clan, or ShadowFiend if none join.")
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.textSecondary)
+                                }
                                 Spacer()
                             }
                             
                             HStack {
-                                LiveCountdownView(targetDate: war.phaseEndsAt, prefix: "Max wait:")
+                                LiveCountdownView(targetDate: war.phaseEndsAt, prefix: "Bot in:")
                                 Spacer()
                             }
                             
-                            Text("If no opponent is found within ~2 minutes, a shadow clan is assigned.")
-                                .font(.caption2)
-                                .foregroundColor(Theme.textSecondary)
-                                
                             if clan.leaderId == FirebaseService.shared.currentCharacter?.id {
-                                Button(action: viewModel.cancelWarSearch) {
-                                    Text("CANCEL SEARCH")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .fontWeight(.bold)
-                                        .padding(.vertical, 8)
-                                        .padding(.horizontal, 16)
-                                        .background(Theme.danger.opacity(0.8))
-                                        .foregroundColor(.white)
-                                        .cornerRadius(8)
+                                HStack(spacing: 10) {
+                                    Button(action: viewModel.claimBotOpponentNow) {
+                                        Text(viewModel.isWarActionInFlight ? "MATCHING…" : "FIGHT SHADOW CLAN NOW")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .fontWeight(.bold)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .background(Theme.accent)
+                                            .foregroundColor(.white)
+                                            .cornerRadius(8)
+                                    }
+                                    .buttonStyle(TactileButtonStyle())
+                                    .disabled(viewModel.isWarActionInFlight)
+                                    
+                                    Button(action: viewModel.cancelWarSearch) {
+                                        Text("CANCEL")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .fontWeight(.bold)
+                                            .padding(.vertical, 10)
+                                            .padding(.horizontal, 14)
+                                            .background(Theme.danger.opacity(0.85))
+                                            .foregroundColor(.white)
+                                            .cornerRadius(8)
+                                    }
+                                    .buttonStyle(TactileButtonStyle())
+                                    .disabled(viewModel.isWarActionInFlight)
                                 }
-                                .buttonStyle(TactileButtonStyle())
-                                .padding(.top, 8)
+                                .padding(.top, 4)
                             }
                         } else if war.phase == .preparation {
                             HStack {
@@ -714,14 +731,34 @@ struct ActiveClanView: View {
                             }
                             .foregroundColor(Theme.textPrimary)
                             
-                            Text("PREPARATION PHASE")
+                            Text("PREPARATION")
                                 .font(.system(.subheadline, design: .monospaced))
                                 .fontWeight(.black)
                                 .foregroundColor(Theme.warning)
                                 .glow(color: Theme.warning.opacity(0.3), radius: 5)
                             
+                            Text("War is matched. Battle phase starts when the timer ends (or the leader starts early).")
+                                .font(.caption2)
+                                .foregroundColor(Theme.textSecondary)
+                            
                             LiveCountdownView(targetDate: war.phaseEndsAt, prefix: "War starts in:")
                                 .padding(.top, 4)
+                            
+                            if clan.leaderId == FirebaseService.shared.currentCharacter?.id {
+                                Button(action: viewModel.forceActivatePreparation) {
+                                    Text(viewModel.isWarActionInFlight ? "STARTING…" : "START BATTLE PHASE NOW")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .fontWeight(.bold)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(Theme.danger)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(8)
+                                }
+                                .buttonStyle(TactileButtonStyle())
+                                .disabled(viewModel.isWarActionInFlight)
+                                .padding(.top, 6)
+                            }
                         } else {
                             HStack {
                                 Text(clan.name.uppercased())
@@ -737,6 +774,11 @@ struct ActiveClanView: View {
                                     .fontWeight(.black)
                             }
                             .foregroundColor(Theme.textPrimary)
+                            
+                            Text("WAR ACTIVE")
+                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .foregroundColor(Theme.danger)
+                                .tracking(1)
                             
                             // Score bar comparison
                             HStack(spacing: 16) {
@@ -795,7 +837,7 @@ struct ActiveClanView: View {
                                     Button(action: {
                                         showWarBattle = true
                                     }) {
-                                        Text("BATTLE (WAR)")
+                                        Text("ATTACK (NO ENERGY)")
                                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                                             .padding(.horizontal, 14)
                                             .padding(.vertical, 8)
@@ -812,6 +854,10 @@ struct ActiveClanView: View {
                                 }
                             }
                             .padding(.top, 8)
+                            
+                            Text("Win skirmishes to score clan trophies. No Arena energy is spent.")
+                                .font(.caption2)
+                                .foregroundColor(Theme.textMuted)
                         }
                     }
                     .padding()
@@ -819,27 +865,41 @@ struct ActiveClanView: View {
                     .cornerRadius(16)
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
-                            .stroke(Theme.border, lineWidth: 1)
+                            .stroke(
+                                war.phase == .active ? Theme.danger.opacity(0.55) : Theme.border,
+                                lineWidth: war.phase == .active ? 1.5 : 1
+                            )
                     )
                     .padding(.horizontal)
                 } else {
                     VStack(spacing: 16) {
-                        Text("No active Clan War right now.")
-                            .font(.system(.caption, design: .monospaced))
+                        Image(systemName: "shield.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(Theme.accent.opacity(0.9))
+                        
+                        Text("No active Clan War")
+                            .font(.system(.subheadline, design: .monospaced))
+                            .fontWeight(.bold)
+                            .foregroundColor(Theme.textPrimary)
+                        
+                        Text("Search for a rival clan. If none are waiting, ShadowFiend joins after ~45s so war always starts.")
+                            .font(.system(.caption, design: .default))
                             .foregroundColor(Theme.textSecondary)
+                            .multilineTextAlignment(.center)
                         
                         if clan.leaderId == FirebaseService.shared.currentCharacter?.id {
                             Button(action: viewModel.startWar) {
-                                Text("INITIATE CLAN WAR")
+                                Text(viewModel.isWarActionInFlight ? "STARTING WAR…" : "INITIATE CLAN WAR")
                                     .font(.system(.subheadline, design: .monospaced))
                                     .fontWeight(.black)
                                     .padding()
                                     .frame(maxWidth: .infinity)
-                                    .background(Theme.accent)
-                                    .foregroundColor(.white)
+                                    .background(viewModel.isWarActionInFlight ? Theme.cardBackground : Theme.accent)
+                                    .foregroundColor(viewModel.isWarActionInFlight ? Theme.textMuted : .white)
                                     .cornerRadius(12)
                             }
                             .buttonStyle(TactileButtonStyle())
+                            .disabled(viewModel.isWarActionInFlight)
                         } else {
                             Text("Only the Clan Leader can initiate wars.")
                                 .font(.system(size: 10, design: .monospaced))

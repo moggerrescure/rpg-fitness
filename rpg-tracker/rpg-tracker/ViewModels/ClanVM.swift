@@ -27,8 +27,10 @@ class ClanVM: ObservableObject {
     @Published var clanEmblemInput: String = "shield.fill"
     @Published var leaderboardPlayers: [Character] = []
     @Published var showWarResults: ClanWarResult? = nil
+    @Published var isWarActionInFlight: Bool = false
     /// Last war snapshot while phase was active — used when cron clears activeWar.
     private var lastActiveWarSnapshot: ClanWar? = nil
+    private var searchClaimTask: Task<Void, Never>? = nil
     
     private let firebaseService = FirebaseService.shared
     private var cancellables = Set<AnyCancellable>()
@@ -37,7 +39,11 @@ class ClanVM: ObservableObject {
         // Bind to FirebaseService clan states
         firebaseService.$userClan
             .receive(on: DispatchQueue.main)
-            .assign(to: &$userClan)
+            .sink { [weak self] clan in
+                self?.userClan = clan
+                self?.scheduleBotClaimIfNeeded(for: clan)
+            }
+            .store(in: &cancellables)
             
         // Bind to FirebaseService leaderboards
         firebaseService.$leaderboards
@@ -102,11 +108,60 @@ class ClanVM: ObservableObject {
     }
     
     func startWar() {
+        guard !isWarActionInFlight else { return }
+        isWarActionInFlight = true
         firebaseService.startClanWar()
+        // Clear in-flight when listener updates or after a short grace (CF may no-op locally).
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            self.isWarActionInFlight = false
+        }
     }
     
     func cancelWarSearch() {
+        guard !isWarActionInFlight else { return }
+        isWarActionInFlight = true
         firebaseService.cancelClanWarSearch()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            self.isWarActionInFlight = false
+        }
+    }
+
+    func claimBotOpponentNow() {
+        guard !isWarActionInFlight else { return }
+        isWarActionInFlight = true
+        firebaseService.claimClanWarBotOpponent()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            self.isWarActionInFlight = false
+        }
+    }
+
+    func forceActivatePreparation() {
+        guard userClan?.activeWar?.phase == .preparation else { return }
+        guard !isWarActionInFlight else { return }
+        isWarActionInFlight = true
+        firebaseService.startClanWar(acceptBot: true)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            self.isWarActionInFlight = false
+        }
+    }
+
+    private func scheduleBotClaimIfNeeded(for clan: Clan?) {
+        searchClaimTask?.cancel()
+        searchClaimTask = nil
+        guard let war = clan?.activeWar, war.phase == .searching else { return }
+        let delay = max(0.5, war.phaseEndsAt.timeIntervalSinceNow + 0.5)
+        searchClaimTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            guard let self,
+                  let current = self.userClan?.activeWar,
+                  current.phase == .searching else { return }
+            self.claimBotOpponentNow()
+        }
     }
     
     func contributeWarScore() {
